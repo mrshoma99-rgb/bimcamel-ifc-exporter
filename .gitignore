@@ -1,0 +1,17 @@
+# Build outputs
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+
+# Installer outputs (distributed via GitHub Releases, not the repo)
+installer/output/
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.csproj.user
+
+# OS
+Thumbs.db
+.DS_Store
