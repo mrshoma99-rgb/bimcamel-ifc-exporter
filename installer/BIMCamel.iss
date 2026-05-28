@@ -1,43 +1,59 @@
-; BIMCamel IFC Exporter — Inno Setup installer
-; Builds TWO editions from this one script:
-;   • Admin (machine-wide):   iscc BIMCamel.iss
-;       → installs to %ProgramData%\Autodesk\ApplicationPlugins\BIMCamel.bundle  (all users, needs admin)
-;   • No-admin (per-user):    iscc /DNOADMIN BIMCamel.iss
-;       → installs to %AppData%\Autodesk\ApplicationPlugins\BIMCamel.bundle      (current user, no admin)
+; BIMCamel IFC Exporter — unified Inno Setup installer
 ;
-; Prerequisite: build the plugin in Release first (build_installers.ps1 does this for you):
-;   dotnet build ..\BIMCamel\BIMCamel.csproj -c Release
+; One installer (BIMCamel_Setup.exe) that does it all:
+;   * Prompts the user at startup to install for ALL USERS (admin) or JUST FOR ME (no admin).
+;   * Detects a previous BIMCamel install (any scope, including a manual folder copy) and offers
+;     to uninstall it, upgrade in place, or cancel.
+;   * Lets the user change the destination folder when the default Autodesk ApplicationPlugins
+;     folder isn't where it should be (browse button on the directory page).
+;   * Carries the BIMCamel logo on the wizard and a "Visit www.bimcamel.com" task.
 ;
-; The user picks which Navisworks versions (2024/2025/2026) and which flavour (Manage / Simulate);
-; the matching PackageContents.xml is generated at install time (see [Code]). The single managed DLL
-; works across all versions — Navisworks loads the API from whichever release is running.
+; Build (after `dotnet build ..\BIMCamel\BIMCamel.csproj -c Release`):
+;   iscc BIMCamel.iss
+; Or use build_installers.ps1 in this folder (also builds the plugin and generates wizard assets).
+;
+; Output: installer\output\BIMCamel_Setup.exe
 
-#define AppName "BIMCamel IFC Exporter"
-#define AppVer "0.1.0"
-#define DllSrc "..\BIMCamel\bin\Release\net48\BIMCamel.dll"
+#define AppName    "BIMCamel IFC Exporter"
+#define AppShort   "BIMCamel"
+#define AppVer     "0.1.0"
+#define AppId      "{{8A2F1B3C-9D4E-4A5F-8B6C-7E1F2A3B4C5D}"
+#define AppUrl     "https://www.bimcamel.com"
+#define AppUrlPlain "www.bimcamel.com"
+#define DllSrc     "..\BIMCamel\bin\Release\net48\BIMCamel.dll"
 
 [Setup]
+AppId={#AppId}
 AppName={#AppName}
 AppVersion={#AppVer}
 AppPublisher=BIMCamel
-AppPublisherURL=https://bimcamel.com
-AppSupportURL=https://bimcamel.com
+AppPublisherURL={#AppUrl}
+AppSupportURL={#AppUrl}
+AppUpdatesURL={#AppUrl}
+AppContact={#AppUrl}
 WizardStyle=modern
-DisableDirPage=yes
+WizardImageFile=assets\wizard_image.bmp
+WizardSmallImageFile=assets\wizard_small.bmp
+SetupIconFile=assets\bimcamel.ico
+UninstallDisplayName={#AppName}
+UninstallDisplayIcon={uninstallexe}
 DisableProgramGroupPage=yes
+DisableDirPage=no
+DisableWelcomePage=no
+DisableReadyPage=no
 Uninstallable=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=output
-#ifdef NOADMIN
-  PrivilegesRequired=lowest
-  OutputBaseFilename=BIMCamel_Setup_NoAdmin
-  DefaultDirName={userappdata}\Autodesk\ApplicationPlugins\BIMCamel.bundle
-#else
-  PrivilegesRequired=admin
-  OutputBaseFilename=BIMCamel_Setup
-  DefaultDirName={commonappdata}\Autodesk\ApplicationPlugins\BIMCamel.bundle
-#endif
+OutputBaseFilename=BIMCamel_Setup
+PrivilegesRequired=admin
+PrivilegesRequiredOverridesAllowed=dialog commandline
+DefaultDirName={autoappdata}\Autodesk\ApplicationPlugins\BIMCamel.bundle
+ShowLanguageDialog=no
+
+[Messages]
+WelcomeLabel2=This will install [name/ver] on your computer.%n%nLearn more at {#AppUrlPlain}
+FinishedLabelNoIcons=Setup has finished installing [name].%n%nNavisworks will pick up the plug-in automatically on next launch.
 
 [Types]
 Name: "full";   Description: "All Navisworks versions (Manage + Simulate)"
@@ -52,12 +68,224 @@ Name: "n2026man"; Description: "Navisworks Manage 2026";   Types: full custom
 Name: "n2026sim"; Description: "Navisworks Simulate 2026"; Types: full
 
 [Files]
-; The managed plugin + its content (one shared copy; manifest below targets the chosen versions).
-Source: "{#DllSrc}";                  DestDir: "{app}\Contents";           Flags: ignoreversion
-Source: "..\BIMCamel\BIMCamel.xaml";  DestDir: "{app}\Contents\en-US";     Flags: ignoreversion
-Source: "..\BIMCamel\Resources\*.png"; DestDir: "{app}\Contents\Resources"; Flags: ignoreversion
+Source: "{#DllSrc}";                    DestDir: "{app}\Contents";           Flags: ignoreversion
+Source: "..\BIMCamel\BIMCamel.xaml";    DestDir: "{app}\Contents\en-US";     Flags: ignoreversion
+Source: "..\BIMCamel\Resources\*.png";  DestDir: "{app}\Contents\Resources"; Flags: ignoreversion
+
+[Tasks]
+Name: "openweb"; Description: "Visit {#AppUrlPlain} after install"; Flags: unchecked
+
+[Run]
+Filename: "{#AppUrl}"; Description: "Visit {#AppUrlPlain}"; Flags: shellexec postinstall skipifsilent nowait runasoriginaluser; Tasks: openweb
+
+[Icons]
+; Start-Menu shortcut to the website; uses {autoprograms} so it lands in the right scope.
+Name: "{autoprograms}\BIMCamel\Visit {#AppUrlPlain}"; Filename: "{#AppUrl}"
 
 [Code]
+const
+  LegacyKeyAdminGuid  = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#AppId}_is1';
+  LegacyKeyAdminName  = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\BIMCamel IFC Exporter_is1';
+
+var
+  PriorPath:    string;
+  PriorUninst:  string;
+  PriorScope:   string;  { 'HKLM', 'HKCU', 'fs-machine', 'fs-user' }
+
+function TryRead(RootKey: Integer; SubKey: string; var Path, Cmd: string): Boolean;
+begin
+  Path := '';
+  Cmd  := '';
+  Result := False;
+  if RegQueryStringValue(RootKey, SubKey, 'UninstallString', Cmd) then begin
+    if not RegQueryStringValue(RootKey, SubKey, 'InstallLocation', Path) then
+      Path := '';
+    Result := True;
+  end;
+end;
+
+function ReadAnyKey(RootKey: Integer; var Path, Cmd: string): Boolean;
+begin
+  Result := TryRead(RootKey, LegacyKeyAdminGuid, Path, Cmd);
+  if not Result then
+    Result := TryRead(RootKey, LegacyKeyAdminName, Path, Cmd);
+end;
+
+function FindExistingInstall(): Boolean;
+var
+  Path, Cmd: string;
+begin
+  Result := False;
+
+  if ReadAnyKey(HKLM, Path, Cmd) then begin
+    PriorScope := 'HKLM'; PriorPath := Path; PriorUninst := Cmd;
+    Result := True;
+    Exit;
+  end;
+
+  if ReadAnyKey(HKCU, Path, Cmd) then begin
+    PriorScope := 'HKCU'; PriorPath := Path; PriorUninst := Cmd;
+    Result := True;
+    Exit;
+  end;
+
+  { File-system fallback: someone copied the bundle in by hand (no registered uninstaller). }
+  Path := ExpandConstant('{commonappdata}\Autodesk\ApplicationPlugins\BIMCamel.bundle');
+  if DirExists(Path) then begin
+    PriorScope := 'fs-machine'; PriorPath := Path; PriorUninst := '';
+    Result := True;
+    Exit;
+  end;
+
+  Path := ExpandConstant('{userappdata}\Autodesk\ApplicationPlugins\BIMCamel.bundle');
+  if DirExists(Path) then begin
+    PriorScope := 'fs-user'; PriorPath := Path; PriorUninst := '';
+    Result := True;
+    Exit;
+  end;
+end;
+
+function SplitUninstallString(const S: string; var ExePath, ExeArgs: string): Boolean;
+var
+  CloseQuote: Integer;
+begin
+  Result := False;
+  ExePath := ''; ExeArgs := '';
+  if S = '' then Exit;
+
+  if (Length(S) > 0) and (S[1] = '"') then begin
+    CloseQuote := Pos('"', Copy(S, 2, Length(S) - 1));
+    if CloseQuote = 0 then Exit;
+    ExePath := Copy(S, 2, CloseQuote - 1);
+    ExeArgs := Trim(Copy(S, CloseQuote + 2, Length(S)));
+  end else begin
+    ExePath := S;
+    ExeArgs := '';
+  end;
+  Result := ExePath <> '';
+end;
+
+function RunPriorUninstaller(): Boolean;
+var
+  ResultCode: Integer;
+  ExePath, ExeArgs: string;
+begin
+  Result := False;
+
+  if PriorUninst <> '' then begin
+    if not SplitUninstallString(PriorUninst, ExePath, ExeArgs) then Exit;
+    if ExeArgs = '' then
+      ExeArgs := '/SILENT /SUPPRESSMSGBOXES /NORESTART'
+    else
+      ExeArgs := ExeArgs + ' /SILENT /SUPPRESSMSGBOXES /NORESTART';
+    Result := Exec(ExePath, ExeArgs, '', SW_SHOW, ewWaitUntilTerminated, ResultCode)
+              and (ResultCode = 0);
+    Exit;
+  end;
+
+  { No uninstaller registered — it was a folder copy. Just delete the bundle. }
+  if PriorPath <> '' then
+    Result := DelTree(PriorPath, True, True, True);
+end;
+
+function InitializeSetup(): Boolean;
+var
+  Msg: string;
+  Reply: Integer;
+begin
+  Result := True;
+  if not FindExistingInstall() then Exit;
+
+  Msg :=
+    'A previous installation of {#AppName} was found at:' + #13#10 + #13#10 +
+    '    ' + PriorPath + #13#10 + #13#10 +
+    'Yes    – Uninstall it now and exit' + #13#10 +
+    'No     – Continue and upgrade / overwrite' + #13#10 +
+    'Cancel – Abort';
+
+  Reply := MsgBox(Msg, mbConfirmation, MB_YESNOCANCEL);
+
+  if Reply = IDYES then begin
+    if not RunPriorUninstaller() then
+      MsgBox('Uninstall did not complete cleanly. The previous install may still be present.',
+             mbError, MB_OK);
+    Result := False;
+    Exit;
+  end;
+
+  if Reply = IDCANCEL then begin
+    Result := False;
+    Exit;
+  end;
+
+  { User chose to continue. For a manual-copy bundle, remove the old folder to avoid duplicates.
+    For a registered install in the same scope, Inno's AppId-based upgrade handles it. For a
+    registered install in the OTHER scope, silently uninstall it first. }
+  if (PriorScope = 'fs-machine') or (PriorScope = 'fs-user') then
+    DelTree(PriorPath, True, True, True)
+  else if ((PriorScope = 'HKLM') and not IsAdminInstallMode()) or
+          ((PriorScope = 'HKCU') and IsAdminInstallMode()) then
+    RunPriorUninstaller();
+end;
+
+procedure InitializeWizard();
+var
+  ParentFolder: string;
+begin
+  { If the Autodesk ApplicationPlugins folder isn't where we expect, leave the wizard's
+    directory page enabled (it already is) but warn the user up front so they can browse
+    to the right place. }
+  ParentFolder := ExpandConstant('{autoappdata}\Autodesk\ApplicationPlugins');
+  if not DirExists(ParentFolder) then begin
+    MsgBox(
+      'The Autodesk ApplicationPlugins folder was not found at:' + #13#10 +
+      '    ' + ParentFolder + #13#10 + #13#10 +
+      'Navisworks may not be installed in the usual location. On the next page you can ' +
+      'browse to your ApplicationPlugins folder (usually under "Autodesk" in ProgramData or AppData).',
+      mbInformation, MB_OK);
+  end;
+end;
+
+function StripTrailingSlash(const S: string): string;
+begin
+  Result := S;
+  while (Length(Result) > 0) and (Result[Length(Result)] = '\') do
+    Result := Copy(Result, 1, Length(Result) - 1);
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  Target, Parent, LowerTarget: string;
+begin
+  Result := True;
+  if CurPageID <> wpSelectDir then Exit;
+
+  Target := StripTrailingSlash(WizardForm.DirEdit.Text);
+  Parent := ExtractFilePath(Target);
+
+  if (Parent <> '') and not DirExists(Parent) then begin
+    if not ForceDirectories(Parent) then begin
+      MsgBox(
+        'The folder you picked is inside a path that does not exist and cannot be created:' + #13#10 +
+        '    ' + Parent + #13#10 + #13#10 +
+        'Please pick a different folder (use Browse...).',
+        mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+  end;
+
+  LowerTarget := Lowercase(Target);
+  if Pos('applicationplugins', LowerTarget) = 0 then begin
+    if MsgBox(
+        'The folder you picked does not look like a Navisworks ApplicationPlugins folder:' + #13#10 +
+        '    ' + Target + #13#10 + #13#10 +
+        'Navisworks only auto-loads bundles from an "ApplicationPlugins" folder. Continue anyway?',
+        mbConfirmation, MB_YESNO) = IDNO then
+      Result := False;
+  end;
+end;
+
 function CompBlock(Desc, Platform, Series: string): string;
 begin
   Result :=
@@ -73,11 +301,11 @@ var
 begin
   Xml :=
     '<?xml version="1.0" encoding="utf-8"?>' + #13#10 +
-    '<ApplicationPackage SchemaVersion="3.0" Version="0.1.0.0" Author="BIMCamel"' + #13#10 +
+    '<ApplicationPackage SchemaVersion="3.0" Version="' + '{#AppVer}' + '.0" Author="BIMCamel"' + #13#10 +
     '    ProductCode="C3D4E5F6-A7B8-9012-CDEF-234567890123"' + #13#10 +
-    '    Name="BIMCamel IFC Exporter"' + #13#10 +
-    '    Description="Fast, free Navisworks to IFC exporter (IFC4 / IFC2x3) - bimcamel.com">' + #13#10 +
-    '  <CompanyDetails Name="BIMCamel" Url="https://bimcamel.com" />' + #13#10;
+    '    Name="{#AppName}"' + #13#10 +
+    '    Description="Fast, free Navisworks to IFC exporter (IFC4 / IFC2x3) - {#AppUrlPlain}">' + #13#10 +
+    '  <CompanyDetails Name="BIMCamel" Url="{#AppUrl}" />' + #13#10;
 
   if WizardIsComponentSelected('n2024man') then Xml := Xml + CompBlock('2024 Manage',   'NAVMAN', 'Nw21');
   if WizardIsComponentSelected('n2024sim') then Xml := Xml + CompBlock('2024 Simulate', 'NAVSIM', 'Nw21');

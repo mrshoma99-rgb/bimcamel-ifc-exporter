@@ -1,7 +1,9 @@
-# Builds the BIMCamel plugin (Release) and compiles BOTH installers with Inno Setup.
-# Output EXEs land in installer\output\:
-#   BIMCamel_Setup.exe          – admin, machine-wide (%ProgramData%\Autodesk\ApplicationPlugins)
-#   BIMCamel_Setup_NoAdmin.exe  – per-user, no admin   (%AppData%\Autodesk\ApplicationPlugins)
+# Builds the BIMCamel plugin (Release), generates wizard assets, then compiles the unified
+# installer with Inno Setup.
+#
+# Output (installer\output\):
+#   BIMCamel_Setup.exe   – one installer; the user picks admin (all users) or no-admin (per user)
+#                          at startup, and the installer also detects/uninstalls a prior version.
 #
 # Prerequisite: Inno Setup 6 (free) — https://jrsoftware.org/isdl.php
 
@@ -13,6 +15,10 @@ Write-Host 'Building plugin (Release)...' -ForegroundColor Cyan
 dotnet build $proj -c Release -nologo
 if ($LASTEXITCODE -ne 0) { throw 'Plugin build failed.' }
 
+Write-Host 'Generating wizard image / icon...' -ForegroundColor Cyan
+& (Join-Path $root 'generate_assets.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'Asset generation failed.' }
+
 # Locate the Inno Setup compiler (ISCC.exe)
 $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
 if (-not $iscc) {
@@ -23,12 +29,8 @@ if (-not $iscc) {
 if (-not $iscc) { throw 'ISCC.exe (Inno Setup 6) not found. Install from https://jrsoftware.org/isdl.php' }
 
 $iss = Join-Path $root 'BIMCamel.iss'
-Write-Host 'Compiling admin installer...' -ForegroundColor Cyan
+Write-Host 'Compiling installer...' -ForegroundColor Cyan
 & $iscc $iss
-if ($LASTEXITCODE -ne 0) { throw 'Admin installer compile failed.' }
+if ($LASTEXITCODE -ne 0) { throw 'Installer compile failed.' }
 
-Write-Host 'Compiling no-admin installer...' -ForegroundColor Cyan
-& $iscc /DNOADMIN $iss
-if ($LASTEXITCODE -ne 0) { throw 'No-admin installer compile failed.' }
-
-Write-Host "Done. Installers are in: $(Join-Path $root 'output')" -ForegroundColor Green
+Write-Host "Done. Installer is in: $(Join-Path $root 'output')" -ForegroundColor Green
