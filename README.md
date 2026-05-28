@@ -42,16 +42,20 @@ export — BIMCamel fills that gap without the slowness and setup friction of th
 
 ## Install
 
-Download the latest installers from the **[Releases](../../releases/latest)** page:
+Download **BIMCamel_Setup.exe** from the **[Releases](../../releases/latest)** page and run it.
+One installer does everything:
 
-| Installer | Needs admin? | Installs for |
-|---|---|---|
-| **BIMCamel_Setup.exe** | Yes | all users (machine-wide) |
-| **BIMCamel_Setup_NoAdmin.exe** | **No** | current user only |
+- At startup, choose **install for all users** (admin, machine-wide) or **just for me** (no admin,
+  per-user). The target folder follows your choice automatically.
+- Pick which Navisworks versions (2024/2025/2026) and which flavour (Manage / Simulate) to enable.
+- If a previous BIMCamel install is detected (any scope, even a manual folder copy), the installer
+  offers to **uninstall it and exit**, **upgrade in place**, or **cancel**.
+- If the Autodesk `ApplicationPlugins` folder isn't where it should be, the directory page lets
+  you **browse to a custom location**.
+- Uninstall via Apps & Features or by re-running the installer and choosing "Uninstall".
 
-Both let you pick which Navisworks versions (2024/2025/2026) and which flavour (Manage / Simulate)
-to enable. Restart Navisworks — a **BIMCamel** ribbon tab appears with **IFC exporter** and **About**
-buttons. (The installers are unsigned, so Windows SmartScreen may warn on first run.)
+Restart Navisworks — a **BIMCamel** ribbon tab appears with **IFC exporter** and **About** buttons.
+(The installer is unsigned, so Windows SmartScreen may warn on first run.)
 
 **Manual install (no tooling):** copy a built `BIMCamel.bundle` folder into
 `%AppData%\Autodesk\ApplicationPlugins\` — Navisworks loads it on next launch.
@@ -75,11 +79,14 @@ dotnet build BIMCamel\BIMCamel.csproj -c Debug
 ```
 
 Debug builds auto-deploy to your per-user `BIMCamel.bundle` for quick iteration. To produce the
-installers (needs free [Inno Setup 6+](https://jrsoftware.org/isdl.php)):
+installer (needs free [Inno Setup 6 or 7](https://jrsoftware.org/isdl.php)):
 
 ```powershell
 installer\build_installers.ps1
 ```
+
+The script builds the plugin in Release, generates the wizard images / icon from the camel logo,
+and compiles `installer\output\BIMCamel_Setup.exe`.
 
 The project references the Navisworks API with `Private=False` (no Autodesk DLLs are redistributed);
 override the API path per machine with `-p:NavisworksDir="…\Navisworks Manage 2025"`.
@@ -88,7 +95,7 @@ override the API path per machine with `-p:NavisworksDir="…\Navisworks Manage 
 
 ```
 BIMCamel/            plug-in source (UI / Collect / Geometry / Data / Ifc / Profiles)
-installer/           Inno Setup script + build helper for the two installers
+installer/           Inno Setup script + build helper for BIMCamel_Setup.exe
 *.md                 design + implementation notes
 LICENSE              MIT
 ```
