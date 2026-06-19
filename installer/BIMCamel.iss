@@ -22,7 +22,7 @@
 
 #define AppName    "BIMCamel IFC Exporter"
 #define AppShort   "BIMCamel"
-#define AppVer     "0.1.0"
+#define AppVer     "0.2.1"
 #define AppGuid    "8A2F1B3C-9D4E-4A5F-8B6C-7E1F2A3B4C5D"
 #define AppId      "{{" + AppGuid + "}"
 #define AppUrl     "https://www.bimcamel.com"
@@ -53,6 +53,10 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=output
 OutputBaseFilename=BIMCamel_Setup
+; Always write a detailed log of every run. Used by the diagnostics below: if Setup detects a
+; problem that would stop the plug-in from appearing, it copies this log somewhere the user can
+; find it and share it with support.
+SetupLogging=yes
 ; Per-user install only: no admin, no UAC, no "all users / just me" prompt. The bundle goes to the
 ; running user's own AppData (resolved at run time from their profile, not a fixed name), which
 ; Navisworks auto-loads for that user.
@@ -106,10 +110,17 @@ var
   PriorUninst:  string;
   PriorScope:   string;  { 'HKLM', 'HKCU', 'fs-machine', 'fs-user' }
 
-{ The uninstall registry key Inno creates is "<resolved AppId>_is1". The resolved AppId is the GUID
-  in single braces, e.g. {8A2F...}. (Building it here from the bare GUID avoids the classic ISPP
-  pitfall where {#AppId} carries the doubled "{{" brace into a Pascal string literal and the lookup
-  never matches.) }
+  { Navisworks detection / install diagnostics }
+  NavDetected:  Boolean;  { detection has run }
+  NavCount:     Integer;  { number of supported Navisworks installs found }
+  NavComps:     string;   { CSV of detected component ids, e.g. 'n2024man,n2025man' }
+  NavSummary:   string;   { human-readable list of what was found }
+  CompsPreset:  Boolean;  { components page was pre-ticked from detection }
+
+{ The uninstall registry key Inno creates is "<resolved AppId>_is1", where the resolved AppId is the
+  GUID wrapped in single braces. We rebuild that string from the bare GUID here to avoid the classic
+  ISPP pitfall where the AppId macro carries a doubled brace into a Pascal string literal so the
+  lookup never matches. }
 function UninstallKeyGuid(): string;
 begin
   Result := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{' + '{#AppGuid}' + '}_is1';
@@ -281,10 +292,158 @@ begin
     DelTree(PriorPath, True, True, True);
 end;
 
+{ ── Navisworks detection ────────────────────────────────────────────────────────────────────
+  Find which supported Navisworks (Manage / Simulate, 2024-2026) are actually installed and where.
+  Series numbers: 2024 = 21, 2025 = 22, 2026 = 23 (these are the Nw21/Nw22/Nw23 in the manifest). }
+
+{ Return the install folder of a given Navisworks, or '' if it isn't installed. Tries the registry
+  InstallDir first (handles installs on a non-default drive), then the default Program Files path.
+  In both cases the folder only counts if it actually contains Roamer.exe (the Navisworks host). }
+function NavDir(const Flavour, Year, Ver: string): string;
+var
+  Dir: string;
+begin
+  Result := '';
+
+  if RegQueryStringValue(HKLM64, 'SOFTWARE\Autodesk\Navisworks ' + Flavour + ' x64\' + Ver + '.0',
+                         'InstallDir', Dir)
+     or RegQueryStringValue(HKLM64, 'SOFTWARE\Autodesk\Navisworks ' + Flavour + '\' + Ver + '.0',
+                            'InstallDir', Dir) then begin
+    Dir := RemoveBackslash(Dir);
+    if (Dir <> '') and FileExists(Dir + '\Roamer.exe') then begin
+      Result := Dir;
+      Exit;
+    end;
+  end;
+
+  Dir := ExpandConstant('{autopf}') + '\Autodesk\Navisworks ' + Flavour + ' ' + Year;
+  if FileExists(Dir + '\Roamer.exe') then
+    Result := Dir;
+end;
+
+procedure CheckOneNav(const Flavour, Year, Ver, CompId: string);
+var
+  Dir: string;
+begin
+  Dir := NavDir(Flavour, Year, Ver);
+  if Dir <> '' then begin
+    NavCount := NavCount + 1;
+    if NavComps <> '' then NavComps := NavComps + ',';
+    NavComps := NavComps + CompId;
+    NavSummary := NavSummary + '    Navisworks ' + Flavour + ' ' + Year + '   ->   ' + Dir + #13#10;
+    Log('BIMCamel: detected Navisworks ' + Flavour + ' ' + Year + ' at ' + Dir);
+  end else
+    Log('BIMCamel: Navisworks ' + Flavour + ' ' + Year + ' not found');
+end;
+
+procedure DetectNavisworks();
+begin
+  if NavDetected then Exit;
+  NavDetected := True;
+  NavCount := 0; NavComps := ''; NavSummary := '';
+
+  CheckOneNav('Manage',   '2024', '21', 'n2024man');
+  CheckOneNav('Simulate', '2024', '21', 'n2024sim');
+  CheckOneNav('Manage',   '2025', '22', 'n2025man');
+  CheckOneNav('Simulate', '2025', '22', 'n2025sim');
+  CheckOneNav('Manage',   '2026', '23', 'n2026man');
+  CheckOneNav('Simulate', '2026', '23', 'n2026sim');
+
+  Log('BIMCamel: Navisworks detection complete. count=' + IntToStr(NavCount) +
+      ' comps=[' + NavComps + ']');
+end;
+
+{ True if at least one ticked component matches a Navisworks we actually found. (Component ids are
+  all distinct and none is a substring of another, so a Pos() membership test is safe.) }
+function SelectedMatchesDetected(): Boolean;
+begin
+  Result :=
+    (WizardIsComponentSelected('n2024man') and (Pos('n2024man', NavComps) > 0)) or
+    (WizardIsComponentSelected('n2024sim') and (Pos('n2024sim', NavComps) > 0)) or
+    (WizardIsComponentSelected('n2025man') and (Pos('n2025man', NavComps) > 0)) or
+    (WizardIsComponentSelected('n2025sim') and (Pos('n2025sim', NavComps) > 0)) or
+    (WizardIsComponentSelected('n2026man') and (Pos('n2026man', NavComps) > 0)) or
+    (WizardIsComponentSelected('n2026sim') and (Pos('n2026sim', NavComps) > 0));
+end;
+
+{ Copy the full Setup log somewhere the user can easily find and email to us. Returns the path the
+  user should share (the Desktop copy, or the original temp log if the copy fails). }
+function ShareableLog(): string;
+var
+  Src, Dst: string;
+begin
+  Result := '';
+  Src := ExpandConstant('{log}');
+  if Src = '' then Exit;
+  Dst := ExpandConstant('{userdesktop}\BIMCamel_install_log.txt');
+  if CopyFile(Src, Dst, False) then
+    Result := Dst
+  else
+    Result := Src;
+end;
+
+{ After install, confirm the payload really landed and that the chosen versions match an installed
+  Navisworks. If anything is off — including the common "installed fine but won't show because the
+  manifest targets a version you don't have" case — surface a clear error plus a shareable log. }
+procedure VerifyInstall();
+var
+  Problem, DllPath, ManifestPath, LogPath: string;
+begin
+  Problem := '';
+  DllPath      := ExpandConstant('{app}\Contents\BIMCamel.dll');
+  ManifestPath := ExpandConstant('{app}\PackageContents.xml');
+
+  if not FileExists(DllPath) then
+    Problem := Problem + '- The plug-in file was not copied:' + #13#10 + '      ' + DllPath + #13#10;
+  if not FileExists(ManifestPath) then
+    Problem := Problem + '- The plug-in manifest was not written:' + #13#10 + '      ' + ManifestPath + #13#10;
+
+  if NavCount = 0 then
+    Problem := Problem +
+      '- No supported Navisworks (2024-2026) was found on this PC, so the plug-in will not appear ' +
+      'until a supported Navisworks is installed.' + #13#10
+  else if not SelectedMatchesDetected() then
+    Problem := Problem +
+      '- The Navisworks version(s) selected during setup do not match the Navisworks found on this ' +
+      'PC, so Navisworks will not show the plug-in. Re-run Setup and tick the version you have.' + #13#10;
+
+  if Problem = '' then begin
+    Log('BIMCamel: install verification passed.');
+    Exit;
+  end;
+
+  Log('BIMCamel: install verification FAILED:' + #13#10 + Problem);
+  LogPath := ShareableLog();
+  MsgBox(
+    'BIMCamel finished copying its files, but Setup found a problem that may stop the plug-in from ' +
+    'appearing in Navisworks:' + #13#10 + #13#10 +
+    Problem + #13#10 +
+    'A diagnostic log has been saved here:' + #13#10 +
+    '    ' + LogPath + #13#10 + #13#10 +
+    'Please send that file to us at {#AppUrlPlain} so we can help you get it working.',
+    mbError, MB_OK);
+end;
+
 procedure InitializeWizard();
 var
   ParentFolder: string;
 begin
+  DetectNavisworks();
+
+  { Fail guard: nothing supported on this machine. Let the user proceed (they may be installing
+    ahead of Navisworks, or have it in an unusual place) but make the consequence explicit. }
+  if NavCount = 0 then
+    MsgBox(
+      'Setup could not find Navisworks 2024, 2025 or 2026 (Manage or Simulate) on this computer.' + #13#10 + #13#10 +
+      'BIMCamel only runs inside a supported Navisworks. You can continue, but the plug-in will not ' +
+      'appear until one is installed.' + #13#10 + #13#10 +
+      'If you do have Navisworks in a non-standard location, continue and make sure the matching ' +
+      'version is ticked on the components page.',
+      mbInformation, MB_OK)
+  else
+    Log('BIMCamel: ' + IntToStr(NavCount) + ' supported Navisworks install(s) found:' + #13#10 +
+        NavSummary);
+
   { If the user's Autodesk ApplicationPlugins folder isn't where we expect, leave the wizard's
     directory page enabled (it already is) but warn the user up front so they can browse to the
     right place. }
@@ -297,6 +456,19 @@ begin
       'ApplicationPlugins folder (usually under "Autodesk" in your AppData), or accept the ' +
       'default and Setup will create it.',
       mbInformation, MB_OK);
+  end;
+end;
+
+{ Pre-tick exactly the Navisworks versions we detected, so the generated manifest matches what's
+  actually installed. A manifest entry for a version the user doesn't have is the usual reason the
+  plug-in silently fails to load. The user can still adjust the ticks. }
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if (CurPageID = wpSelectComponents) and (not CompsPreset) and (NavCount > 0) then begin
+    CompsPreset := True;
+    WizardSelectComponents('!n2024man,!n2024sim,!n2025man,!n2025sim,!n2026man,!n2026sim');
+    WizardSelectComponents(NavComps);
+    Log('BIMCamel: pre-selected components from detection: [' + NavComps + ']');
   end;
 end;
 
@@ -374,6 +546,8 @@ end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  if CurStep = ssPostInstall then
+  if CurStep = ssPostInstall then begin
     WriteManifest();
+    VerifyInstall();
+  end;
 end;
