@@ -1,9 +1,15 @@
-; BIMCamel IFC Exporter — unified Inno Setup installer
+; BIMCamel IFC Exporter — per-user Inno Setup installer
 ;
-; One installer (BIMCamel_Setup.exe) that does it all:
-;   * Prompts the user at startup to install for ALL USERS (admin) or JUST FOR ME (no admin).
-;   * Detects a previous BIMCamel install (any scope, including a manual folder copy) and offers
-;     to uninstall it, upgrade in place, or cancel.
+; One installer (BIMCamel_Setup.exe), per-user (local) install only:
+;   * Installs to the current user's Autodesk ApplicationPlugins folder
+;     (%AppData%\Autodesk\ApplicationPlugins\BIMCamel.bundle) — no admin, no UAC.
+;     This is the location Navisworks reliably auto-loads for the logged-in user, and the
+;     path is derived from the running user's profile (never a fixed/developer name).
+;   * Detects a previous BIMCamel install — including a leftover machine-wide ("all users")
+;     install from older builds — and offers to uninstall it (elevating when required) or
+;     upgrade in place.
+;   * Registers a proper uninstaller (Apps & Features) that removes the whole bundle, including
+;     the generated PackageContents.xml, so nothing is left behind for Navisworks to half-load.
 ;   * Lets the user change the destination folder when the default Autodesk ApplicationPlugins
 ;     folder isn't where it should be (browse button on the directory page).
 ;   * Carries the BIMCamel logo on the wizard and a "Visit www.bimcamel.com" task.
@@ -17,7 +23,8 @@
 #define AppName    "BIMCamel IFC Exporter"
 #define AppShort   "BIMCamel"
 #define AppVer     "0.1.0"
-#define AppId      "{{8A2F1B3C-9D4E-4A5F-8B6C-7E1F2A3B4C5D}"
+#define AppGuid    "8A2F1B3C-9D4E-4A5F-8B6C-7E1F2A3B4C5D"
+#define AppId      "{{" + AppGuid + "}"
 #define AppUrl     "https://www.bimcamel.com"
 #define AppUrlPlain "www.bimcamel.com"
 #define DllSrc     "..\BIMCamel\bin\Release\net48\BIMCamel.dll"
@@ -46,13 +53,15 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=output
 OutputBaseFilename=BIMCamel_Setup
-PrivilegesRequired=admin
-PrivilegesRequiredOverridesAllowed=dialog commandline
-DefaultDirName={autoappdata}\Autodesk\ApplicationPlugins\BIMCamel.bundle
+; Per-user install only: no admin, no UAC, no "all users / just me" prompt. The bundle goes to the
+; running user's own AppData (resolved at run time from their profile, not a fixed name), which
+; Navisworks auto-loads for that user.
+PrivilegesRequired=lowest
+DefaultDirName={userappdata}\Autodesk\ApplicationPlugins\BIMCamel.bundle
 ShowLanguageDialog=no
 
 [Messages]
-WelcomeLabel2=This will install [name/ver] on your computer.%n%nLearn more at {#AppUrlPlain}
+WelcomeLabel2=This will install [name/ver] for your Windows account.%n%nNo administrator rights are needed.%n%nLearn more at {#AppUrlPlain}
 FinishedLabelNoIcons=Setup has finished installing [name].%n%nNavisworks will pick up the plug-in automatically on next launch.
 
 [Types]
@@ -72,6 +81,12 @@ Source: "{#DllSrc}";                    DestDir: "{app}\Contents";           Fla
 Source: "..\BIMCamel\BIMCamel.xaml";    DestDir: "{app}\Contents\en-US";     Flags: ignoreversion
 Source: "..\BIMCamel\Resources\*.png";  DestDir: "{app}\Contents\Resources"; Flags: ignoreversion
 
+[UninstallDelete]
+; The PackageContents.xml is generated at install time (so it isn't in the install log) and
+; Navisworks keeps half-loading a bundle whose manifest lingers. Remove the whole bundle folder
+; on uninstall so nothing is left behind.
+Type: filesandordirs; Name: "{app}"
+
 [Tasks]
 Name: "openweb"; Description: "Visit {#AppUrlPlain} after install"; Flags: unchecked
 
@@ -79,18 +94,26 @@ Name: "openweb"; Description: "Visit {#AppUrlPlain} after install"; Flags: unche
 Filename: "{#AppUrl}"; Description: "Visit {#AppUrlPlain}"; Flags: shellexec postinstall skipifsilent nowait runasoriginaluser; Tasks: openweb
 
 [Icons]
-; Start-Menu shortcut to the website; uses {autoprograms} so it lands in the right scope.
-Name: "{autoprograms}\BIMCamel\Visit {#AppUrlPlain}"; Filename: "{#AppUrl}"
+; Start-Menu shortcut to the website (per-user programs folder).
+Name: "{userprograms}\BIMCamel\Visit {#AppUrlPlain}"; Filename: "{#AppUrl}"
 
 [Code]
 const
-  LegacyKeyAdminGuid  = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#AppId}_is1';
   LegacyKeyAdminName  = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\BIMCamel IFC Exporter_is1';
 
 var
   PriorPath:    string;
   PriorUninst:  string;
   PriorScope:   string;  { 'HKLM', 'HKCU', 'fs-machine', 'fs-user' }
+
+{ The uninstall registry key Inno creates is "<resolved AppId>_is1". The resolved AppId is the GUID
+  in single braces, e.g. {8A2F...}. (Building it here from the bare GUID avoids the classic ISPP
+  pitfall where {#AppId} carries the doubled "{{" brace into a Pascal string literal and the lookup
+  never matches.) }
+function UninstallKeyGuid(): string;
+begin
+  Result := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{' + '{#AppGuid}' + '}_is1';
+end;
 
 function TryRead(RootKey: Integer; SubKey: string; var Path, Cmd: string): Boolean;
 begin
@@ -106,7 +129,7 @@ end;
 
 function ReadAnyKey(RootKey: Integer; var Path, Cmd: string): Boolean;
 begin
-  Result := TryRead(RootKey, LegacyKeyAdminGuid, Path, Cmd);
+  Result := TryRead(RootKey, UninstallKeyGuid(), Path, Cmd);
   if not Result then
     Result := TryRead(RootKey, LegacyKeyAdminName, Path, Cmd);
 end;
@@ -117,6 +140,8 @@ var
 begin
   Result := False;
 
+  { A leftover machine-wide ("all users") install from older builds registers under HKLM.
+    Check it first so we can offer to clear it. }
   if ReadAnyKey(HKLM, Path, Cmd) then begin
     PriorScope := 'HKLM'; PriorPath := Path; PriorUninst := Cmd;
     Result := True;
@@ -165,6 +190,25 @@ begin
   Result := ExePath <> '';
 end;
 
+{ Delete a directory that the current (non-elevated) process can't remove — e.g. a leftover
+  machine-wide bundle under ProgramData. Falls back to an elevated rmdir (one UAC prompt). }
+function RemoveDirMaybeElevated(const Dir: string): Boolean;
+var
+  ResultCode: Integer;
+begin
+  if not DirExists(Dir) then begin
+    Result := True;
+    Exit;
+  end;
+  Result := DelTree(Dir, True, True, True);
+  if Result then Exit;
+
+  { No write access (machine-wide path) — elevate a rmdir. }
+  Result := ShellExec('runas', 'cmd.exe', '/c rmdir /s /q "' + Dir + '"', '',
+                      SW_HIDE, ewWaitUntilTerminated, ResultCode)
+            and not DirExists(Dir);
+end;
+
 function RunPriorUninstaller(): Boolean;
 var
   ResultCode: Integer;
@@ -178,14 +222,20 @@ begin
       ExeArgs := '/SILENT /SUPPRESSMSGBOXES /NORESTART'
     else
       ExeArgs := ExeArgs + ' /SILENT /SUPPRESSMSGBOXES /NORESTART';
+    { A machine-wide (HKLM) uninstaller self-elevates via its own manifest, so this prompts for
+      UAC when needed. }
     Result := Exec(ExePath, ExeArgs, '', SW_SHOW, ewWaitUntilTerminated, ResultCode)
               and (ResultCode = 0);
+    { Older builds had no [UninstallDelete], so the generated PackageContents.xml (and the bundle
+      folder) can linger. Sweep it so Navisworks doesn't keep half-loading the plug-in. }
+    if (PriorPath <> '') and DirExists(PriorPath) then
+      RemoveDirMaybeElevated(PriorPath);
     Exit;
   end;
 
   { No uninstaller registered — it was a folder copy. Just delete the bundle. }
   if PriorPath <> '' then
-    Result := DelTree(PriorPath, True, True, True);
+    Result := RemoveDirMaybeElevated(PriorPath);
 end;
 
 function InitializeSetup(): Boolean;
@@ -199,9 +249,9 @@ begin
   Msg :=
     'A previous installation of {#AppName} was found at:' + #13#10 + #13#10 +
     '    ' + PriorPath + #13#10 + #13#10 +
-    'Yes    – Uninstall it now and exit' + #13#10 +
-    'No     – Continue and upgrade / overwrite' + #13#10 +
-    'Cancel – Abort';
+    'Yes    - Uninstall it now and exit' + #13#10 +
+    'No     - Continue and upgrade / overwrite' + #13#10 +
+    'Cancel - Abort';
 
   Reply := MsgBox(Msg, mbConfirmation, MB_YESNOCANCEL);
 
@@ -218,30 +268,34 @@ begin
     Exit;
   end;
 
-  { User chose to continue. For a manual-copy bundle, remove the old folder to avoid duplicates.
-    For a registered install in the same scope, Inno's AppId-based upgrade handles it. For a
-    registered install in the OTHER scope, silently uninstall it first. }
-  if (PriorScope = 'fs-machine') or (PriorScope = 'fs-user') then
-    DelTree(PriorPath, True, True, True)
-  else if ((PriorScope = 'HKLM') and not IsAdminInstallMode()) or
-          ((PriorScope = 'HKCU') and IsAdminInstallMode()) then
-    RunPriorUninstaller();
+  { User chose to continue (upgrade). We only install per-user now, so:
+      - a leftover machine-wide install (HKLM, or a ProgramData folder copy) would shadow / duplicate
+        the per-user bundle — remove it (elevating if needed);
+      - a per-user folder copy at our target gets overwritten by Inno; a registered per-user install
+        is handled by Inno's AppId-based upgrade. }
+  if PriorScope = 'HKLM' then
+    RunPriorUninstaller()
+  else if PriorScope = 'fs-machine' then
+    RemoveDirMaybeElevated(PriorPath)
+  else if PriorScope = 'fs-user' then
+    DelTree(PriorPath, True, True, True);
 end;
 
 procedure InitializeWizard();
 var
   ParentFolder: string;
 begin
-  { If the Autodesk ApplicationPlugins folder isn't where we expect, leave the wizard's
-    directory page enabled (it already is) but warn the user up front so they can browse
-    to the right place. }
-  ParentFolder := ExpandConstant('{autoappdata}\Autodesk\ApplicationPlugins');
+  { If the user's Autodesk ApplicationPlugins folder isn't where we expect, leave the wizard's
+    directory page enabled (it already is) but warn the user up front so they can browse to the
+    right place. }
+  ParentFolder := ExpandConstant('{userappdata}\Autodesk\ApplicationPlugins');
   if not DirExists(ParentFolder) then begin
     MsgBox(
       'The Autodesk ApplicationPlugins folder was not found at:' + #13#10 +
       '    ' + ParentFolder + #13#10 + #13#10 +
-      'Navisworks may not be installed in the usual location. On the next page you can ' +
-      'browse to your ApplicationPlugins folder (usually under "Autodesk" in ProgramData or AppData).',
+      'Navisworks may not have created it yet. On the next page you can browse to your ' +
+      'ApplicationPlugins folder (usually under "Autodesk" in your AppData), or accept the ' +
+      'default and Setup will create it.',
       mbInformation, MB_OK);
   end;
 end;
