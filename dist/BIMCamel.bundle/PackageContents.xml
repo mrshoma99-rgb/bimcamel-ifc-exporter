@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ApplicationPackage SchemaVersion="3.0" Version="0.2.0.0" Author="BIMCamel"
+    ProductCode="C3D4E5F6-A7B8-9012-CDEF-234567890123"
+    Name="BIMCamel IFC Exporter"
+    Description="Fast, free Navisworks to IFC exporter (IFC4 / IFC2x3) - www.bimcamel.com">
+  <CompanyDetails Name="BIMCamel" Url="https://www.bimcamel.com" />
+
+  <!-- One managed DLL serves every supported release (Navisworks supplies the API of the running
+       version). All components point at the single Contents\BIMCamel.dll. -->
+
+  <!-- Navisworks 2026 -->
+  <Components Description="2026 Manage">
+    <RuntimeRequirements OS="Win64" Platform="NAVMAN" SeriesMin="Nw23" SeriesMax="Nw23" />
+    <ComponentEntry AppType="ManagedPlugin" ModuleName=".\Contents\BIMCamel.dll" />
+  </Components>
+  <Components Description="2026 Simulate">
+    <RuntimeRequirements OS="Win64" Platform="NAVSIM" SeriesMin="Nw23" SeriesMax="Nw23" />
+    <ComponentEntry AppType="ManagedPlugin" ModuleName=".\Contents\BIMCamel.dll" />
+  </Components>
+
+  <!-- Navisworks 2025 -->
+  <Components Description="2025 Manage">
+    <RuntimeRequirements OS="Win64" Platform="NAVMAN" SeriesMin="Nw22" SeriesMax="Nw22" />
+    <ComponentEntry AppType="ManagedPlugin" ModuleName=".\Contents\BIMCamel.dll" />
+  </Components>
+  <Components Description="2025 Simulate">
+    <RuntimeRequirements OS="Win64" Platform="NAVSIM" SeriesMin="Nw22" SeriesMax="Nw22" />
+    <ComponentEntry AppType="ManagedPlugin" ModuleName=".\Contents\BIMCamel.dll" />
+  </Components>
+
+  <!-- Navisworks 2024 -->
+  <Components Description="2024 Manage">
+    <RuntimeRequirements OS="Win64" Platform="NAVMAN" SeriesMin="Nw21" SeriesMax="Nw21" />
+    <ComponentEntry AppType="ManagedPlugin" ModuleName=".\Contents\BIMCamel.dll" />
+  </Components>
+  <Components Description="2024 Simulate">
+    <RuntimeRequirements OS="Win64" Platform="NAVSIM" SeriesMin="Nw21" SeriesMax="Nw21" />
+    <ComponentEntry AppType="ManagedPlugin" ModuleName=".\Contents\BIMCamel.dll" />
+  </Components>
+
+</ApplicationPackage>
