@@ -5,13 +5,19 @@
 ;     (%AppData%\Autodesk\ApplicationPlugins\BIMCamel.bundle) — no admin, no UAC.
 ;     This is the location Navisworks reliably auto-loads for the logged-in user, and the
 ;     path is derived from the running user's profile (never a fixed/developer name).
+;   * Shows a "Navisworks check" page up front: which supported Navisworks (Manage / Simulate,
+;     2024-2026) it found and where, and what it's about to do — no pop-ups, no decisions.
+;   * Pre-selects the Navisworks version(s) it detected so the generated manifest matches what's
+;     actually installed (a mismatch is the usual reason the plug-in never appears).
 ;   * Detects a previous BIMCamel install — including a leftover machine-wide ("all users")
-;     install from older builds — and offers to uninstall it (elevating when required) or
-;     upgrade in place.
+;     install from older builds — and upgrades / removes it automatically (elevating once only if
+;     a system-wide copy must be deleted). Full uninstall lives in Apps & Features.
+;   * Verifies the payload after install; if anything looks wrong (files missing, or the chosen
+;     version doesn't match a detected Navisworks) it explains it on the Finished page and saves a
+;     shareable log to the Desktop — instead of a cryptic error box.
 ;   * Registers a proper uninstaller (Apps & Features) that removes the whole bundle, including
 ;     the generated PackageContents.xml, so nothing is left behind for Navisworks to half-load.
-;   * Lets the user change the destination folder when the default Autodesk ApplicationPlugins
-;     folder isn't where it should be (browse button on the directory page).
+;   * Lets the user change the destination folder on the directory page.
 ;   * Carries the BIMCamel logo on the wizard and a "Visit www.bimcamel.com" task.
 ;
 ; Build (after `dotnet build ..\BIMCamel\BIMCamel.csproj -c Release`):
@@ -116,6 +122,12 @@ var
   NavComps:     string;   { CSV of detected component ids, e.g. 'n2024man,n2025man' }
   NavSummary:   string;   { human-readable list of what was found }
   CompsPreset:  Boolean;  { components page was pre-ticked from detection }
+
+  { Custom UI / state (replaces the old decision pop-ups) }
+  EnvPage:        TWizardPage;  { "Navisworks check" page shown after Welcome }
+  HasPrior:       Boolean;      { a previous BIMCamel install was found }
+  InstallProblem: string;       { non-empty => show a warning on the Finished page }
+  ProblemLogPath: string;       { where the shareable diagnostic log was saved }
 
 { The uninstall registry key Inno creates is "<resolved AppId>_is1", where the resolved AppId is the
   GUID wrapped in single braces. We rebuild that string from the bare GUID here to avoid the classic
@@ -249,41 +261,13 @@ begin
     Result := RemoveDirMaybeElevated(PriorPath);
 end;
 
-function InitializeSetup(): Boolean;
-var
-  Msg: string;
-  Reply: Integer;
+{ Prior-install cleanup, done automatically just before files are copied (no pop-up, no decision).
+  We only install per-user now, so a leftover machine-wide install (HKLM, or a ProgramData folder
+  copy) would shadow / duplicate the per-user bundle — remove it (elevating once if needed). A
+  per-user folder copy at our target is overwritten by Inno, and a registered per-user install is
+  upgraded in place by Inno via the shared AppId, so neither needs handling here. }
+procedure CleanupPriorInstall();
 begin
-  Result := True;
-  if not FindExistingInstall() then Exit;
-
-  Msg :=
-    'A previous installation of {#AppName} was found at:' + #13#10 + #13#10 +
-    '    ' + PriorPath + #13#10 + #13#10 +
-    'Yes    - Uninstall it now and exit' + #13#10 +
-    'No     - Continue and upgrade / overwrite' + #13#10 +
-    'Cancel - Abort';
-
-  Reply := MsgBox(Msg, mbConfirmation, MB_YESNOCANCEL);
-
-  if Reply = IDYES then begin
-    if not RunPriorUninstaller() then
-      MsgBox('Uninstall did not complete cleanly. The previous install may still be present.',
-             mbError, MB_OK);
-    Result := False;
-    Exit;
-  end;
-
-  if Reply = IDCANCEL then begin
-    Result := False;
-    Exit;
-  end;
-
-  { User chose to continue (upgrade). We only install per-user now, so:
-      - a leftover machine-wide install (HKLM, or a ProgramData folder copy) would shadow / duplicate
-        the per-user bundle — remove it (elevating if needed);
-      - a per-user folder copy at our target gets overwritten by Inno; a registered per-user install
-        is handled by Inno's AppId-based upgrade. }
   if PriorScope = 'HKLM' then
     RunPriorUninstaller()
   else if PriorScope = 'fs-machine' then
@@ -292,9 +276,30 @@ begin
     DelTree(PriorPath, True, True, True);
 end;
 
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  if HasPrior then begin
+    Log('BIMCamel: cleaning up prior install (scope=' + PriorScope + ') before installing.');
+    CleanupPriorInstall();
+  end;
+end;
+
 { ── Navisworks detection ────────────────────────────────────────────────────────────────────
   Find which supported Navisworks (Manage / Simulate, 2024-2026) are actually installed and where.
   Series numbers: 2024 = 21, 2025 = 22, 2026 = 23 (these are the Nw21/Nw22/Nw23 in the manifest). }
+
+{ The 64-bit "Program Files" folder, resolved reliably even though Setup is a 32-bit, per-user
+  (non-admin) process. We must NOT use the autopf / pf constants here: in non-admin install mode
+  autopf maps to the per-user LocalAppData\Programs folder, and a 32-bit process sees ProgramFiles
+  as the (x86) folder - Navisworks (64-bit) lives in the real C:\Program Files. The ProgramW6432
+  environment variable always points there. }
+function ProgramFiles64(): string;
+begin
+  Result := GetEnv('ProgramW6432');
+  if Result = '' then
+    Result := ExpandConstant('{commonpf64}');
+end;
 
 { Return the install folder of a given Navisworks, or '' if it isn't installed. Tries the registry
   InstallDir first (handles installs on a non-default drive), then the default Program Files path.
@@ -316,7 +321,7 @@ begin
     end;
   end;
 
-  Dir := ExpandConstant('{autopf}') + '\Autodesk\Navisworks ' + Flavour + ' ' + Year;
+  Dir := ProgramFiles64() + '\Autodesk\Navisworks ' + Flavour + ' ' + Year;
   if FileExists(Dir + '\Roamer.exe') then
     Result := Dir;
 end;
@@ -387,7 +392,7 @@ end;
   manifest targets a version you don't have" case — surface a clear error plus a shareable log. }
 procedure VerifyInstall();
 var
-  Problem, DllPath, ManifestPath, LogPath: string;
+  Problem, DllPath, ManifestPath: string;
 begin
   Problem := '';
   DllPath      := ExpandConstant('{app}\Contents\BIMCamel.dll');
@@ -407,56 +412,100 @@ begin
       '- The Navisworks version(s) selected during setup do not match the Navisworks found on this ' +
       'PC, so Navisworks will not show the plug-in. Re-run Setup and tick the version you have.' + #13#10;
 
+  InstallProblem := Problem;
+
   if Problem = '' then begin
     Log('BIMCamel: install verification passed.');
     Exit;
   end;
 
+  { Don't pop an error box — record the problem and the log path so the Finished page can show a
+    clear, readable message the user can act on. }
   Log('BIMCamel: install verification FAILED:' + #13#10 + Problem);
-  LogPath := ShareableLog();
-  MsgBox(
-    'BIMCamel finished copying its files, but Setup found a problem that may stop the plug-in from ' +
-    'appearing in Navisworks:' + #13#10 + #13#10 +
-    Problem + #13#10 +
-    'A diagnostic log has been saved here:' + #13#10 +
-    '    ' + LogPath + #13#10 + #13#10 +
-    'Please send that file to us at {#AppUrlPlain} so we can help you get it working.',
-    mbError, MB_OK);
+  ProblemLogPath := ShareableLog();
+end;
+
+{ Build the "Navisworks check" page (after Welcome). It replaces the old pop-up warnings: it simply
+  shows what Setup detected and what it will do — the user doesn't have to decide anything. }
+procedure BuildEnvironmentPage();
+var
+  Heading, Warn, PriorLbl: TNewStaticText;
+  Memo: TNewMemo;
+  Y: Integer;
+begin
+  EnvPage := CreateCustomPage(wpWelcome, 'Navisworks check',
+    'Setup checked this computer for supported Navisworks installations.');
+
+  Heading := TNewStaticText.Create(EnvPage);
+  Heading.Parent := EnvPage.Surface;
+  Heading.Left := 0;
+  Heading.Top := 0;
+  Heading.AutoSize := True;
+  if NavCount > 0 then
+    Heading.Caption := 'Supported Navisworks found on this PC:'
+  else
+    Heading.Caption := 'No supported Navisworks (2024-2026) was found on this PC.';
+
+  Memo := TNewMemo.Create(EnvPage);
+  Memo.Parent := EnvPage.Surface;
+  Memo.Left := 0;
+  Memo.Top := ScaleY(22);
+  Memo.Width := EnvPage.SurfaceWidth;
+  Memo.Height := ScaleY(92);
+  Memo.ReadOnly := True;
+  Memo.ScrollBars := ssVertical;
+  if NavCount > 0 then
+    Memo.Text := NavSummary + #13#10 +
+      'The matching version(s) are pre-selected on the next page, so the plug-in loads ' +
+      'into the Navisworks you actually have.'
+  else
+    Memo.Text :=
+      'BIMCamel only runs inside Navisworks Manage or Simulate (2024, 2025 or 2026).' + #13#10 + #13#10 +
+      'You can still install now - the plug-in will appear automatically the next time you start a ' +
+      'supported Navisworks. Tip: installing Navisworks first, then running this installer, lets ' +
+      'Setup pre-select the right version for you.';
+
+  Y := Memo.Top + Memo.Height + ScaleY(14);
+
+  if NavCount = 0 then begin
+    Warn := TNewStaticText.Create(EnvPage);
+    Warn.Parent := EnvPage.Surface;
+    Warn.Left := 0;
+    Warn.Top := Y;
+    Warn.AutoSize := True;
+    Warn.Font.Style := [fsBold];
+    Warn.Caption := 'No Navisworks detected - the plug-in will stay hidden until one is installed.';
+    Y := Warn.Top + ScaleY(24);
+  end;
+
+  if HasPrior then begin
+    PriorLbl := TNewStaticText.Create(EnvPage);
+    PriorLbl.Parent := EnvPage.Surface;
+    PriorLbl.Left := 0;
+    PriorLbl.Top := Y;
+    PriorLbl.Width := EnvPage.SurfaceWidth;
+    PriorLbl.AutoSize := False;
+    PriorLbl.Height := ScaleY(40);
+    PriorLbl.WordWrap := True;
+    if (PriorScope = 'HKLM') or (PriorScope = 'fs-machine') then
+      PriorLbl.Caption := 'An existing system-wide BIMCamel install was found. Setup will remove it ' +
+        'and install this version for your account. Windows may ask for permission once.'
+    else
+      PriorLbl.Caption := 'An existing BIMCamel install was found and will be updated to this version.';
+  end;
 end;
 
 procedure InitializeWizard();
-var
-  ParentFolder: string;
 begin
   DetectNavisworks();
-
-  { Fail guard: nothing supported on this machine. Let the user proceed (they may be installing
-    ahead of Navisworks, or have it in an unusual place) but make the consequence explicit. }
-  if NavCount = 0 then
-    MsgBox(
-      'Setup could not find Navisworks 2024, 2025 or 2026 (Manage or Simulate) on this computer.' + #13#10 + #13#10 +
-      'BIMCamel only runs inside a supported Navisworks. You can continue, but the plug-in will not ' +
-      'appear until one is installed.' + #13#10 + #13#10 +
-      'If you do have Navisworks in a non-standard location, continue and make sure the matching ' +
-      'version is ticked on the components page.',
-      mbInformation, MB_OK)
+  HasPrior := FindExistingInstall();
+  if HasPrior then
+    Log('BIMCamel: prior install found. scope=' + PriorScope + ' path=' + PriorPath)
   else
-    Log('BIMCamel: ' + IntToStr(NavCount) + ' supported Navisworks install(s) found:' + #13#10 +
-        NavSummary);
-
-  { If the user's Autodesk ApplicationPlugins folder isn't where we expect, leave the wizard's
-    directory page enabled (it already is) but warn the user up front so they can browse to the
-    right place. }
-  ParentFolder := ExpandConstant('{userappdata}\Autodesk\ApplicationPlugins');
-  if not DirExists(ParentFolder) then begin
-    MsgBox(
-      'The Autodesk ApplicationPlugins folder was not found at:' + #13#10 +
-      '    ' + ParentFolder + #13#10 + #13#10 +
-      'Navisworks may not have created it yet. On the next page you can browse to your ' +
-      'ApplicationPlugins folder (usually under "Autodesk" in your AppData), or accept the ' +
-      'default and Setup will create it.',
-      mbInformation, MB_OK);
-  end;
+    Log('BIMCamel: no prior install found.');
+  if NavCount > 0 then
+    Log('BIMCamel: ' + IntToStr(NavCount) + ' supported Navisworks install(s) found:' + #13#10 + NavSummary);
+  BuildEnvironmentPage();
 end;
 
 { Pre-tick exactly the Navisworks versions we detected, so the generated manifest matches what's
@@ -470,6 +519,15 @@ begin
     WizardSelectComponents(NavComps);
     Log('BIMCamel: pre-selected components from detection: [' + NavComps + ']');
   end;
+
+  { If post-install verification spotted a problem, replace the cheery Finished text with a clear,
+    actionable message (and the log path) right on the page - no error pop-up. }
+  if (CurPageID = wpFinished) and (InstallProblem <> '') then
+    WizardForm.FinishedLabel.Caption :=
+      'BIMCamel was installed, but Setup found something that may stop the plug-in from appearing in ' +
+      'Navisworks:' + #13#10 + #13#10 + InstallProblem + #13#10 +
+      'A diagnostic log was saved to:' + #13#10 + '    ' + ProblemLogPath + #13#10 + #13#10 +
+      'Please send that file to us at {#AppUrlPlain} and we will help you get it working.';
 end;
 
 function StripTrailingSlash(const S: string): string;
@@ -481,7 +539,7 @@ end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
 var
-  Target, Parent, LowerTarget: string;
+  Target, Parent: string;
 begin
   Result := True;
   if CurPageID <> wpSelectDir then Exit;
@@ -489,6 +547,9 @@ begin
   Target := StripTrailingSlash(WizardForm.DirEdit.Text);
   Parent := ExtractFilePath(Target);
 
+  { Only a genuine error blocks here: the chosen path's parent can't be created. (A non-standard
+    folder no longer triggers a confirm dialog - if the location is wrong, the Finished-page check
+    will tell the user the plug-in won't show.) }
   if (Parent <> '') and not DirExists(Parent) then begin
     if not ForceDirectories(Parent) then begin
       MsgBox(
@@ -501,15 +562,8 @@ begin
     end;
   end;
 
-  LowerTarget := Lowercase(Target);
-  if Pos('applicationplugins', LowerTarget) = 0 then begin
-    if MsgBox(
-        'The folder you picked does not look like a Navisworks ApplicationPlugins folder:' + #13#10 +
-        '    ' + Target + #13#10 + #13#10 +
-        'Navisworks only auto-loads bundles from an "ApplicationPlugins" folder. Continue anyway?',
-        mbConfirmation, MB_YESNO) = IDNO then
-      Result := False;
-  end;
+  if Pos('applicationplugins', Lowercase(Target)) = 0 then
+    Log('BIMCamel: chosen target is not under an ApplicationPlugins folder: ' + Target);
 end;
 
 function CompBlock(Desc, Platform, Series: string): string;
