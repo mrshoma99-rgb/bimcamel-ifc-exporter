@@ -4,7 +4,13 @@ One installer is produced from `BIMCamel.iss`:
 
 | Installer | What it does |
 |---|---|
-| **BIMCamel_Setup.exe** | Asks at startup whether to install for **all users** (admin, `%ProgramData%\Autodesk\ApplicationPlugins\BIMCamel.bundle`) or **just for me** (no admin, `%AppData%\Autodesk\ApplicationPlugins\BIMCamel.bundle`). Detects any prior install and offers to remove it. Lets you pick a different folder if the Autodesk ApplicationPlugins folder isn't where it expects. |
+| **BIMCamel_Setup.exe** | Installs **per user** (no admin, no UAC) into the running user's own `%AppData%\Autodesk\ApplicationPlugins\BIMCamel.bundle` — the path is derived from their Windows profile, never a fixed name. Detects any prior install (including a leftover machine-wide "all users" install from older builds) and offers to remove it. Lets you pick a different folder if the Autodesk ApplicationPlugins folder isn't where it expects. |
+
+> **Per-user only.** Earlier builds offered an "all users / just me" choice. The machine-wide
+> (`%ProgramData%`) path proved unreliable — Navisworks would finish installing but not show the
+> plug-in — and the admin choice also caused the install-mode dialog to stop reappearing and left
+> users unable to uninstall. The installer now always installs for the current user (the location
+> Navisworks reliably auto-loads) and can clean up an old all-users install if it finds one.
 
 The wizard lets the user choose **which Navisworks versions** (2024 / 2025 / 2026) and **which flavour**
 (Manage / Simulate) to enable. The selection is written into a matching `PackageContents.xml` at
@@ -16,18 +22,21 @@ registry, no manual steps.
 
 ## What the installer does
 
-1. **Admin / no-admin choice** — the standard Inno Setup "Install for all users / just me" dialog
-   appears first. Admin elevates; no-admin stays per-user. Default target folder follows the choice.
-2. **Existing-install detection** — if BIMCamel is already installed (any scope, including a manual
-   folder copy), the installer asks: **Yes** to uninstall it now and exit, **No** to upgrade /
-   overwrite in place, **Cancel** to abort. Crosses scopes too — e.g. installing per-user when an
-   admin install is present prompts to remove the admin one.
+1. **Per-user install** — no admin, no UAC, no install-mode prompt. The bundle goes to the running
+   user's own `%AppData%\Autodesk\ApplicationPlugins\BIMCamel.bundle` (the path is resolved from
+   their Windows profile at run time, so it adapts to whoever runs it — never a fixed name).
+2. **Existing-install detection** — if BIMCamel is already installed (including a leftover
+   machine-wide "all users" install from older builds, or a manual folder copy), the installer asks:
+   **Yes** to uninstall it now and exit, **No** to upgrade / overwrite in place, **Cancel** to abort.
+   Removing a machine-wide install elevates (one UAC prompt) since that's the only step that needs it.
 3. **Custom plug-ins folder** — the directory page is always shown so the user can browse to a
-   different folder. If the default Autodesk ApplicationPlugins parent doesn't exist (atypical
-   Navisworks install), the installer warns up front and asks the user to point at the right place.
-4. **Uninstall** — registered under Apps & Features as "BIMCamel IFC Exporter"; removes the bundle
-   folder. The same EXE handles install and upgrade; uninstall is done via Apps & Features (or by
-   re-running the installer and choosing "Yes" at the prior-install prompt).
+   different folder. If their Autodesk ApplicationPlugins parent doesn't exist yet, the installer
+   warns up front and offers to create the default.
+4. **Uninstall** — registered under Apps & Features as "BIMCamel IFC Exporter". Uninstall removes the
+   **whole bundle folder**, including the generated `PackageContents.xml` (older builds left that
+   behind, so Navisworks kept half-loading the plug-in). The same EXE handles install and upgrade;
+   uninstall is done via Apps & Features or by re-running the installer and choosing "Yes" at the
+   prior-install prompt.
 
 ## Build
 

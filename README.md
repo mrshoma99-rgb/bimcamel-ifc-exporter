@@ -45,14 +45,17 @@ export — BIMCamel fills that gap without the slowness and setup friction of th
 Download **BIMCamel_Setup.exe** from the **[Releases](../../releases/latest)** page and run it.
 One installer does everything:
 
-- At startup, choose **install for all users** (admin, machine-wide) or **just for me** (no admin,
-  per-user). The target folder follows your choice automatically.
+- Installs **just for you** — no admin rights, no UAC prompt. The plug-in goes into your own
+  `%AppData%\Autodesk\ApplicationPlugins` folder (the location Navisworks reliably auto-loads for
+  your account), so it works without needing a machine administrator.
 - Pick which Navisworks versions (2024/2025/2026) and which flavour (Manage / Simulate) to enable.
-- If a previous BIMCamel install is detected (any scope, even a manual folder copy), the installer
-  offers to **uninstall it and exit**, **upgrade in place**, or **cancel**.
+- If a previous BIMCamel install is detected (including a leftover machine-wide "all users" install
+  from older builds, or a manual folder copy), the installer offers to **uninstall it and exit**,
+  **upgrade in place**, or **cancel**.
 - If the Autodesk `ApplicationPlugins` folder isn't where it should be, the directory page lets
   you **browse to a custom location**.
-- Uninstall via Apps & Features or by re-running the installer and choosing "Uninstall".
+- Uninstall via Apps & Features or by re-running the installer and choosing "Uninstall" at the
+  prompt — it removes the whole bundle (no stale files left for Navisworks to half-load).
 
 Restart Navisworks — a **BIMCamel** ribbon tab appears with **IFC exporter** and **About** buttons.
 (The installer is unsigned, so Windows SmartScreen may warn on first run.)

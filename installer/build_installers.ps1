@@ -2,8 +2,9 @@
 # installer with Inno Setup.
 #
 # Output (installer\output\):
-#   BIMCamel_Setup.exe   – one installer; the user picks admin (all users) or no-admin (per user)
-#                          at startup, and the installer also detects/uninstalls a prior version.
+#   BIMCamel_Setup.exe   – one per-user installer (no admin / no UAC); installs into the running
+#                          user's AppData ApplicationPlugins folder, and also detects/uninstalls a
+#                          prior version (including a leftover machine-wide install from older builds).
 #
 # Prerequisite: Inno Setup 6 (free) — https://jrsoftware.org/isdl.php
 
