@@ -3,6 +3,8 @@
   <PropertyGroup>
     <TargetFramework>net48</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
+    <!-- WPF dock-pane UI (hosted in the WinForms pane via ElementHost). -->
+    <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <LangVersion>10.0</LangVersion>
     <AssemblyName>BIMCamel</AssemblyName>
@@ -40,12 +42,22 @@
     <Reference Include="System.Runtime.Serialization" />
   </ItemGroup>
 
-  <!-- ── XAML ribbon layout is a Navisworks content file, NOT WPF-compiled ─── -->
+  <!-- ── XAML ribbon layout is a Navisworks content file, NOT WPF-compiled ───
+       With UseWPF the SDK globs every *.xaml in as a WPF <Page>; the ribbon file is
+       hand-authored Navisworks markup, so remove it from Page compilation and keep it as
+       plain content (the WPF dock-pane view under UI\ is still compiled as a Page). ── -->
   <ItemGroup>
+    <Page Remove="BIMCamel.xaml" />
     <None Remove="BIMCamel.xaml" />
     <Content Include="BIMCamel.xaml">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </Content>
+  </ItemGroup>
+
+  <!-- Brand logo embedded as a WPF resource so the dock-pane title bar can show it via pack URI,
+       independent of where the bundle is installed. (Still also shipped as a loose ribbon icon.) -->
+  <ItemGroup>
+    <Resource Include="Resources\camel_32.png" />
   </ItemGroup>
 
   <!-- ── Dev convenience: deploy to the per-user .bundle on Debug builds only.

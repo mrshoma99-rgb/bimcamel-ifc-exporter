@@ -1,0 +1,821 @@
+<UserControl x:Class="BIMCamel.UI.ExporterView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             TextOptions.TextFormattingMode="Display"
+             UseLayoutRounding="True"
+             ToolTipService.ShowDuration="20000" ToolTipService.InitialShowDelay="350"
+             FontFamily="Segoe UI" FontSize="13">
+
+  <UserControl.Resources>
+    <!-- ════ Palette (light defaults; swapped at runtime for dark) ════ -->
+    <SolidColorBrush x:Key="Accent"      Color="#0070C0"/>
+    <SolidColorBrush x:Key="AccentHover" Color="#0D83DA"/>
+    <SolidColorBrush x:Key="AccentPress" Color="#005A9C"/>
+    <SolidColorBrush x:Key="Bg"          Color="#EEF1F5"/>
+    <SolidColorBrush x:Key="Pane"        Color="#F7F8FA"/>
+    <SolidColorBrush x:Key="Card"        Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="Card2"       Color="#FBFCFD"/>
+    <SolidColorBrush x:Key="Text"        Color="#1F2329"/>
+    <SolidColorBrush x:Key="Muted"       Color="#6B7480"/>
+    <SolidColorBrush x:Key="Faint"       Color="#9AA3AD"/>
+    <SolidColorBrush x:Key="Bd"          Color="#E1E5EA"/>
+    <SolidColorBrush x:Key="BdStrong"    Color="#CDD3DA"/>
+    <SolidColorBrush x:Key="Field"       Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="FieldBd"     Color="#CDD3DA"/>
+    <SolidColorBrush x:Key="Nav"         Color="#F0F2F5"/>
+    <SolidColorBrush x:Key="NavActive"   Color="#E6F0FA"/>
+    <SolidColorBrush x:Key="AmberBg"     Color="#FFF7E6"/>
+    <SolidColorBrush x:Key="AmberBd"     Color="#FFE1A8"/>
+    <SolidColorBrush x:Key="AmberTx"     Color="#8A5A00"/>
+    <SolidColorBrush x:Key="ConsoleBg"   Color="#0E1116"/>
+    <SolidColorBrush x:Key="ConsoleTx"   Color="#CFE3D5"/>
+    <SolidColorBrush x:Key="Ok"          Color="#1A8F4C"/>
+
+    <!-- ════ Text styles ════ -->
+    <Style x:Key="H3" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource Faint}"/>
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="FontWeight" Value="Bold"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
+    </Style>
+    <Style x:Key="Lbl" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource Muted}"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Margin" Value="0,0,0,5"/>
+    </Style>
+    <Style x:Key="Hint" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource Faint}"/>
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+      <Setter Property="Margin" Value="0,6,0,0"/>
+      <Setter Property="LineHeight" Value="16"/>
+    </Style>
+
+    <!-- required / optional badges (shown on each section header) -->
+    <Style x:Key="BadgeReq" TargetType="Border">
+      <Setter Property="Background" Value="#E4F6EC"/>
+      <Setter Property="CornerRadius" Value="7"/>
+      <Setter Property="Padding" Value="7,1"/>
+      <Setter Property="Margin" Value="8,0,0,0"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style x:Key="BadgeOpt" TargetType="Border" BasedOn="{StaticResource BadgeReq}">
+      <Setter Property="Background" Value="#ECEFF3"/>
+    </Style>
+
+    <!-- ════ Card ════ -->
+    <Style x:Key="CardStyle" TargetType="Border">
+      <Setter Property="Background" Value="{DynamicResource Card}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource Bd}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="11"/>
+      <Setter Property="Padding" Value="13"/>
+      <Setter Property="Margin" Value="0,0,0,12"/>
+    </Style>
+
+    <!-- ════ TextBox ════ -->
+    <Style TargetType="TextBox">
+      <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+      <Setter Property="CaretBrush" Value="{DynamicResource Text}"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="Padding" Value="8,7"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="TextBox">
+            <Border x:Name="b" Background="{DynamicResource Field}" BorderBrush="{DynamicResource FieldBd}"
+                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8">
+              <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Accent}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- ════ Secondary button ════ -->
+    <Style x:Key="Btn" TargetType="Button">
+      <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Padding" Value="11,7"/>
+      <Setter Property="Margin" Value="0,0,7,7"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="b" Background="{DynamicResource Card2}" BorderBrush="{DynamicResource FieldBd}"
+                    BorderThickness="1" CornerRadius="8" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Accent}"/>
+                <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="b" Property="Opacity" Value="0.5"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- ════ Link-style button ════ -->
+    <Style x:Key="LinkBtn" TargetType="Button">
+      <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="HorizontalAlignment" Value="Left"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Margin" Value="0,4,0,0"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <TextBlock Text="{TemplateBinding Content}"/>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- ════ Primary export button ════ -->
+    <Style x:Key="PrimaryBtn" TargetType="Button">
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="b" CornerRadius="10" Padding="12">
+              <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                  <GradientStop Color="#0070C0" Offset="0"/>
+                  <GradientStop Color="#0D83DA" Offset="1"/>
+                </LinearGradientBrush>
+              </Border.Background>
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Opacity" Value="0.93"/></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter TargetName="b" Property="Opacity" Value="0.45"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- ════ CheckBox ════ -->
+    <Style TargetType="CheckBox">
+      <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+      <Setter Property="FontSize" Value="12.5"/>
+      <Setter Property="Margin" Value="0,5,0,5"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="CheckBox">
+            <StackPanel Orientation="Horizontal" Background="Transparent">
+              <Border x:Name="box" Width="17" Height="17" CornerRadius="5" BorderThickness="2"
+                      BorderBrush="{DynamicResource BdStrong}" Background="Transparent" VerticalAlignment="Center">
+                <Path x:Name="tick" Data="M2,6 L5,9 L10,3" Stroke="White" StrokeThickness="2"
+                      Stretch="None" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+              <ContentPresenter Margin="9,0,0,0" VerticalAlignment="Center"/>
+            </StackPanel>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="box" Property="Background" Value="{DynamicResource Accent}"/>
+                <Setter TargetName="box" Property="BorderBrush" Value="{DynamicResource Accent}"/>
+                <Setter TargetName="tick" Property="Visibility" Value="Visible"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.5"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- ════ RadioButton as a "scope option" card ════ -->
+    <Style x:Key="OptionCard" TargetType="RadioButton">
+      <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+      <Setter Property="FontSize" Value="12.5"/>
+      <Setter Property="Margin" Value="0,0,0,6"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="RadioButton">
+            <Border x:Name="b" BorderBrush="{DynamicResource FieldBd}" BorderThickness="1" CornerRadius="9"
+                    Padding="10,9" Background="Transparent">
+              <StackPanel Orientation="Horizontal">
+                <Grid Width="15" Height="15" VerticalAlignment="Center">
+                  <Ellipse x:Name="ring" Stroke="{DynamicResource BdStrong}" StrokeThickness="2"/>
+                  <Ellipse x:Name="dot" Width="7" Height="7" Fill="{DynamicResource Accent}" Visibility="Collapsed"/>
+                </Grid>
+                <ContentPresenter Margin="9,0,0,0" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Accent}"/></Trigger>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Accent}"/>
+                <Setter TargetName="b" Property="Background" Value="{DynamicResource NavActive}"/>
+                <Setter TargetName="ring" Property="Stroke" Value="{DynamicResource Accent}"/>
+                <Setter TargetName="dot" Property="Visibility" Value="Visible"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- ════ ComboBox (flat, rounded) ════ -->
+    <Style TargetType="ComboBoxItem">
+      <Setter Property="Padding" Value="9,7"/>
+      <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ComboBoxItem">
+            <Border x:Name="b" Background="Transparent" Padding="{TemplateBinding Padding}" CornerRadius="6" Margin="3,1">
+              <ContentPresenter/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="b" Property="Background" Value="{DynamicResource NavActive}"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="ComboBox">
+      <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="Height" Value="34"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ComboBox">
+            <Grid>
+              <ToggleButton x:Name="tb" Focusable="False" ClickMode="Press"
+                            IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                <ToggleButton.Template>
+                  <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="bd" Background="{DynamicResource Field}" BorderBrush="{DynamicResource FieldBd}"
+                            BorderThickness="1" CornerRadius="8" Padding="10,0,8,0">
+                      <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <ContentPresenter Grid.Column="0" Content="{Binding SelectionBoxItem, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                          VerticalAlignment="Center" HorizontalAlignment="Left"/>
+                        <Path Grid.Column="1" Data="M0,0 L4,4 L8,0" Stroke="{DynamicResource Muted}" StrokeThickness="1.6"
+                              VerticalAlignment="Center" Margin="6,0,0,0"/>
+                      </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource Accent}"/></Trigger>
+                    </ControlTemplate.Triggers>
+                  </ControlTemplate>
+                </ToggleButton.Template>
+              </ToggleButton>
+              <TextBox x:Name="PART_EditableTextBox" Margin="11,0,26,0" VerticalAlignment="Center"
+                       Background="Transparent" Foreground="{DynamicResource Text}" Visibility="Hidden">
+                <TextBox.Template>
+                  <ControlTemplate TargetType="TextBox"><ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center"/></ControlTemplate>
+                </TextBox.Template>
+              </TextBox>
+              <Popup x:Name="PART_Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}"
+                     AllowsTransparency="True" Focusable="False" PopupAnimation="Slide">
+                <Border Background="{DynamicResource Card}" BorderBrush="{DynamicResource Bd}" BorderThickness="1"
+                        CornerRadius="8" MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                        Margin="0,4,0,0" SnapsToDevicePixels="True">
+                  <Border.Effect><DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.18"/></Border.Effect>
+                  <ScrollViewer MaxHeight="240"><StackPanel IsItemsHost="True" Margin="0,4"/></ScrollViewer>
+                </Border>
+              </Popup>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsEditable" Value="True">
+                <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- ════ ProgressBar ════ -->
+    <Style TargetType="ProgressBar">
+      <Setter Property="Height" Value="6"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ProgressBar">
+            <Border Background="{DynamicResource Bd}" CornerRadius="4" ClipToBounds="True">
+              <Grid>
+                <Border x:Name="PART_Track"/>
+                <Border x:Name="PART_Indicator" HorizontalAlignment="Left" CornerRadius="4">
+                  <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                      <GradientStop Color="#0070C0" Offset="0"/><GradientStop Color="#0D83DA" Offset="1"/>
+                    </LinearGradientBrush>
+                  </Border.Background>
+                </Border>
+              </Grid>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- ════ Title-bar icon button ════ -->
+    <Style x:Key="IconBtn" TargetType="Button">
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="Width" Value="30"/><Setter Property="Height" Value="30"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="b" CornerRadius="8" Background="#29FFFFFF">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Background" Value="#47FFFFFF"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- ════ Top tabs ════ -->
+    <Style TargetType="TabControl">
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="TabControl">
+            <Grid>
+              <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+              <Border Grid.Row="0" Background="{DynamicResource Nav}" BorderBrush="{DynamicResource Bd}" BorderThickness="0,0,0,1" Padding="9">
+                <UniformGrid Rows="1" IsItemsHost="True"/>
+              </Border>
+              <ContentPresenter Grid.Row="1" ContentSource="SelectedContent"/>
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="TabItem">
+      <Setter Property="Foreground" Value="{DynamicResource Muted}"/>
+      <Setter Property="Margin" Value="3,0"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="TabItem">
+            <Border x:Name="b" Background="Transparent" BorderBrush="Transparent" BorderThickness="1"
+                    CornerRadius="10" Padding="4,8" Cursor="Hand">
+              <ContentPresenter ContentSource="Header" HorizontalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Background" Value="#0F000000"/></Trigger>
+              <Trigger Property="IsSelected" Value="True">
+                <Setter TargetName="b" Property="Background" Value="{DynamicResource Card}"/>
+                <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource Bd}"/>
+                <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style TargetType="DataGridColumnHeader">
+      <Setter Property="Background" Value="{DynamicResource Card2}"/>
+      <Setter Property="Foreground" Value="{DynamicResource Muted}"/>
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Padding" Value="8,7"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource Bd}"/>
+      <Setter Property="BorderThickness" Value="0,0,0,1"/>
+    </Style>
+    <Style TargetType="DataGridCell">
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+  </UserControl.Resources>
+
+  <!-- ════════════════════ LAYOUT ════════════════════ -->
+  <Border Background="{DynamicResource Pane}">
+    <Grid>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+        <RowDefinition Height="Auto"/>
+      </Grid.RowDefinitions>
+
+      <!-- Title bar -->
+      <Border Grid.Row="0" Height="46">
+        <Border.Background>
+          <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+            <GradientStop Color="#0070C0" Offset="0"/><GradientStop Color="#0D83DA" Offset="1"/>
+          </LinearGradientBrush>
+        </Border.Background>
+        <Grid Margin="12,0">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <Border Grid.Column="0" Width="30" Height="30" CornerRadius="8" Background="#000000" VerticalAlignment="Center">
+            <Image x:Name="LogoImg" Width="26" Height="26" Stretch="Uniform"/>
+          </Border>
+          <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0,0,0">
+            <TextBlock Text="BIMCamel" Foreground="White" FontWeight="SemiBold" FontSize="14.5"/>
+            <TextBlock Text="IFC Exporter" Foreground="#DDFFFFFF" FontSize="10.5"/>
+          </StackPanel>
+          <Button Grid.Column="2" x:Name="BtnTheme" Style="{StaticResource IconBtn}" Content="🌙" ToolTip="Switch between light and dark theme" Click="OnToggleTheme"/>
+        </Grid>
+      </Border>
+
+      <!-- Tabs + content -->
+      <TabControl Grid.Row="1" x:Name="Tabs" Background="Transparent" BorderThickness="0">
+        <!-- ===== EXPORT ===== -->
+        <TabItem>
+          <TabItem.Header>
+            <StackPanel ToolTip="Core export settings: schema, units, scope and output">
+              <Viewbox Width="18" Height="18" HorizontalAlignment="Center">
+                <Path Data="M12,3 L12,15 M8,11 L12,15 L16,11 M4,17 L4,19 A2,2 0 0 0 6,21 L18,21 A2,2 0 0 0 20,19 L20,17" StrokeThickness="2"
+                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}"/>
+              </Viewbox>
+              <TextBlock Text="Export" FontSize="11" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+            </StackPanel>
+          </TabItem.Header>
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="14,14,14,8">
+            <StackPanel>
+              <!-- DataTools warning (dismissible) -->
+              <Border x:Name="WarnBanner" CornerRadius="10" Padding="11,9,8,9" Margin="0,0,0,12"
+                      Background="{DynamicResource AmberBg}" BorderBrush="{DynamicResource AmberBd}" BorderThickness="1">
+                <Grid>
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                  <TextBlock Grid.Column="0" Text="⚠" FontSize="14" Foreground="{DynamicResource AmberTx}" Margin="0,0,9,0" VerticalAlignment="Top"/>
+                  <TextBlock Grid.Column="1" TextWrapping="Wrap" FontSize="11.5" Foreground="{DynamicResource AmberTx}"
+                             Text="Before exporting, deactivate any DataTools / external-database links (Home → DataTools). They run a query per object and drastically slow export."/>
+                  <Button Grid.Column="2" Content="✕" Click="OnDismissWarning" ToolTip="Dismiss this notice" Cursor="Hand"
+                          VerticalAlignment="Top" Foreground="{DynamicResource AmberTx}" FontSize="11" Margin="6,-2,0,0">
+                    <Button.Template>
+                      <ControlTemplate TargetType="Button">
+                        <Border x:Name="cb" Width="20" Height="20" CornerRadius="5" Background="Transparent">
+                          <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="cb" Property="Background" Value="#22000000"/></Trigger>
+                        </ControlTemplate.Triggers>
+                      </ControlTemplate>
+                    </Button.Template>
+                  </Button>
+                </Grid>
+              </Border>
+
+              <Border Style="{StaticResource CardStyle}">
+                <StackPanel>
+                  <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
+                    <TextBlock Style="{StaticResource H3}" Text="OUTPUT"/>
+                    <Border Style="{StaticResource BadgeReq}"><TextBlock Text="REQUIRED" FontSize="9.5" FontWeight="SemiBold" Foreground="#1A8F4C"/></Border>
+                  </StackPanel>
+                  <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                      <TextBlock Style="{StaticResource Lbl}" Text="IFC schema"/>
+                      <ComboBox x:Name="CmbSchema" ToolTip="IFC version to write. IFC4 is recommended; choose IFC2x3 only if the receiving software requires it."/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                      <TextBlock Style="{StaticResource Lbl}" Text="Source units"/>
+                      <ComboBox x:Name="CmbUnits" ToolTip="Length unit of the source model. 'Auto' reads it from the model — only override if the model's units are wrong."/>
+                    </StackPanel>
+                  </Grid>
+                </StackPanel>
+              </Border>
+
+              <Border Style="{StaticResource CardStyle}">
+                <StackPanel>
+                  <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
+                    <TextBlock Style="{StaticResource H3}" Text="SCOPE"/>
+                    <Border Style="{StaticResource BadgeReq}"><TextBlock Text="REQUIRED" FontSize="9.5" FontWeight="SemiBold" Foreground="#1A8F4C"/></Border>
+                  </StackPanel>
+                  <StackPanel x:Name="ScopeOptions"/>
+                  <TextBlock x:Name="LblScopeHint" Style="{StaticResource Hint}" Foreground="{DynamicResource AmberTx}"/>
+                  <StackPanel x:Name="SavedSetRow" Margin="0,10,0,0" Visibility="Collapsed">
+                    <TextBlock Style="{StaticResource Lbl}" Text="Saved set"/>
+                    <ComboBox x:Name="CmbSavedSet" ToolTip="The saved selection/search set to export."/>
+                  </StackPanel>
+                  <StackPanel x:Name="BatchRow" Margin="0,10,0,0" Visibility="Collapsed">
+                    <TextBlock Style="{StaticResource Lbl}" Text="Sets to export (one IFC each)"/>
+                    <Border BorderBrush="{DynamicResource FieldBd}" BorderThickness="1" CornerRadius="9" Background="{DynamicResource Field}" Padding="4" MaxHeight="150"
+                            ToolTip="Tick the sets to export; each becomes its own IFC file.">
+                      <ListBox x:Name="LstBatch" BorderThickness="0" Background="Transparent" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                        <ListBox.ItemContainerStyle>
+                          <Style TargetType="ListBoxItem"><Setter Property="Template"><Setter.Value>
+                            <ControlTemplate TargetType="ListBoxItem"><ContentPresenter/></ControlTemplate>
+                          </Setter.Value></Setter></Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                          <DataTemplate><CheckBox Content="{Binding Name}" IsChecked="{Binding Checked, Mode=TwoWay}"/></DataTemplate>
+                        </ListBox.ItemTemplate>
+                      </ListBox>
+                    </Border>
+                    <WrapPanel Margin="0,7,0,0">
+                      <Button Style="{StaticResource Btn}" Content="Refresh sets" Click="OnBatchRefresh" ToolTip="Reload the list of saved/search sets from the model."/>
+                      <Button Style="{StaticResource Btn}" Content="All" Click="OnBatchAll" ToolTip="Tick all sets."/>
+                      <Button Style="{StaticResource Btn}" Content="None" Click="OnBatchNone" ToolTip="Untick all sets."/>
+                    </WrapPanel>
+                  </StackPanel>
+                  <StackPanel Orientation="Horizontal" Margin="0,10,0,0"
+                              ToolTip="Optional: split the output into multiple files once it grows past this size.">
+                    <CheckBox x:Name="ChkSplit" Content="Split when larger than" VerticalAlignment="Center"/>
+                    <TextBox x:Name="TxtSplitMb" Text="200" Width="58" Margin="8,0,6,0"/>
+                    <TextBlock Text="MB" VerticalAlignment="Center" Foreground="{DynamicResource Muted}"/>
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+
+              <Border Style="{StaticResource CardStyle}">
+                <StackPanel>
+                  <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
+                    <TextBlock Style="{StaticResource H3}" Text="GEOMETRY &amp; PLACEMENT"/>
+                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
+                  </StackPanel>
+                  <TextBlock Style="{StaticResource Lbl}" Text="Geometry quality"/>
+                  <ComboBox x:Name="CmbQuality" ToolTip="Mesh tessellation detail vs file size. 'Balanced' suits most models; 'Small file' is coarser, 'High detail' is finer and larger."/>
+                  <TextBlock Style="{StaticResource Lbl}" Text="Base point" Margin="0,11,0,5"/>
+                  <ComboBox x:Name="CmbBasePoint" ToolTip="Where the IFC origin sits. 'Geometry origin' keeps real-world coordinates in georeferencing; 'Model origin' keeps world coords in the geometry; 'Custom' lets you type a base point."/>
+                  <StackPanel x:Name="CoordRow" Margin="0,11,0,0" Visibility="Collapsed"
+                              ToolTip="Custom base point: easting, northing, elevation (metres) and rotation (degrees).">
+                    <TextBlock Style="{StaticResource Lbl}" Text="E, N, Elevation (m), rotation (°)"/>
+                    <Grid>
+                      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="6"/><ColumnDefinition Width="*"/><ColumnDefinition Width="6"/><ColumnDefinition Width="*"/><ColumnDefinition Width="6"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                      <TextBox x:Name="TxtE" Grid.Column="0"/><TextBox x:Name="TxtN" Grid.Column="2"/>
+                      <TextBox x:Name="TxtElev" Grid.Column="4"/><TextBox x:Name="TxtRot" Grid.Column="6"/>
+                    </Grid>
+                  </StackPanel>
+                  <Button Style="{StaticResource LinkBtn}" Content="↳ Preview base point" Click="OnPreviewBasePoint" ToolTip="Show the base-point coordinates the export will use."/>
+                  <TextBlock x:Name="LblPreview" Style="{StaticResource Hint}" FontFamily="Consolas" Text="Base point preview: —"/>
+                </StackPanel>
+              </Border>
+
+              <Border Style="{StaticResource CardStyle}">
+                <StackPanel>
+                  <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
+                    <TextBlock Style="{StaticResource H3}" Text="OPTIONS"/>
+                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
+                  </StackPanel>
+                  <CheckBox x:Name="ChkGeoref" Content="Write IFC4 georeferencing (IfcMapConversion)" ToolTip="Embed real-world coordinates (IfcMapConversion) so receivers can place the model geographically. IFC4 only."/>
+                  <CheckBox x:Name="ChkInstancing" Content="Optimize repeated geometry (instancing)" ToolTip="Reuse identical geometry across elements to shrink the file and speed up export."/>
+                  <CheckBox x:Name="ChkValidate" Content="Validate output after export" ToolTip="Run a basic structural check on the written IFC and report any issues."/>
+                  <CheckBox x:Name="ChkProfile" Content="Profile output size (slower)" ToolTip="Break down where the file size and time went. Adds a little overhead."/>
+                  <WrapPanel Margin="0,9,0,0">
+                    <Button Style="{StaticResource Btn}" Content="💾 Save profile…" Click="OnSaveProfile" ToolTip="Save all current settings (and the set→class mapping) to a reusable .json profile."/>
+                    <Button Style="{StaticResource Btn}" Content="📂 Load profile…" Click="OnLoadProfile" ToolTip="Load settings from a previously saved .json profile."/>
+                  </WrapPanel>
+                </StackPanel>
+              </Border>
+
+              <Border Style="{StaticResource CardStyle}">
+                <StackPanel>
+                  <TextBlock Style="{StaticResource H3}" Text="REPORT" Margin="0,0,0,10"/>
+                  <Border CornerRadius="9" Background="{DynamicResource ConsoleBg}" Padding="11" MaxHeight="190">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                      <TextBlock x:Name="TxtReport" Foreground="{DynamicResource ConsoleTx}" FontFamily="Consolas"
+                                 FontSize="11" TextWrapping="NoWrap" Text="Configure and click Export IFC."/>
+                    </ScrollViewer>
+                  </Border>
+                  <Button Style="{StaticResource LinkBtn}" Content="⧉ Copy report" Click="OnCopyReport" ToolTip="Copy the report text to the clipboard."/>
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
+        </TabItem>
+
+        <!-- ===== PROPERTIES ===== -->
+        <TabItem>
+          <TabItem.Header>
+            <StackPanel ToolTip="Choose which properties, materials and quantities to write, and remap parameters">
+              <Viewbox Width="18" Height="18" HorizontalAlignment="Center">
+                <Path Data="M4,6 L20,6 M4,12 L20,12 M4,18 L20,18" StrokeThickness="2"
+                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}"/>
+              </Viewbox>
+              <TextBlock Text="Properties" FontSize="11" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+            </StackPanel>
+          </TabItem.Header>
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="14,14,14,8">
+            <StackPanel>
+              <Border Style="{StaticResource CardStyle}">
+                <StackPanel>
+                  <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
+                    <TextBlock Style="{StaticResource H3}" Text="WHAT TO EXPORT"/>
+                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
+                  </StackPanel>
+                  <CheckBox x:Name="ChkProps" Content="Export properties (property sets)" ToolTip="Write each element's property sets into the IFC."/>
+                  <CheckBox x:Name="ChkMaterials" Content="Export materials / colours" ToolTip="Write material names and colours."/>
+                  <CheckBox x:Name="ChkQuantities" Content="Compute base quantities (volume / area / length)" ToolTip="Compute and write IfcElementQuantity base quantities."/>
+                </StackPanel>
+              </Border>
+              <Border Style="{StaticResource CardStyle}">
+                <StackPanel>
+                  <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
+                    <TextBlock Style="{StaticResource H3}" Text="PROPERTY SETS TO INCLUDE"/>
+                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
+                  </StackPanel>
+                  <WrapPanel Margin="0,0,0,9">
+                    <Button Style="{StaticResource Btn}" Content="⚡ Scan selection (fast)" Click="OnScanSelection" ToolTip="Scan the currently selected elements to discover their property sets (also feeds the Semantics roles and mapping)."/>
+                    <Button Style="{StaticResource Btn}" Content="Scan model (sample)" Click="OnScanModel" ToolTip="Sample the whole model to discover property sets."/>
+                    <Button Style="{StaticResource Btn}" Content="All" Click="OnCatsAll" ToolTip="Tick every property set."/>
+                    <Button Style="{StaticResource Btn}" Content="None" Click="OnCatsNone" ToolTip="Untick every property set."/>
+                  </WrapPanel>
+                  <Border BorderBrush="{DynamicResource FieldBd}" BorderThickness="1" CornerRadius="9" Background="{DynamicResource Field}" Padding="4" MaxHeight="160"
+                          ToolTip="Property sets to include. If you never scan, all are exported.">
+                    <ListBox x:Name="LstCategories" BorderThickness="0" Background="Transparent" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                      <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem"><Setter Property="Template"><Setter.Value>
+                          <ControlTemplate TargetType="ListBoxItem"><ContentPresenter/></ControlTemplate>
+                        </Setter.Value></Setter></Style>
+                      </ListBox.ItemContainerStyle>
+                      <ListBox.ItemTemplate>
+                        <DataTemplate><CheckBox Content="{Binding Name}" IsChecked="{Binding Checked, Mode=TwoWay}"/></DataTemplate>
+                      </ListBox.ItemTemplate>
+                    </ListBox>
+                  </Border>
+                  <TextBlock Style="{StaticResource Hint}" Text="Tip: select representative elements → “Scan selection”. Tick which property sets to export (nothing scanned = all). Scanning also feeds the Semantics roles and the mapping below."/>
+                </StackPanel>
+              </Border>
+              <Border Style="{StaticResource CardStyle}">
+                <StackPanel>
+                  <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
+                    <TextBlock Style="{StaticResource H3}" Text="PARAMETER MAPPING"/>
+                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
+                  </StackPanel>
+                  <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,8" Text="Rename a source property or move it into a different IFC property set. Pick the category to disambiguate same-named parameters."/>
+                  <DataGrid x:Name="GridParams" AutoGenerateColumns="False" HeadersVisibility="Column" CanUserAddRows="False"
+                            Background="Transparent" RowBackground="Transparent" BorderBrush="{DynamicResource FieldBd}" BorderThickness="1"
+                            GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource Bd}" RowHeight="40"
+                            Foreground="{DynamicResource Text}" FontSize="12">
+                    <DataGrid.Columns>
+                      <DataGridTemplateColumn Header="Source category" Width="*" MinWidth="92">
+                        <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                          <ComboBox ItemsSource="{Binding Categories}" SelectedItem="{Binding SourceCategory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                        </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                      </DataGridTemplateColumn>
+                      <DataGridTemplateColumn Header="Source property" Width="*" MinWidth="92">
+                        <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                          <ComboBox IsEditable="True" ItemsSource="{Binding AvailableProps}" Text="{Binding SourceProperty, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                        </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                      </DataGridTemplateColumn>
+                      <DataGridTemplateColumn Header="Target Pset" Width="*" MinWidth="84">
+                        <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                          <ComboBox IsEditable="True" ItemsSource="{Binding Psets}" Text="{Binding TargetPset, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                        </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                      </DataGridTemplateColumn>
+                      <DataGridTemplateColumn Header="Target name" Width="*" MinWidth="84">
+                        <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                          <ComboBox IsEditable="True" ItemsSource="{Binding ParamNames}" Text="{Binding TargetName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                        </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                      </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                  </DataGrid>
+                  <WrapPanel Margin="0,9,0,0">
+                    <Button Style="{StaticResource Btn}" Content="+ Add mapping" Click="OnParamAdd" ToolTip="Add a new mapping row."/>
+                    <Button Style="{StaticResource Btn}" Content="Remove selected" Click="OnParamRemove" ToolTip="Remove the selected mapping row."/>
+                  </WrapPanel>
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
+        </TabItem>
+
+        <!-- ===== SEMANTICS ===== -->
+        <TabItem>
+          <TabItem.Header>
+            <StackPanel ToolTip="Tell BIMCamel which properties carry the element type, level, material and classification">
+              <Viewbox Width="18" Height="18" HorizontalAlignment="Center">
+                <Path Data="M20,13.5 L13,20.5 A2,2 0 0 1 10.2,20.5 L4.5,14.8 A2,2 0 0 1 4.5,12 L11.5,5 L17,5 A3,3 0 0 1 20,8 Z" StrokeThickness="2"
+                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}"/>
+              </Viewbox>
+              <TextBlock Text="Semantics" FontSize="11" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+            </StackPanel>
+          </TabItem.Header>
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="14,14,14,8">
+            <Border Style="{StaticResource CardStyle}">
+              <StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                  <TextBlock Style="{StaticResource H3}" Text="MAP SOURCE PROPERTIES TO IFC ROLES"/>
+                  <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
+                </StackPanel>
+                <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,11"
+                           Text="Pick the source category, then the parameter. “Detect” scans &amp; auto-fills; override freely. Blank = role off."/>
+                <Button Style="{StaticResource Btn}" Content="🔍 Detect from model (scan + auto-fill)" Click="OnDetectRoles" HorizontalAlignment="Left"
+                        ToolTip="Scan the model and auto-fill the roles below from a best guess."/>
+                <StackPanel x:Name="RoleHost" Margin="0,4,0,0"/>
+              </StackPanel>
+            </Border>
+          </ScrollViewer>
+        </TabItem>
+
+        <!-- ===== MAPPING ===== -->
+        <TabItem>
+          <TabItem.Header>
+            <StackPanel ToolTip="Assign Navisworks sets to specific IFC classes">
+              <Viewbox Width="18" Height="18" HorizontalAlignment="Center">
+                <Path Data="M4,8 L17,8 M14,5 L17,8 L14,11 M20,16 L7,16 M10,13 L7,16 L10,19" StrokeThickness="2"
+                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}"/>
+              </Viewbox>
+              <TextBlock Text="Mapping" FontSize="11" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+            </StackPanel>
+          </TabItem.Header>
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="14,14,14,8">
+            <Border Style="{StaticResource CardStyle}">
+              <StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                  <TextBlock Style="{StaticResource H3}" Text="MAP NAVISWORKS SETS → IFC CLASSES"/>
+                  <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
+                </StackPanel>
+                <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,11"
+                           Text="Assign a Navisworks selection/search set to an IFC class. Build sets in Navisworks, then “Refresh sets”. Unmapped elements stay IfcBuildingElementProxy."/>
+                <DataGrid x:Name="GridMap" AutoGenerateColumns="False" HeadersVisibility="Column" CanUserAddRows="False"
+                          Background="Transparent" RowBackground="Transparent" BorderBrush="{DynamicResource FieldBd}" BorderThickness="1"
+                          GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource Bd}" RowHeight="40"
+                          Foreground="{DynamicResource Text}" FontSize="12">
+                  <DataGrid.Columns>
+                    <DataGridTemplateColumn Header="Navisworks set" Width="*" MinWidth="96">
+                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                        <ComboBox ItemsSource="{Binding Sets}" SelectedItem="{Binding Set, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Export as IFC class" Width="*" MinWidth="96">
+                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                        <ComboBox ItemsSource="{Binding Classes}" SelectedItem="{Binding IfcClass, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Predefined type" Width="0.7*" MinWidth="78">
+                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                        <TextBox Text="{Binding Predefined, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                  </DataGrid.Columns>
+                </DataGrid>
+                <WrapPanel Margin="0,10,0,0">
+                  <Button Style="{StaticResource Btn}" Content="Refresh sets" Click="OnMapRefresh" ToolTip="Reload the list of saved/search sets from the model."/>
+                  <Button Style="{StaticResource Btn}" Content="+ Add rule" Click="OnMapAdd" ToolTip="Add a new set→class rule."/>
+                  <Button Style="{StaticResource Btn}" Content="Clear rules" Click="OnMapClear" ToolTip="Remove all rules."/>
+                </WrapPanel>
+              </StackPanel>
+            </Border>
+          </ScrollViewer>
+        </TabItem>
+
+        <!-- ===== STRUCTURE ===== -->
+        <TabItem>
+          <TabItem.Header>
+            <StackPanel ToolTip="Names for the IFC spatial structure (project / site / building / storey)">
+              <Viewbox Width="18" Height="18" HorizontalAlignment="Center">
+                <Path Data="M5,21 L5,4 A1,1 0 0 1 6,3 L18,3 A1,1 0 0 1 19,4 L19,21 M5,9 L19,9 M5,15 L19,15" StrokeThickness="2"
+                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}"/>
+              </Viewbox>
+              <TextBlock Text="Structure" FontSize="11" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+            </StackPanel>
+          </TabItem.Header>
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="14,14,14,8">
+            <Border Style="{StaticResource CardStyle}">
+              <StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
+                  <TextBlock Style="{StaticResource H3}" Text="SPATIAL STRUCTURE"/>
+                  <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
+                </StackPanel>
+                <TextBlock Style="{StaticResource Lbl}" Text="Project name"/>
+                <TextBox x:Name="TxtProject" Text="BIMCamel Export" ToolTip="Name written to the IfcProject."/>
+                <TextBlock Style="{StaticResource Lbl}" Text="Site name" Margin="0,11,0,5"/>
+                <TextBox x:Name="TxtSite" Text="Site" ToolTip="Name written to the IfcSite."/>
+                <TextBlock Style="{StaticResource Lbl}" Text="Building name" Margin="0,11,0,5"/>
+                <TextBox x:Name="TxtBuilding" Text="Building" ToolTip="Name written to the IfcBuilding."/>
+                <TextBlock Style="{StaticResource Lbl}" Text="Default storey (items with no Level)" Margin="0,11,0,5"/>
+                <TextBox x:Name="TxtStorey" Text="Storey" ToolTip="Fallback storey name for elements that have no Level property."/>
+                <TextBlock Style="{StaticResource Hint}" Text="Storeys come from the Level property set on the Semantics tab. The name above is only the fallback storey for items without a level."/>
+              </StackPanel>
+            </Border>
+          </ScrollViewer>
+        </TabItem>
+      </TabControl>
+
+      <!-- Action bar -->
+      <Border Grid.Row="2" Background="{DynamicResource Card}" BorderBrush="{DynamicResource Bd}" BorderThickness="0,1,0,0" Padding="14,11,14,13">
+        <StackPanel>
+          <Grid Margin="0,0,0,7">
+            <TextBlock x:Name="LblStatus" Text="Ready." FontSize="11" Foreground="{DynamicResource Muted}" HorizontalAlignment="Left"/>
+            <TextBlock x:Name="LblModel" Text="" FontSize="11" Foreground="{DynamicResource Ok}" FontWeight="SemiBold" HorizontalAlignment="Right"/>
+          </Grid>
+          <ProgressBar x:Name="Progress" Margin="0,0,0,10" Visibility="Collapsed"/>
+          <Button x:Name="BtnExport" Style="{StaticResource PrimaryBtn}" Click="OnExport" ToolTip="Export to IFC with the current settings (you'll choose where to save).">
+            <StackPanel Orientation="Horizontal">
+              <Viewbox Width="17" Height="17" Margin="0,0,8,0">
+                <Path Data="M12,3 L12,15 M8,11 L12,15 L16,11 M4,17 L4,19 A2,2 0 0 0 6,21 L18,21 A2,2 0 0 0 20,19 L20,17" Stroke="White" StrokeThickness="2"/>
+              </Viewbox>
+              <TextBlock Text="Export IFC"/>
+            </StackPanel>
+          </Button>
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Border>
+</UserControl>
