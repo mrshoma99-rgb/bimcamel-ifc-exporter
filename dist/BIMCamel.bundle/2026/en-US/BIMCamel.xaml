@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RibbonControl
+    x:Uid="BIMCamel"
+    xmlns="clr-namespace:Autodesk.Windows;assembly=AdWindows"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:Autodesk.Navisworks.Gui.Roamer.AIRLook;assembly=navisworks.gui.roamer">
+
+  <RibbonTab Id="ID_Tab_BIMCamel" Title="BIMCamel" KeyTip="BC">
+    <RibbonPanel x:Uid="RibbonPanel_BIMCamel">
+      <RibbonPanelSource x:Uid="RibbonPanelSource_BIMCamel" Title="IFC Export">
+        <local:NWRibbonButton x:Uid="Button_OpenPane" Id="ID_Button_OpenPane"
+                              Size="Large"
+                              ShowText="True"
+                              Orientation="Vertical" />
+        <local:NWRibbonButton x:Uid="Button_About" Id="ID_Button_About"
+                              Size="Large"
+                              ShowText="True"
+                              Orientation="Vertical" />
+      </RibbonPanelSource>
+    </RibbonPanel>
+  </RibbonTab>
+
+</RibbonControl>

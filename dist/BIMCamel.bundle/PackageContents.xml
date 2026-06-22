@@ -5,37 +5,39 @@
     Description="Fast, free Navisworks to IFC exporter (IFC4 / IFC2x3) - www.bimcamel.com">
   <CompanyDetails Name="BIMCamel" Url="https://www.bimcamel.com" />
 
-  <!-- One managed DLL serves every supported release (Navisworks supplies the API of the running
-       version). All components point at the single Contents\BIMCamel.dll. -->
+  <!-- One DLL PER RELEASE: a Navisworks plug-in must be compiled against the API of the release it
+       runs in (2024 = Api v21, 2025 = v22, 2026 = v23). A single DLL built against one year loads in
+       the others but its ribbon tab silently fails to register, so each component points at its own
+       year folder. Drop the matching per-year build of BIMCamel.dll into .\2024\, .\2025\, .\2026\. -->
 
   <!-- Navisworks 2026 -->
   <Components Description="2026 Manage">
     <RuntimeRequirements OS="Win64" Platform="NAVMAN" SeriesMin="Nw23" SeriesMax="Nw23" />
-    <ComponentEntry AppType="ManagedPlugin" ModuleName=".\Contents\BIMCamel.dll" />
+    <ComponentEntry AppType="ManagedPlugin" ModuleName=".\2026\BIMCamel.dll" />
   </Components>
   <Components Description="2026 Simulate">
     <RuntimeRequirements OS="Win64" Platform="NAVSIM" SeriesMin="Nw23" SeriesMax="Nw23" />
-    <ComponentEntry AppType="ManagedPlugin" ModuleName=".\Contents\BIMCamel.dll" />
+    <ComponentEntry AppType="ManagedPlugin" ModuleName=".\2026\BIMCamel.dll" />
   </Components>
 
   <!-- Navisworks 2025 -->
   <Components Description="2025 Manage">
     <RuntimeRequirements OS="Win64" Platform="NAVMAN" SeriesMin="Nw22" SeriesMax="Nw22" />
-    <ComponentEntry AppType="ManagedPlugin" ModuleName=".\Contents\BIMCamel.dll" />
+    <ComponentEntry AppType="ManagedPlugin" ModuleName=".\2025\BIMCamel.dll" />
   </Components>
   <Components Description="2025 Simulate">
     <RuntimeRequirements OS="Win64" Platform="NAVSIM" SeriesMin="Nw22" SeriesMax="Nw22" />
-    <ComponentEntry AppType="ManagedPlugin" ModuleName=".\Contents\BIMCamel.dll" />
+    <ComponentEntry AppType="ManagedPlugin" ModuleName=".\2025\BIMCamel.dll" />
   </Components>
 
   <!-- Navisworks 2024 -->
   <Components Description="2024 Manage">
     <RuntimeRequirements OS="Win64" Platform="NAVMAN" SeriesMin="Nw21" SeriesMax="Nw21" />
-    <ComponentEntry AppType="ManagedPlugin" ModuleName=".\Contents\BIMCamel.dll" />
+    <ComponentEntry AppType="ManagedPlugin" ModuleName=".\2024\BIMCamel.dll" />
   </Components>
   <Components Description="2024 Simulate">
     <RuntimeRequirements OS="Win64" Platform="NAVSIM" SeriesMin="Nw21" SeriesMax="Nw21" />
-    <ComponentEntry AppType="ManagedPlugin" ModuleName=".\Contents\BIMCamel.dll" />
+    <ComponentEntry AppType="ManagedPlugin" ModuleName=".\2024\BIMCamel.dll" />
   </Components>
 
 </ApplicationPackage>

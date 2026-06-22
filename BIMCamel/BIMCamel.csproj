@@ -19,6 +19,15 @@
       Override per machine via:  dotnet build -p:NavisworksDir="C:\...\Navisworks Manage 2025"
     -->
     <NavisworksDir Condition="'$(NavisworksDir)' == ''">C:\Program Files\Autodesk\Navisworks Manage 2024</NavisworksDir>
+    <!--
+      The Navisworks release year that $(NavisworksDir) belongs to. A plug-in must be compiled against
+      the API of the release it runs in (2024 = Api v21, 2025 = v22, 2026 = v23); a DLL built against
+      one year loads in another but its RIBBON TAB silently fails to register. So the dev deploy below
+      drops the freshly built DLL into the matching per-year bundle subfolder ONLY — never fanned out
+      to all years. Override together with NavisworksDir, e.g.
+        dotnet build -p:NavisworksDir="C:\...\Navisworks Manage 2025" -p:NavisworksYear=2025
+    -->
+    <NavisworksYear Condition="'$(NavisworksYear)' == ''">2024</NavisworksYear>
     <BundleRoot>$(APPDATA)\Autodesk\ApplicationPlugins\BIMCamel.bundle</BundleRoot>
   </PropertyGroup>
 
@@ -61,36 +70,36 @@
   </ItemGroup>
 
   <!-- ── Dev convenience: deploy to the per-user .bundle on Debug builds only.
-       Release builds are for the installer (which packages bin\Release), so they skip this. ── -->
+       Release builds are for the installer (which packages per-year DLLs), so they skip this.
+       Deploys ONLY into the $(NavisworksYear) subfolder this DLL was built against — a plug-in built
+       against one year's API won't show its ribbon in another year, so we never copy one build into
+       all year folders. To test multiple years, build once per year with -p:NavisworksDir/-p:NavisworksYear. ── -->
   <Target Name="DeployToBundle" AfterTargets="Build" Condition="'$(Configuration)' == 'Debug'">
+    <PropertyGroup>
+      <YearDir>$(BundleRoot)\$(NavisworksYear)</YearDir>
+    </PropertyGroup>
     <ItemGroup>
-      <BundleYears Include="2024;2025;2026" />
       <DepDlls Include="@(ReferenceCopyLocalPaths)" Condition="'%(Extension)' == '.dll'" />
       <IconFiles Include="$(ProjectDir)Resources\*.png" />
     </ItemGroup>
 
-    <MakeDir Directories="$(BundleRoot)\%(BundleYears.Identity)" />
-    <MakeDir Directories="$(BundleRoot)\%(BundleYears.Identity)\en-US" />
-    <MakeDir Directories="$(BundleRoot)\%(BundleYears.Identity)\Resources" />
+    <MakeDir Directories="$(YearDir);$(YearDir)\en-US;$(YearDir)\Resources" />
 
     <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll"
-          DestinationFolder="$(BundleRoot)\%(BundleYears.Identity)" SkipUnchangedFiles="true" />
+          DestinationFolder="$(YearDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(OutputPath)$(AssemblyName).pdb"
-          DestinationFolder="$(BundleRoot)\%(BundleYears.Identity)" SkipUnchangedFiles="true"
-          ContinueOnError="true" />
+          DestinationFolder="$(YearDir)" SkipUnchangedFiles="true" ContinueOnError="true" />
     <Copy SourceFiles="@(DepDlls)"
-          DestinationFolder="$(BundleRoot)\%(BundleYears.Identity)" SkipUnchangedFiles="true"
-          ContinueOnError="true" />
+          DestinationFolder="$(YearDir)" SkipUnchangedFiles="true" ContinueOnError="true" />
     <Copy SourceFiles="$(ProjectDir)BIMCamel.xaml"
-          DestinationFolder="$(BundleRoot)\%(BundleYears.Identity)\en-US" SkipUnchangedFiles="true" />
+          DestinationFolder="$(YearDir)\en-US" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(IconFiles)"
-          DestinationFolder="$(BundleRoot)\%(BundleYears.Identity)\Resources" SkipUnchangedFiles="true"
-          ContinueOnError="true" />
+          DestinationFolder="$(YearDir)\Resources" SkipUnchangedFiles="true" ContinueOnError="true" />
 
     <Copy SourceFiles="$(ProjectDir)..\PackageContents.xml"
           DestinationFolder="$(BundleRoot)" SkipUnchangedFiles="true" />
 
-    <Message Text="BIMCamel deployed to $(BundleRoot) (2024/2025/2026)" Importance="High" />
+    <Message Text="BIMCamel ($(NavisworksYear), API from $(NavisworksDir)) deployed to $(YearDir)" Importance="High" />
   </Target>
 
 </Project>
