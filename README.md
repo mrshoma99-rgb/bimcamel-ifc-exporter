@@ -79,16 +79,18 @@ matching per-version DLL into each year folder first — see [`dist/README.md`](
 
 ## Build from source
 
-Requires the .NET SDK and a Navisworks install for the compile-time API references.
+Requires the **.NET SDK**. The per-year Navisworks API reference assemblies are restored from NuGet
+(the community-maintained `Chuongmep.Navis.Api.Autodesk.Navisworks.*` packages), so **no Navisworks
+installation is needed to build**.
 
 ```bat
-dotnet build BIMCamel\BIMCamel.csproj -c Debug -p:NavisworksDir="C:\Program Files\Autodesk\Navisworks Manage 2025" -p:NavisworksYear=2025
+dotnet build BIMCamel\BIMCamel.csproj -c Debug -p:NavisworksYear=2025
 ```
 
 A Debug build auto-deploys to the **matching year folder** (`$(NavisworksYear)`, default 2024) of
 your per-user `BIMCamel.bundle` for quick iteration. Note a DLL only loads in the Navisworks version
 it was built against — building against 2024 and running 2025 gives `PLUGIN_LOAD_07: invalid
-referenced Navisworks Api version` — so set `NavisworksDir`/`NavisworksYear` to the version you run.
+referenced Navisworks Api version` — so set `NavisworksYear` to the version you run.
 
 To produce the installer (needs free [Inno Setup 6 or 7](https://jrsoftware.org/isdl.php)):
 
@@ -96,12 +98,14 @@ To produce the installer (needs free [Inno Setup 6 or 7](https://jrsoftware.org/
 installer\build_installers.ps1
 ```
 
-The script builds the plugin in Release **once per Navisworks version installed** (each against its
-own API), generates the wizard images / icon from the camel logo, and compiles
-`installer\output\BIMCamel_Setup.exe`.
+The script builds the plugin in Release **once per Navisworks version (2024 / 2025 / 2026)**, each
+against its own API restored from NuGet, generates the wizard images / icon from the camel logo, and
+compiles `installer\output\BIMCamel_Setup.exe`.
 
-The project references the Navisworks API with `Private=False` (no Autodesk DLLs are redistributed);
-override the API path per machine with `-p:NavisworksDir="…\Navisworks Manage 2025"`.
+The Navisworks API is referenced **for compile only** (`ExcludeAssets=runtime`), so no Autodesk DLLs
+are redistributed — the user's own licensed Navisworks supplies them at run time. To build against a
+local Navisworks install instead (Autodesk's genuine assemblies), pass
+`-p:NavisworksDir="…\Navisworks Manage 2025"`.
 
 ## Project layout
 
