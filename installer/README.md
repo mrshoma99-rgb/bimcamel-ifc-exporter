@@ -14,8 +14,15 @@ One installer is produced from `BIMCamel.iss`:
 
 The wizard lets the user choose **which Navisworks versions** (2024 / 2025 / 2026) and **which flavour**
 (Manage / Simulate) to enable. The selection is written into a matching `PackageContents.xml` at
-install time. The single managed DLL works across all versions (Navisworks supplies the API of the
-running release), so there's one copy under `…\BIMCamel.bundle\Contents\`.
+install time.
+
+> **One DLL per version.** A managed plug-in is bound to the Navisworks API it was compiled against
+> (2024 = `Api 21.x`, 2025 = `22.x`, 2026 = `23.x`); loading a mismatched DLL fails with
+> `PLUGIN_LOAD_07: invalid referenced Navisworks Api version`. So the bundle carries a **separate DLL
+> per version** in its own year folder (`…\BIMCamel.bundle\2024\`, `\2025\`, `\2026\`), each with its
+> own `en-US\` and `Resources\` (the ribbon XAML and icons resolve relative to the DLL), and the
+> manifest points each version at its matching DLL. `build_installers.ps1` builds one DLL per
+> Navisworks version it finds on the machine and only packages those.
 
 Navisworks auto-loads any `.bundle` under those `ApplicationPlugins` folders on next launch — no
 registry, no manual steps.
@@ -41,9 +48,10 @@ registry, no manual steps.
 ## Build
 
 Prerequisites:
-- .NET SDK (to build the plugin) and a Navisworks API install for compile-time references
-  (the project defaults to `C:\Program Files\Autodesk\Navisworks Manage 2024`).
-- **Inno Setup 6** (free): https://jrsoftware.org/isdl.php
+- .NET SDK (to build the plugin) and a Navisworks install for compile-time references. **Each
+  Navisworks version you want to ship must be installed** (or its API DLLs available), because the
+  plug-in is built once per version.
+- **Inno Setup 6 or 7** (free): https://jrsoftware.org/isdl.php
 
 Then, from this folder:
 
@@ -52,25 +60,29 @@ Then, from this folder:
 ```
 
 This:
-1. Builds the plugin in **Release**.
+1. Builds the plugin in **Release once per Navisworks version found** (2024/2025/2026), each against
+   that version's API, and stages the DLLs under `installer\stage\<year>\`.
 2. Runs `generate_assets.ps1` to render `assets\wizard_image.bmp`, `assets\wizard_small.bmp`, and
    `assets\bimcamel.ico` from the camel logo PNGs (no extra tools needed).
-3. Compiles `BIMCamel_Setup.exe` into `installer\output\`.
+3. Compiles `BIMCamel_Setup.exe` into `installer\output\` (years without a staged DLL are skipped).
 
-To compile manually instead:
+To build a single version manually (e.g. only 2025):
 
 ```bat
-dotnet build ..\BIMCamel\BIMCamel.csproj -c Release
+dotnet build ..\BIMCamel\BIMCamel.csproj -c Release -p:NavisworksDir="C:\Program Files\Autodesk\Navisworks Manage 2025" -p:NavisYear=2025
+mkdir stage\2025
+copy ..\BIMCamel\bin\Release\net48\BIMCamel.dll stage\2025\BIMCamel.dll
 powershell -ExecutionPolicy Bypass -File generate_assets.ps1
 iscc BIMCamel.iss
 ```
 
 ## Notes
 
-- **Manual fallback (zero tooling):** the plugin is just a folder. You can copy a built
-  `BIMCamel.bundle` directly into `%AppData%\Autodesk\ApplicationPlugins\` by hand — no admin, no
-  installer — and Navisworks will pick it up. The installer exists to make that selectable + clean,
-  with a proper uninstall entry.
-- The dev build (`Debug`) auto-deploys to the per-user bundle for quick iteration; **Release** does
-  not (it's the installer's payload source).
-- `installer\assets\` is generated at build time and ignored by git.
+- **Manual fallback (zero tooling):** the plug-in is just a folder. A ready-to-copy `BIMCamel.bundle`
+  skeleton lives in `..\dist\` — drop your per-version DLLs into its `2024\` / `2025\` / `2026\`
+  folders and copy the whole bundle into `%AppData%\Autodesk\ApplicationPlugins\`. No admin, no
+  installer. The installer exists to make that selectable + clean, with a proper uninstall entry.
+- The dev build (`Debug`) auto-deploys to the matching year folder of the per-user bundle for quick
+  iteration (set `-p:NavisworksDir=...` to target a specific version); **Release** does not (it's the
+  installer's payload source).
+- `installer\assets\` and `installer\stage\` are generated at build time and ignored by git.
