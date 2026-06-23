@@ -80,8 +80,9 @@ matching per-version DLL into each year folder first — see [`dist/README.md`](
 ## Build from source
 
 Requires the **.NET SDK**. The per-year Navisworks API reference assemblies are restored from NuGet
-(the community-maintained `Chuongmep.Navis.Api.Autodesk.Navisworks.*` packages), so **no Navisworks
-installation is needed to build**.
+(the community-maintained `Navisworks.2024` / `Navisworks.2025` / `Navisworks.2026` matched-set
+packages — each bundles the genuine `Autodesk.Navisworks.Api` + `ComApi` + `Interop.ComApi` at that
+release's assembly version), so **no Navisworks installation is needed to build**.
 
 ```bat
 dotnet build BIMCamel\BIMCamel.csproj -c Debug -p:NavisworksYear=2025

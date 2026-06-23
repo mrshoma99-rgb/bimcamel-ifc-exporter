@@ -34,31 +34,28 @@
     -->
     <UseLocalNavisworks Condition="'$(NavisworksDir)' != ''">true</UseLocalNavisworks>
 
-    <!-- Per-year NuGet package version for the managed API + COM bridge (community repackage of the
-         genuine per-release Autodesk assemblies). Derived from NavisworksYear; override with
-         -p:NavisApiVersion=… if a package version ever differs. -->
-    <NavisApiVersion Condition="'$(NavisApiVersion)' == '' and '$(NavisworksYear)' == '2024'">2024.0.0</NavisApiVersion>
-    <NavisApiVersion Condition="'$(NavisApiVersion)' == '' and '$(NavisworksYear)' == '2025'">2025.0.0</NavisApiVersion>
-    <NavisApiVersion Condition="'$(NavisApiVersion)' == '' and '$(NavisworksYear)' == '2026'">2026.0.0</NavisApiVersion>
-    <!-- Autodesk.Navisworks.Interop.ComApi is generated from a stable COM type library and does not
-         change between releases, so its package is published once (2023.0.5) and used for every year. -->
-    <NavisInteropVersion Condition="'$(NavisInteropVersion)' == ''">2023.0.5</NavisInteropVersion>
+    <!-- Per-year NuGet package version. Each Navisworks.<year> package (community repackage of the
+         genuine per-release Autodesk reference assemblies) bundles Autodesk.Navisworks.Api + ComApi +
+         Interop.ComApi at the MATCHING per-release assembly version (2024 = v21, 2025 = v22,
+         2026 = v23), so the managed API, COM bridge and COM interop all line up.
+         Derived from NavisworksYear; override with -p:NavisPkgVersion=… if a package version differs.
+         (We use these single matched-set packages rather than the split Chuongmep packages because the
+         latter's Interop.ComApi stalled at v20 while its per-year ComApi advanced to v21–v23 — an
+         unsatisfiable mismatch that fails to compile with CS1705.) -->
+    <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2024'">0.0.4</NavisPkgVersion>
+    <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2025'">1.0.0</NavisPkgVersion>
+    <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2026'">23.1.1</NavisPkgVersion>
 
     <BundleRoot>$(APPDATA)\Autodesk\ApplicationPlugins\BIMCamel.bundle</BundleRoot>
   </PropertyGroup>
 
   <!-- ── Navisworks API references from NuGet (default — no Navisworks install needed) ──────────
+       One matched-set package per year supplies Autodesk.Navisworks.Api + ComApi + Interop.ComApi.
        Reference-only via ExcludeAssets=runtime: the genuine Autodesk DLLs are made available to
        compile against but are NOT copied into the output / bundle (the user's installed, licensed
        Navisworks supplies them at run time). Equivalent to <Private>False</Private> on a Reference. -->
   <ItemGroup Condition="'$(UseLocalNavisworks)' != 'true'">
-    <PackageReference Include="Chuongmep.Navis.Api.Autodesk.Navisworks.Api" Version="$(NavisApiVersion)">
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </PackageReference>
-    <PackageReference Include="Chuongmep.Navis.Api.Autodesk.Navisworks.ComApi" Version="$(NavisApiVersion)">
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </PackageReference>
-    <PackageReference Include="Chuongmep.Navis.Api.Autodesk.Navisworks.Interop.ComApi" Version="$(NavisInteropVersion)">
+    <PackageReference Include="Navisworks.$(NavisworksYear)" Version="$(NavisPkgVersion)">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
   </ItemGroup>
