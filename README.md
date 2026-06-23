@@ -61,7 +61,9 @@ Restart Navisworks — a **BIMCamel** ribbon tab appears with **IFC exporter** a
 (The installer is unsigned, so Windows SmartScreen may warn on first run.)
 
 **Manual install (no tooling):** copy a built `BIMCamel.bundle` folder into
-`%AppData%\Autodesk\ApplicationPlugins\` — Navisworks loads it on next launch.
+`%AppData%\Autodesk\ApplicationPlugins\` — Navisworks loads it on next launch. A ready-to-copy
+skeleton (with a `2024/` `2025/` `2026/` folder per version) lives in [`dist/`](dist/); drop the
+matching per-version DLL into each year folder first — see [`dist/README.md`](dist/README.md).
 
 ## Quick start
 
@@ -78,18 +80,23 @@ Restart Navisworks — a **BIMCamel** ribbon tab appears with **IFC exporter** a
 Requires the .NET SDK and a Navisworks install for the compile-time API references.
 
 ```bat
-dotnet build BIMCamel\BIMCamel.csproj -c Debug
+dotnet build BIMCamel\BIMCamel.csproj -c Debug -p:NavisworksDir="C:\Program Files\Autodesk\Navisworks Manage 2025"
 ```
 
-Debug builds auto-deploy to your per-user `BIMCamel.bundle` for quick iteration. To produce the
-installer (needs free [Inno Setup 6 or 7](https://jrsoftware.org/isdl.php)):
+A Debug build auto-deploys to the **matching year folder** of your per-user `BIMCamel.bundle` for
+quick iteration (the year is taken from `NavisworksDir`; defaults to 2024). Note a DLL only loads in
+the Navisworks version it was built against — building against 2024 and running 2025 gives
+`PLUGIN_LOAD_07: invalid referenced Navisworks Api version`, so target the version you actually run.
+
+To produce the installer (needs free [Inno Setup 6 or 7](https://jrsoftware.org/isdl.php)):
 
 ```powershell
 installer\build_installers.ps1
 ```
 
-The script builds the plugin in Release, generates the wizard images / icon from the camel logo,
-and compiles `installer\output\BIMCamel_Setup.exe`.
+The script builds the plugin in Release **once per Navisworks version installed** (each against its
+own API), generates the wizard images / icon from the camel logo, and compiles
+`installer\output\BIMCamel_Setup.exe`.
 
 The project references the Navisworks API with `Private=False` (no Autodesk DLLs are redistributed);
 override the API path per machine with `-p:NavisworksDir="…\Navisworks Manage 2025"`.
