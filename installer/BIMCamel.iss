@@ -636,12 +636,15 @@ begin
     '    Description="Fast, free Navisworks to IFC exporter (IFC4 / IFC2x3) - {#AppUrlPlain}">' + #13#10 +
     '  <CompanyDetails Name="BIMCamel" Url="{#AppUrl}" />' + #13#10;
 
-  if WizardIsComponentSelected('n2024man') then Xml := Xml + CompBlock('2024 Manage',   'NAVMAN', 'Nw21', '2024');
-  if WizardIsComponentSelected('n2024sim') then Xml := Xml + CompBlock('2024 Simulate', 'NAVSIM', 'Nw21', '2024');
-  if WizardIsComponentSelected('n2025man') then Xml := Xml + CompBlock('2025 Manage',   'NAVMAN', 'Nw22', '2025');
-  if WizardIsComponentSelected('n2025sim') then Xml := Xml + CompBlock('2025 Simulate', 'NAVSIM', 'Nw22', '2025');
-  if WizardIsComponentSelected('n2026man') then Xml := Xml + CompBlock('2026 Manage',   'NAVMAN', 'Nw23', '2026');
-  if WizardIsComponentSelected('n2026sim') then Xml := Xml + CompBlock('2026 Simulate', 'NAVSIM', 'Nw23', '2026');
+  { Only write manifest entries for years whose DLL was actually installed.
+    If the build PC lacked a Navisworks year, its DLL is absent (skipifsourcedoesntexist), so
+    omitting it here prevents Navisworks from throwing FileNotFoundException on load. }
+  if WizardIsComponentSelected('n2024man') and YearDllExists('2024') then Xml := Xml + CompBlock('2024 Manage',   'NAVMAN', 'Nw21', '2024');
+  if WizardIsComponentSelected('n2024sim') and YearDllExists('2024') then Xml := Xml + CompBlock('2024 Simulate', 'NAVSIM', 'Nw21', '2024');
+  if WizardIsComponentSelected('n2025man') and YearDllExists('2025') then Xml := Xml + CompBlock('2025 Manage',   'NAVMAN', 'Nw22', '2025');
+  if WizardIsComponentSelected('n2025sim') and YearDllExists('2025') then Xml := Xml + CompBlock('2025 Simulate', 'NAVSIM', 'Nw22', '2025');
+  if WizardIsComponentSelected('n2026man') and YearDllExists('2026') then Xml := Xml + CompBlock('2026 Manage',   'NAVMAN', 'Nw23', '2026');
+  if WizardIsComponentSelected('n2026sim') and YearDllExists('2026') then Xml := Xml + CompBlock('2026 Simulate', 'NAVSIM', 'Nw23', '2026');
 
   Xml := Xml + '</ApplicationPackage>' + #13#10;
   SaveStringToFile(ExpandConstant('{app}\PackageContents.xml'), Xml, False);
