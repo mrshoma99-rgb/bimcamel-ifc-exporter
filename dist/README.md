@@ -1,29 +1,20 @@
 # Manual install (no installer)
 
-`BIMCamel.bundle/` is a ready-to-copy Navisworks plug-in bundle.
+`BIMCamel.bundle/` is a ready-to-copy Navisworks plug-in bundle. To install without the
+`BIMCamel_Setup.exe` installer:
 
-> **Important — the DLL is version-specific.** A `BIMCamel.dll` is bound to the Navisworks API
-> version it was compiled against (2024 = 21.x, 2025 = 22.x, 2026 = 23.x). Loading a 2024-built DLL
-> into 2025/2026 fails with `PLUGIN_LOAD_07: invalid referenced Navisworks Api version`. That's why
-> each Navisworks version has its **own** folder (`2024/`, `2025/`, `2026/`) with its own DLL.
+1. Build the plug-in **against the Navisworks year you run** and drop the resulting
+   **`BIMCamel.dll`** into the matching year folder (`2024/`, `2025/`, or `2026/`), next to that
+   folder's `en-US/` and `Resources/` folders:
 
-## Steps
-
-1. For each Navisworks version you use, build the DLL against **that** version and drop it into the
-   matching folder:
-
-   ```powershell
-   # 2024 -> 2024\BIMCamel.dll
-   dotnet build BIMCamel\BIMCamel.csproj -c Release -p:NavisworksDir="C:\Program Files\Autodesk\Navisworks Manage 2024"
-   # 2025 -> 2025\BIMCamel.dll
-   dotnet build BIMCamel\BIMCamel.csproj -c Release -p:NavisworksDir="C:\Program Files\Autodesk\Navisworks Manage 2025"
-   # 2026 -> 2026\BIMCamel.dll
-   dotnet build BIMCamel\BIMCamel.csproj -c Release -p:NavisworksDir="C:\Program Files\Autodesk\Navisworks Manage 2026"
+   ```
+   dotnet build BIMCamel/BIMCamel.csproj -c Release ^
+       -p:NavisworksDir="C:\Program Files\Autodesk\Navisworks Manage 2025"
    ```
 
-   Each build writes `BIMCamel\bin\Release\net48\BIMCamel.dll`; copy it to the matching year folder
-   here (e.g. `dist\BIMCamel.bundle\2025\BIMCamel.dll`). You only need the versions you actually run;
-   delete the year folders (and their components in `PackageContents.xml`) you don't ship.
+   then copy `BIMCamel/bin/Release/net48/BIMCamel.dll` into `BIMCamel.bundle/2025/`.
+
+   You only need the year folder(s) for the version(s) you actually have; leave the rest empty.
 
 2. Copy the whole **`BIMCamel.bundle`** folder into your per-user plug-ins folder:
 
@@ -32,17 +23,16 @@
    ```
 
    (i.e. `C:\Users\<you>\AppData\Roaming\Autodesk\ApplicationPlugins\BIMCamel.bundle`)
-
 3. Restart Navisworks — the **BIMCamel** ribbon tab appears.
 
-No admin rights needed; works on any UI language (Navisworks falls back to the `en-US` ribbon layout).
+## Why one DLL per year
 
-## Final layout
+A Navisworks plug-in must be **compiled against the API of the release it runs in** — 2024 uses
+`Autodesk.Navisworks.Api` **v21**, 2025 uses **v22**, 2026 uses **v23**. A single DLL built against
+one year still _loads_ in the others (it shows up in the Plugin Manager), but its **ribbon tab
+silently fails to appear**, because Navisworks reflects over the `[RibbonLayout]`/`[RibbonTab]`/
+`[Command]` attributes and those attribute types don't resolve across a major API version. That's why
+each Navisworks year gets its own folder and its own matching build of `BIMCamel.dll`.
 
-```
-BIMCamel.bundle\
-  PackageContents.xml
-  2024\  BIMCamel.dll  en-US\BIMCamel.xaml  Resources\*.png
-  2025\  BIMCamel.dll  en-US\BIMCamel.xaml  Resources\*.png
-  2026\  BIMCamel.dll  en-US\BIMCamel.xaml  Resources\*.png
-```
+Works on Navisworks 2024 / 2025 / 2026 (Manage + Simulate), and on any UI language — Navisworks falls
+back to the `en-US` ribbon layout. No admin rights needed.

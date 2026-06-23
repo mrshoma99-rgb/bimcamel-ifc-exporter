@@ -32,18 +32,22 @@ registry, no manual steps.
 1. **Per-user install** — no admin, no UAC, no install-mode prompt. The bundle goes to the running
    user's own `%AppData%\Autodesk\ApplicationPlugins\BIMCamel.bundle` (the path is resolved from
    their Windows profile at run time, so it adapts to whoever runs it — never a fixed name).
-2. **Existing-install detection** — if BIMCamel is already installed (including a leftover
-   machine-wide "all users" install from older builds, or a manual folder copy), the installer asks:
-   **Yes** to uninstall it now and exit, **No** to upgrade / overwrite in place, **Cancel** to abort.
-   Removing a machine-wide install elevates (one UAC prompt) since that's the only step that needs it.
-3. **Custom plug-ins folder** — the directory page is always shown so the user can browse to a
-   different folder. If their Autodesk ApplicationPlugins parent doesn't exist yet, the installer
-   warns up front and offers to create the default.
-4. **Uninstall** — registered under Apps & Features as "BIMCamel IFC Exporter". Uninstall removes the
+2. **Navisworks check page** — instead of decision pop-ups, an early page lists which supported
+   Navisworks (Manage / Simulate, 2024–2026) it found and where, and **pre-selects those versions**
+   so the generated manifest matches what's actually installed (a mismatch is the usual reason the
+   plug-in never appears).
+3. **Existing-install handling** — a prior BIMCamel install (including a leftover machine-wide "all
+   users" install from older builds, or a manual folder copy) is detected and upgraded / removed
+   automatically, elevating once only if a system-wide copy must be deleted. It also sweeps the
+   legacy single-DLL `Contents\` folder from pre-0.3.0 installs so it can't shadow the per-year DLLs.
+4. **Custom plug-ins folder** — the directory page lets the user browse to a different folder if the
+   Autodesk ApplicationPlugins folder isn't where it expects.
+5. **Post-install verification** — after copying, Setup confirms the payload landed and that the
+   chosen versions match a detected Navisworks; if anything's off it explains it on the Finished page
+   and saves a shareable log to the Desktop instead of a cryptic error box.
+6. **Uninstall** — registered under Apps & Features as "BIMCamel IFC Exporter". Uninstall removes the
    **whole bundle folder**, including the generated `PackageContents.xml` (older builds left that
-   behind, so Navisworks kept half-loading the plug-in). The same EXE handles install and upgrade;
-   uninstall is done via Apps & Features or by re-running the installer and choosing "Yes" at the
-   prior-install prompt.
+   behind, so Navisworks kept half-loading the plug-in).
 
 ## Build
 
@@ -61,7 +65,7 @@ Then, from this folder:
 
 This:
 1. Builds the plugin in **Release once per Navisworks version found** (2024/2025/2026), each against
-   that version's API, and stages the DLLs under `installer\stage\<year>\`.
+   that version's API, and stages the DLLs under `installer\staging\<year>\`.
 2. Runs `generate_assets.ps1` to render `assets\wizard_image.bmp`, `assets\wizard_small.bmp`, and
    `assets\bimcamel.ico` from the camel logo PNGs (no extra tools needed).
 3. Compiles `BIMCamel_Setup.exe` into `installer\output\` (years without a staged DLL are skipped).
@@ -69,9 +73,9 @@ This:
 To build a single version manually (e.g. only 2025):
 
 ```bat
-dotnet build ..\BIMCamel\BIMCamel.csproj -c Release -p:NavisworksDir="C:\Program Files\Autodesk\Navisworks Manage 2025" -p:NavisYear=2025
-mkdir stage\2025
-copy ..\BIMCamel\bin\Release\net48\BIMCamel.dll stage\2025\BIMCamel.dll
+dotnet build ..\BIMCamel\BIMCamel.csproj -c Release -p:NavisworksDir="C:\Program Files\Autodesk\Navisworks Manage 2025" -p:NavisworksYear=2025
+mkdir staging\2025
+copy ..\BIMCamel\bin\Release\net48\BIMCamel.dll staging\2025\BIMCamel.dll
 powershell -ExecutionPolicy Bypass -File generate_assets.ps1
 iscc BIMCamel.iss
 ```
@@ -85,4 +89,4 @@ iscc BIMCamel.iss
 - The dev build (`Debug`) auto-deploys to the matching year folder of the per-user bundle for quick
   iteration (set `-p:NavisworksDir=...` to target a specific version); **Release** does not (it's the
   installer's payload source).
-- `installer\assets\` and `installer\stage\` are generated at build time and ignored by git.
+- `installer\assets\` and `installer\staging\` are generated at build time and ignored by git.

@@ -48,14 +48,16 @@ One installer does everything:
 - Installs **just for you** — no admin rights, no UAC prompt. The plug-in goes into your own
   `%AppData%\Autodesk\ApplicationPlugins` folder (the location Navisworks reliably auto-loads for
   your account), so it works without needing a machine administrator.
-- Pick which Navisworks versions (2024/2025/2026) and which flavour (Manage / Simulate) to enable.
+- A **Navisworks check** page shows which versions (2024/2025/2026, Manage / Simulate) it found and
+  pre-selects them, so the plug-in is registered for exactly what you have installed.
 - If a previous BIMCamel install is detected (including a leftover machine-wide "all users" install
-  from older builds, or a manual folder copy), the installer offers to **uninstall it and exit**,
-  **upgrade in place**, or **cancel**.
+  from older builds, or a manual folder copy), it's **upgraded / removed automatically** — elevating
+  once only if a system-wide copy has to be deleted.
 - If the Autodesk `ApplicationPlugins` folder isn't where it should be, the directory page lets
   you **browse to a custom location**.
-- Uninstall via Apps & Features or by re-running the installer and choosing "Uninstall" at the
-  prompt — it removes the whole bundle (no stale files left for Navisworks to half-load).
+- After installing, Setup **verifies** the files landed and match a detected Navisworks; if not, it
+  says so and drops a shareable log on your Desktop. Uninstall via Apps & Features removes the whole
+  bundle (no stale files left for Navisworks to half-load).
 
 Restart Navisworks — a **BIMCamel** ribbon tab appears with **IFC exporter** and **About** buttons.
 (The installer is unsigned, so Windows SmartScreen may warn on first run.)
@@ -80,13 +82,13 @@ matching per-version DLL into each year folder first — see [`dist/README.md`](
 Requires the .NET SDK and a Navisworks install for the compile-time API references.
 
 ```bat
-dotnet build BIMCamel\BIMCamel.csproj -c Debug -p:NavisworksDir="C:\Program Files\Autodesk\Navisworks Manage 2025"
+dotnet build BIMCamel\BIMCamel.csproj -c Debug -p:NavisworksDir="C:\Program Files\Autodesk\Navisworks Manage 2025" -p:NavisworksYear=2025
 ```
 
-A Debug build auto-deploys to the **matching year folder** of your per-user `BIMCamel.bundle` for
-quick iteration (the year is taken from `NavisworksDir`; defaults to 2024). Note a DLL only loads in
-the Navisworks version it was built against — building against 2024 and running 2025 gives
-`PLUGIN_LOAD_07: invalid referenced Navisworks Api version`, so target the version you actually run.
+A Debug build auto-deploys to the **matching year folder** (`$(NavisworksYear)`, default 2024) of
+your per-user `BIMCamel.bundle` for quick iteration. Note a DLL only loads in the Navisworks version
+it was built against — building against 2024 and running 2025 gives `PLUGIN_LOAD_07: invalid
+referenced Navisworks Api version` — so set `NavisworksDir`/`NavisworksYear` to the version you run.
 
 To produce the installer (needs free [Inno Setup 6 or 7](https://jrsoftware.org/isdl.php)):
 

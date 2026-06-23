@@ -33,6 +33,9 @@
 #define AppId      "{{" + AppGuid + "}"
 #define AppUrl     "https://www.bimcamel.com"
 #define AppUrlPlain "www.bimcamel.com"
+; Per-year plug-in DLLs are staged here by build_installers.ps1 (staging\<year>\BIMCamel.dll), each
+; compiled against that Navisworks release's API. There is no single all-years DLL.
+#define StageDir   "staging"
 
 [Setup]
 AppId={#AppId}
@@ -86,23 +89,22 @@ Name: "n2026man"; Description: "Navisworks Manage 2026";   Types: full custom
 Name: "n2026sim"; Description: "Navisworks Simulate 2026"; Types: full
 
 [Files]
-; A DLL is bound to the Navisworks API it was compiled against (2024=21.x, 2025=22.x, 2026=23.x) and
-; is rejected by other versions (PLUGIN_LOAD_07), so each version gets its own folder + DLL. The DLLs
-; are built per-version and staged under installer\stage\<year>\ by build_installers.ps1; a year that
-; wasn't built is skipped (skipifsourcedoesntexist). The ribbon XAML and icons are resolved relative
-; to the DLL, so each year folder carries its own en-US\ and Resources\ copy.
-; ── 2024 ──
-Source: "stage\2024\BIMCamel.dll";      DestDir: "{app}\2024";           Flags: ignoreversion skipifsourcedoesntexist; Components: n2024man n2024sim
-Source: "..\BIMCamel\BIMCamel.xaml";    DestDir: "{app}\2024\en-US";     Flags: ignoreversion; Components: n2024man n2024sim
-Source: "..\BIMCamel\Resources\*.png";  DestDir: "{app}\2024\Resources"; Flags: ignoreversion; Components: n2024man n2024sim
-; ── 2025 ──
-Source: "stage\2025\BIMCamel.dll";      DestDir: "{app}\2025";           Flags: ignoreversion skipifsourcedoesntexist; Components: n2025man n2025sim
-Source: "..\BIMCamel\BIMCamel.xaml";    DestDir: "{app}\2025\en-US";     Flags: ignoreversion; Components: n2025man n2025sim
-Source: "..\BIMCamel\Resources\*.png";  DestDir: "{app}\2025\Resources"; Flags: ignoreversion; Components: n2025man n2025sim
-; ── 2026 ──
-Source: "stage\2026\BIMCamel.dll";      DestDir: "{app}\2026";           Flags: ignoreversion skipifsourcedoesntexist; Components: n2026man n2026sim
-Source: "..\BIMCamel\BIMCamel.xaml";    DestDir: "{app}\2026\en-US";     Flags: ignoreversion; Components: n2026man n2026sim
-Source: "..\BIMCamel\Resources\*.png";  DestDir: "{app}\2026\Resources"; Flags: ignoreversion; Components: n2026man n2026sim
+; Per-year layout: each Navisworks release gets its own subfolder holding the DLL built against that
+; year's API, plus its own en-US ribbon layout and icon Resources (Navisworks resolves both relative
+; to the DLL's folder). Files are gated by component so only selected versions are written. The DLL
+; uses skipifsourcedoesntexist so the installer still compiles on a build PC that lacks some
+; Navisworks versions; VerifyInstall flags any selected year whose DLL didn't make it in.
+Source: "{#StageDir}\2024\BIMCamel.dll"; DestDir: "{app}\2024";           Components: n2024man n2024sim; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\BIMCamel\BIMCamel.xaml";     DestDir: "{app}\2024\en-US";     Components: n2024man n2024sim; Flags: ignoreversion
+Source: "..\BIMCamel\Resources\*.png";   DestDir: "{app}\2024\Resources"; Components: n2024man n2024sim; Flags: ignoreversion
+
+Source: "{#StageDir}\2025\BIMCamel.dll"; DestDir: "{app}\2025";           Components: n2025man n2025sim; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\BIMCamel\BIMCamel.xaml";     DestDir: "{app}\2025\en-US";     Components: n2025man n2025sim; Flags: ignoreversion
+Source: "..\BIMCamel\Resources\*.png";   DestDir: "{app}\2025\Resources"; Components: n2025man n2025sim; Flags: ignoreversion
+
+Source: "{#StageDir}\2026\BIMCamel.dll"; DestDir: "{app}\2026";           Components: n2026man n2026sim; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\BIMCamel\BIMCamel.xaml";     DestDir: "{app}\2026\en-US";     Components: n2026man n2026sim; Flags: ignoreversion
+Source: "..\BIMCamel\Resources\*.png";   DestDir: "{app}\2026\Resources"; Components: n2026man n2026sim; Flags: ignoreversion
 
 [UninstallDelete]
 ; The PackageContents.xml is generated at install time (so it isn't in the install log) and
@@ -290,11 +292,22 @@ begin
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  OldContents: string;
 begin
   Result := '';
   if HasPrior then begin
     Log('BIMCamel: cleaning up prior install (scope=' + PriorScope + ') before installing.');
     CleanupPriorInstall();
+  end;
+
+  { Up to 0.3.0 the bundle shipped a single Contents\BIMCamel.dll for all years (the cause of the
+    "plug-in loads but no ribbon tab" bug). A registered per-user upgrade is done in place by Inno,
+    so that stale folder would linger next to the new per-year folders. Remove it. }
+  OldContents := ExpandConstant('{app}\Contents');
+  if DirExists(OldContents) then begin
+    Log('BIMCamel: removing legacy single-DLL Contents\ folder from a prior install.');
+    DelTree(OldContents, True, True, True);
   end;
 end;
 
@@ -400,19 +413,42 @@ begin
     Result := Src;
 end;
 
+{ True if the per-year plug-in DLL landed for the given Navisworks year. }
+function YearDllExists(const Year: string): Boolean;
+begin
+  Result := FileExists(ExpandConstant('{app}\' + Year + '\BIMCamel.dll'));
+end;
+
+{ Space-separated list of selected Navisworks years whose DLL is missing after install — i.e. years
+  the user picked that weren't included in this installer build (the build PC lacked that Navisworks,
+  so build_installers.ps1 couldn't compile that year's DLL against its API). }
+function MissingSelectedYears(): string;
+var
+  M: string;
+begin
+  M := '';
+  if (WizardIsComponentSelected('n2024man') or WizardIsComponentSelected('n2024sim')) and not YearDllExists('2024') then M := M + '2024 ';
+  if (WizardIsComponentSelected('n2025man') or WizardIsComponentSelected('n2025sim')) and not YearDllExists('2025') then M := M + '2025 ';
+  if (WizardIsComponentSelected('n2026man') or WizardIsComponentSelected('n2026sim')) and not YearDllExists('2026') then M := M + '2026 ';
+  Result := Trim(M);
+end;
+
 { After install, confirm the payload really landed and that the chosen versions match an installed
   Navisworks. If anything is off — including the common "installed fine but won't show because the
   manifest targets a version you don't have" case — surface a clear error plus a shareable log. }
 procedure VerifyInstall();
 var
-  Problem, DllPath, ManifestPath: string;
+  Problem, ManifestPath, MissingYears: string;
 begin
   Problem := '';
-  DllPath      := ExpandConstant('{app}\Contents\BIMCamel.dll');
   ManifestPath := ExpandConstant('{app}\PackageContents.xml');
 
-  if not FileExists(DllPath) then
-    Problem := Problem + '- The plug-in file was not copied:' + #13#10 + '      ' + DllPath + #13#10;
+  MissingYears := MissingSelectedYears();
+  if MissingYears <> '' then
+    Problem := Problem +
+      '- The plug-in files for these Navisworks year(s) were not included in this installer: ' +
+      MissingYears + '. (The PC that built this installer did not have those Navisworks versions, so ' +
+      'their DLLs could not be compiled.)' + #13#10;
   if not FileExists(ManifestPath) then
     Problem := Problem + '- The plug-in manifest was not written:' + #13#10 + '      ' + ManifestPath + #13#10;
 
@@ -588,15 +624,6 @@ begin
     '  </Components>' + #13#10;
 end;
 
-{ A version belongs in the manifest only if its (selected) component was installed AND a DLL for that
-  year actually landed — that way a build that only produced, say, the 2025 DLL doesn't advertise a
-  2024/2026 plug-in that would fail to load. }
-function YearInstalled(const Comp, Year: string): Boolean;
-begin
-  Result := WizardIsComponentSelected(Comp)
-            and FileExists(ExpandConstant('{app}\' + Year + '\BIMCamel.dll'));
-end;
-
 procedure WriteManifest();
 var
   Xml: string;
@@ -609,12 +636,12 @@ begin
     '    Description="Fast, free Navisworks to IFC exporter (IFC4 / IFC2x3) - {#AppUrlPlain}">' + #13#10 +
     '  <CompanyDetails Name="BIMCamel" Url="{#AppUrl}" />' + #13#10;
 
-  if YearInstalled('n2024man', '2024') then Xml := Xml + CompBlock('2024 Manage',   'NAVMAN', 'Nw21', '2024');
-  if YearInstalled('n2024sim', '2024') then Xml := Xml + CompBlock('2024 Simulate', 'NAVSIM', 'Nw21', '2024');
-  if YearInstalled('n2025man', '2025') then Xml := Xml + CompBlock('2025 Manage',   'NAVMAN', 'Nw22', '2025');
-  if YearInstalled('n2025sim', '2025') then Xml := Xml + CompBlock('2025 Simulate', 'NAVSIM', 'Nw22', '2025');
-  if YearInstalled('n2026man', '2026') then Xml := Xml + CompBlock('2026 Manage',   'NAVMAN', 'Nw23', '2026');
-  if YearInstalled('n2026sim', '2026') then Xml := Xml + CompBlock('2026 Simulate', 'NAVSIM', 'Nw23', '2026');
+  if WizardIsComponentSelected('n2024man') then Xml := Xml + CompBlock('2024 Manage',   'NAVMAN', 'Nw21', '2024');
+  if WizardIsComponentSelected('n2024sim') then Xml := Xml + CompBlock('2024 Simulate', 'NAVSIM', 'Nw21', '2024');
+  if WizardIsComponentSelected('n2025man') then Xml := Xml + CompBlock('2025 Manage',   'NAVMAN', 'Nw22', '2025');
+  if WizardIsComponentSelected('n2025sim') then Xml := Xml + CompBlock('2025 Simulate', 'NAVSIM', 'Nw22', '2025');
+  if WizardIsComponentSelected('n2026man') then Xml := Xml + CompBlock('2026 Manage',   'NAVMAN', 'Nw23', '2026');
+  if WizardIsComponentSelected('n2026sim') then Xml := Xml + CompBlock('2026 Simulate', 'NAVSIM', 'Nw23', '2026');
 
   Xml := Xml + '</ApplicationPackage>' + #13#10;
   SaveStringToFile(ExpandConstant('{app}\PackageContents.xml'), Xml, False);
