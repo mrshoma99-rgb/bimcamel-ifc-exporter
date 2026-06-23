@@ -8,80 +8,45 @@
 # those attribute types don't resolve across a major API version. So we build one DLL per year into
 # installer\staging\<year>\ and the installer ships each into its own bundle subfolder.
 #
-# Each targeted year needs that Navisworks (Manage or Simulate) installed on THIS build PC so its
-# reference assemblies are present. Years whose Navisworks isn't found are skipped (with a warning);
-# the installer still compiles, and VerifyInstall flags the gap if a user later selects that year.
+# The per-year Navisworks API reference assemblies are restored from NuGet automatically (see
+# BIMCamel.csproj), so this PC needs NO Navisworks installed to build all three years. To build a
+# year against a local Navisworks install instead — Autodesk's genuine assemblies, for maximal
+# license cleanliness — pass -p:NavisworksDir to the dotnet build below.
 #
 # Output (installer\output\):
 #   BIMCamel_Setup.exe   – one per-user installer (no admin / no UAC); installs into the running
 #                          user's AppData ApplicationPlugins folder, and also detects/uninstalls a
 #                          prior version (including a leftover machine-wide install from older builds).
 #
-# Prerequisite: Inno Setup 6 (free) — https://jrsoftware.org/isdl.php
+# Prerequisites: .NET SDK (build) + Inno Setup 6/7 (free) — https://jrsoftware.org/isdl.php
 
 $ErrorActionPreference = 'Stop'
 $root    = Split-Path -Parent $MyInvocation.MyCommand.Path
 $proj    = Join-Path $root '..\BIMCamel\BIMCamel.csproj'
 $staging = Join-Path $root 'staging'
 
-# Navisworks release year -> series number (Nw21/22/23). Mirrors the .iss detection.
-$targets = @(
-    @{ Year = '2024'; Ver = '21' },
-    @{ Year = '2025'; Ver = '22' },
-    @{ Year = '2026'; Ver = '23' }
-)
-
-# Return the install dir of a Navisworks of the given series (Manage or Simulate), or $null. Tries
-# the registry InstallDir first (handles non-default drives), then the default Program Files path.
-# Only counts if Autodesk.Navisworks.Api.dll is actually present (we reference it at compile time).
-function Get-NavisworksDir([string] $ver, [string] $year) {
-    foreach ($flavour in 'Manage', 'Simulate') {
-        foreach ($key in @(
-                "HKLM:\SOFTWARE\Autodesk\Navisworks $flavour x64\$ver.0",
-                "HKLM:\SOFTWARE\Autodesk\Navisworks $flavour\$ver.0")) {
-            try {
-                $dir = (Get-ItemProperty -Path $key -Name InstallDir -ErrorAction Stop).InstallDir
-                if ($dir) {
-                    $dir = $dir.TrimEnd('\')
-                    if (Test-Path (Join-Path $dir 'Autodesk.Navisworks.Api.dll')) { return $dir }
-                }
-            } catch { }
-        }
-        $pf = $env:ProgramW6432; if (-not $pf) { $pf = $env:ProgramFiles }
-        $dir = Join-Path $pf "Autodesk\Navisworks $flavour $year"
-        if (Test-Path (Join-Path $dir 'Autodesk.Navisworks.Api.dll')) { return $dir }
-    }
-    return $null
-}
+# Navisworks release years to build. The matching per-year API version is restored from NuGet by the
+# .csproj (derived from NavisworksYear), so no Navisworks install is required on this PC.
+$years = @('2024', '2025', '2026')
 
 if (Test-Path $staging) { Remove-Item $staging -Recurse -Force }
 
-$built = @()
-foreach ($t in $targets) {
-    $navDir = Get-NavisworksDir $t.Ver $t.Year
-    if (-not $navDir) {
-        Write-Warning ("Navisworks {0} (v{1}) not found on this PC - it will NOT be included in the installer." -f $t.Year, $t.Ver)
-        continue
-    }
-
-    Write-Host ("Building plugin for Navisworks {0} (against {1})..." -f $t.Year, $navDir) -ForegroundColor Cyan
-    dotnet build $proj -c Release -nologo -p:NavisworksDir=$navDir
-    if ($LASTEXITCODE -ne 0) { throw ("Plugin build failed for Navisworks {0}." -f $t.Year) }
+foreach ($year in $years) {
+    Write-Host ("Building plugin for Navisworks {0} (API restored from NuGet)..." -f $year) -ForegroundColor Cyan
+    # --no-incremental forces a clean recompile each pass so switching the per-year API version can't
+    # be skipped by up-to-date checks (the source files are identical across years).
+    dotnet build $proj -c Release -nologo --no-incremental -p:NavisworksYear=$year
+    if ($LASTEXITCODE -ne 0) { throw ("Plugin build failed for Navisworks {0}." -f $year) }
 
     $outDll = Join-Path $root '..\BIMCamel\bin\x64\Release\net48\BIMCamel.dll'
     if (-not (Test-Path $outDll)) { $outDll = Join-Path $root '..\BIMCamel\bin\Release\net48\BIMCamel.dll' }
-    if (-not (Test-Path $outDll)) { throw ("Built DLL not found for Navisworks {0} (looked in bin\Release\net48)." -f $t.Year) }
+    if (-not (Test-Path $outDll)) { throw ("Built DLL not found for Navisworks {0} (looked in bin\Release\net48)." -f $year) }
 
-    $dest = Join-Path $staging $t.Year
+    $dest = Join-Path $staging $year
     New-Item -ItemType Directory -Force -Path $dest | Out-Null
     Copy-Item $outDll (Join-Path $dest 'BIMCamel.dll') -Force
-    $built += $t.Year
 }
-
-if ($built.Count -eq 0) {
-    throw 'No supported Navisworks (2024-2026) found on this PC, so no plug-in could be built. Install at least one and re-run.'
-}
-Write-Host ("Built per-year plug-ins for: {0}" -f ($built -join ', ')) -ForegroundColor Green
+Write-Host ("Built per-year plug-ins for: {0}" -f ($years -join ', ')) -ForegroundColor Green
 
 Write-Host 'Generating wizard image / icon...' -ForegroundColor Cyan
 & (Join-Path $root 'generate_assets.ps1')

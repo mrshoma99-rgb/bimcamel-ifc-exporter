@@ -14,26 +14,58 @@
     <Product>BIMCamel IFC Exporter</Product>
 
     <!--
-      NavisworksDir is the install used for COMPILE-TIME references only (Private=False,
-      so the DLLs are never copied). The build is per-year: this DLL is bound to the referenced
-      release's API and only shows its ribbon in that release (see NavisworksYear below).
-      Override per machine via:  dotnet build -p:NavisworksDir="C:\...\Navisworks Manage 2025"
-    -->
-    <NavisworksDir Condition="'$(NavisworksDir)' == ''">C:\Program Files\Autodesk\Navisworks Manage 2024</NavisworksDir>
-    <!--
-      The Navisworks release year that $(NavisworksDir) belongs to. A plug-in must be compiled against
-      the API of the release it runs in (2024 = Api v21, 2025 = v22, 2026 = v23); a DLL built against
-      one year loads in another but its RIBBON TAB silently fails to register. So the dev deploy below
-      drops the freshly built DLL into the matching per-year bundle subfolder ONLY — never fanned out
-      to all years. Override together with NavisworksDir, e.g.
-        dotnet build -p:NavisworksDir="C:\...\Navisworks Manage 2025" -p:NavisworksYear=2025
+      Per-year build: a plug-in must be compiled against the API of the release it runs in
+      (2024 = Api v21, 2025 = v22, 2026 = v23); a DLL built against one year loads in another but its
+      RIBBON TAB silently fails to register. NavisworksYear selects which release this build targets —
+      it picks the API version referenced (below) and the per-year bundle subfolder the dev deploy
+      drops into (never fanned out to all years). Override e.g.  dotnet build -p:NavisworksYear=2025
     -->
     <NavisworksYear Condition="'$(NavisworksYear)' == ''">2024</NavisworksYear>
+
+    <!--
+      Where the compile-time Navisworks API references come from:
+        * Default (NavisworksDir unset): restore the per-year API reference assemblies from NuGet, so
+          building needs NO Navisworks installed. The matching package version is derived below.
+        * If NavisworksDir points at a local Navisworks install, reference that install's own DLLs
+          instead (uses Autodesk's genuine assemblies — maximal license cleanliness), e.g.
+            dotnet build -p:NavisworksDir="C:\Program Files\Autodesk\Navisworks Manage 2025" -p:NavisworksYear=2025
+      Either way the Autodesk DLLs are reference-only and are NEVER copied into the bundle — the user's
+      own licensed Navisworks supplies them at run time.
+    -->
+    <UseLocalNavisworks Condition="'$(NavisworksDir)' != ''">true</UseLocalNavisworks>
+
+    <!-- Per-year NuGet package version for the managed API + COM bridge (community repackage of the
+         genuine per-release Autodesk assemblies). Derived from NavisworksYear; override with
+         -p:NavisApiVersion=… if a package version ever differs. -->
+    <NavisApiVersion Condition="'$(NavisApiVersion)' == '' and '$(NavisworksYear)' == '2024'">2024.0.0</NavisApiVersion>
+    <NavisApiVersion Condition="'$(NavisApiVersion)' == '' and '$(NavisworksYear)' == '2025'">2025.0.0</NavisApiVersion>
+    <NavisApiVersion Condition="'$(NavisApiVersion)' == '' and '$(NavisworksYear)' == '2026'">2026.0.0</NavisApiVersion>
+    <!-- Autodesk.Navisworks.Interop.ComApi is generated from a stable COM type library and does not
+         change between releases, so its package is published once (2023.0.5) and used for every year. -->
+    <NavisInteropVersion Condition="'$(NavisInteropVersion)' == ''">2023.0.5</NavisInteropVersion>
+
     <BundleRoot>$(APPDATA)\Autodesk\ApplicationPlugins\BIMCamel.bundle</BundleRoot>
   </PropertyGroup>
 
-  <!-- ── Navisworks API references (compile-time only) ─────────────────────── -->
-  <ItemGroup>
+  <!-- ── Navisworks API references from NuGet (default — no Navisworks install needed) ──────────
+       Reference-only via ExcludeAssets=runtime: the genuine Autodesk DLLs are made available to
+       compile against but are NOT copied into the output / bundle (the user's installed, licensed
+       Navisworks supplies them at run time). Equivalent to <Private>False</Private> on a Reference. -->
+  <ItemGroup Condition="'$(UseLocalNavisworks)' != 'true'">
+    <PackageReference Include="Chuongmep.Navis.Api.Autodesk.Navisworks.Api" Version="$(NavisApiVersion)">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Chuongmep.Navis.Api.Autodesk.Navisworks.ComApi" Version="$(NavisApiVersion)">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Chuongmep.Navis.Api.Autodesk.Navisworks.Interop.ComApi" Version="$(NavisInteropVersion)">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!-- ── Navisworks API references from a local install (opt-in via -p:NavisworksDir=…) ─────────
+       Compile-time only (Private=False), so the Autodesk DLLs are never redistributed. -->
+  <ItemGroup Condition="'$(UseLocalNavisworks)' == 'true'">
     <Reference Include="Autodesk.Navisworks.Api">
       <HintPath>$(NavisworksDir)\Autodesk.Navisworks.Api.dll</HintPath>
       <Private>False</Private>
@@ -46,6 +78,10 @@
       <HintPath>$(NavisworksDir)\Autodesk.Navisworks.Interop.ComApi.dll</HintPath>
       <Private>False</Private>
     </Reference>
+  </ItemGroup>
+
+  <!-- System assemblies (both reference paths) -->
+  <ItemGroup>
     <!-- System.Numerics provides BigInteger, used by IfcGuid -->
     <Reference Include="System.Numerics" />
     <!-- DataContractJsonSerializer for export profiles (F10) -->
@@ -74,7 +110,7 @@
        Release builds are for the installer (which packages per-year DLLs), so they skip this.
        Deploys ONLY into the $(NavisworksYear) subfolder this DLL was built against — a plug-in built
        against one year's API won't show its ribbon in another year, so we never copy one build into
-       all year folders. To test multiple years, build once per year with -p:NavisworksDir/-p:NavisworksYear. ── -->
+       all year folders. To test multiple years, build once per year with -p:NavisworksYear. ── -->
   <Target Name="DeployToBundle" AfterTargets="Build" Condition="'$(Configuration)' == 'Debug'">
     <PropertyGroup>
       <YearDir>$(BundleRoot)\$(NavisworksYear)</YearDir>
@@ -100,7 +136,7 @@
     <Copy SourceFiles="$(ProjectDir)..\PackageContents.xml"
           DestinationFolder="$(BundleRoot)" SkipUnchangedFiles="true" />
 
-    <Message Text="BIMCamel ($(NavisworksYear), API from $(NavisworksDir)) deployed to $(YearDir)" Importance="High" />
+    <Message Text="BIMCamel ($(NavisworksYear), API v$(NavisApiVersion)) deployed to $(YearDir)" Importance="High" />
   </Target>
 
 </Project>

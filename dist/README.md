@@ -8,11 +8,11 @@
    folder's `en-US/` and `Resources/` folders:
 
    ```
-   dotnet build BIMCamel/BIMCamel.csproj -c Release ^
-       -p:NavisworksDir="C:\Program Files\Autodesk\Navisworks Manage 2025"
+   dotnet build BIMCamel/BIMCamel.csproj -c Release -p:NavisworksYear=2025
    ```
 
-   then copy `BIMCamel/bin/Release/net48/BIMCamel.dll` into `BIMCamel.bundle/2025/`.
+   then copy `BIMCamel/bin/Release/net48/BIMCamel.dll` into `BIMCamel.bundle/2025/`. The Navisworks
+   API is restored from NuGet, so no Navisworks install is needed to build.
 
    You only need the year folder(s) for the version(s) you actually have; leave the rest empty.
 

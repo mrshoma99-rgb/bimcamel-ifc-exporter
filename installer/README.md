@@ -64,16 +64,16 @@ Then, from this folder:
 ```
 
 This:
-1. Builds the plugin in **Release once per Navisworks version found** (2024/2025/2026), each against
-   that version's API, and stages the DLLs under `installer\staging\<year>\`.
+1. Builds the plugin in **Release once per Navisworks version** (2024/2025/2026), each against that
+   version's API restored from NuGet, and stages the DLLs under `installer\staging\<year>\`.
 2. Runs `generate_assets.ps1` to render `assets\wizard_image.bmp`, `assets\wizard_small.bmp`, and
    `assets\bimcamel.ico` from the camel logo PNGs (no extra tools needed).
-3. Compiles `BIMCamel_Setup.exe` into `installer\output\` (years without a staged DLL are skipped).
+3. Compiles `BIMCamel_Setup.exe` into `installer\output\` (all three year DLLs are staged from NuGet).
 
 To build a single version manually (e.g. only 2025):
 
 ```bat
-dotnet build ..\BIMCamel\BIMCamel.csproj -c Release -p:NavisworksDir="C:\Program Files\Autodesk\Navisworks Manage 2025" -p:NavisworksYear=2025
+dotnet build ..\BIMCamel\BIMCamel.csproj -c Release -p:NavisworksYear=2025
 mkdir staging\2025
 copy ..\BIMCamel\bin\Release\net48\BIMCamel.dll staging\2025\BIMCamel.dll
 powershell -ExecutionPolicy Bypass -File generate_assets.ps1
@@ -87,6 +87,6 @@ iscc BIMCamel.iss
   folders and copy the whole bundle into `%AppData%\Autodesk\ApplicationPlugins\`. No admin, no
   installer. The installer exists to make that selectable + clean, with a proper uninstall entry.
 - The dev build (`Debug`) auto-deploys to the matching year folder of the per-user bundle for quick
-  iteration (set `-p:NavisworksDir=...` to target a specific version); **Release** does not (it's the
+  iteration (set `-p:NavisworksYear=...` to target a specific version); **Release** does not (it's the
   installer's payload source).
 - `installer\assets\` and `installer\staging\` are generated at build time and ignored by git.
