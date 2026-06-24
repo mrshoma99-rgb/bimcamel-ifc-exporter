@@ -10,6 +10,16 @@
        the others but its ribbon tab silently fails to register, so each component points at its own
        year folder. Drop the matching per-year build of BIMCamel.dll into .\2024\, .\2025\, .\2026\. -->
 
+  <!-- Navisworks 2027 -->
+  <Components Description="2027 Manage">
+    <RuntimeRequirements OS="Win64" Platform="NAVMAN" SeriesMin="Nw24" SeriesMax="Nw24" />
+    <ComponentEntry AppType="ManagedPlugin" ModuleName=".\2027\BIMCamel.dll" />
+  </Components>
+  <Components Description="2027 Simulate">
+    <RuntimeRequirements OS="Win64" Platform="NAVSIM" SeriesMin="Nw24" SeriesMax="Nw24" />
+    <ComponentEntry AppType="ManagedPlugin" ModuleName=".\2027\BIMCamel.dll" />
+  </Components>
+
   <!-- Navisworks 2026 -->
   <Components Description="2026 Manage">
     <RuntimeRequirements OS="Win64" Platform="NAVMAN" SeriesMin="Nw23" SeriesMax="Nw23" />

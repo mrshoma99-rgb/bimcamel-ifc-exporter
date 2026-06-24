@@ -15,10 +15,11 @@
 
     <!--
       Per-year build: a plug-in must be compiled against the API of the release it runs in
-      (2024 = Api v21, 2025 = v22, 2026 = v23); a DLL built against one year loads in another but its
-      RIBBON TAB silently fails to register. NavisworksYear selects which release this build targets —
-      it picks the API version referenced (below) and the per-year bundle subfolder the dev deploy
-      drops into (never fanned out to all years). Override e.g.  dotnet build -p:NavisworksYear=2025
+      (2024 = Api v21, 2025 = v22, 2026 = v23, 2027 = v24); a DLL built against one year loads in
+      another but its RIBBON TAB silently fails to register. NavisworksYear selects which release this
+      build targets — it picks the API version referenced (below) and the per-year bundle subfolder
+      the dev deploy drops into (never fanned out to all years).
+      Override e.g.  dotnet build -p:NavisworksYear=2027
     -->
     <NavisworksYear Condition="'$(NavisworksYear)' == ''">2024</NavisworksYear>
 
@@ -37,7 +38,7 @@
     <!-- Per-year NuGet package version. Each Navisworks.<year> package (community repackage of the
          genuine per-release Autodesk reference assemblies) bundles Autodesk.Navisworks.Api + ComApi +
          Interop.ComApi at the MATCHING per-release assembly version (2024 = v21, 2025 = v22,
-         2026 = v23), so the managed API, COM bridge and COM interop all line up.
+         2026 = v23, 2027 = v24), so the managed API, COM bridge and COM interop all line up.
          Derived from NavisworksYear; override with -p:NavisPkgVersion=… if a package version differs.
          (We use these single matched-set packages rather than the split Chuongmep packages because the
          latter's Interop.ComApi stalled at v20 while its per-year ComApi advanced to v21–v23 — an
@@ -45,6 +46,7 @@
     <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2024'">0.0.4</NavisPkgVersion>
     <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2025'">1.0.0</NavisPkgVersion>
     <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2026'">23.1.1</NavisPkgVersion>
+    <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2027'">24.0.0</NavisPkgVersion>
 
     <BundleRoot>$(APPDATA)\Autodesk\ApplicationPlugins\BIMCamel.bundle</BundleRoot>
   </PropertyGroup>

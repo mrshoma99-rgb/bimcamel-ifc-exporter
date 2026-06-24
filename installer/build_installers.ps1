@@ -27,7 +27,8 @@ $staging = Join-Path $root 'staging'
 
 # Navisworks release years to build. The matching per-year API version is restored from NuGet by the
 # .csproj (derived from NavisworksYear), so no Navisworks install is required on this PC.
-$years = @('2024', '2025', '2026')
+# Series: 2024=v21, 2025=v22, 2026=v23, 2027=v24.
+$years = @('2024', '2025', '2026', '2027')
 
 if (Test-Path $staging) { Remove-Item $staging -Recurse -Force }
 
