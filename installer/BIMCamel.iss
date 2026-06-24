@@ -6,7 +6,7 @@
 ;     This is the location Navisworks reliably auto-loads for the logged-in user, and the
 ;     path is derived from the running user's profile (never a fixed/developer name).
 ;   * Shows a "Navisworks check" page up front: which supported Navisworks (Manage / Simulate,
-;     2024-2026) it found and where, and what it's about to do — no pop-ups, no decisions.
+;     2024-2027) it found and where, and what it's about to do — no pop-ups, no decisions.
 ;   * Pre-selects the Navisworks version(s) it detected so the generated manifest matches what's
 ;     actually installed (a mismatch is the usual reason the plug-in never appears).
 ;   * Detects a previous BIMCamel install — including a leftover machine-wide ("all users")
@@ -87,6 +87,8 @@ Name: "n2025man"; Description: "Navisworks Manage 2025";   Types: full custom
 Name: "n2025sim"; Description: "Navisworks Simulate 2025"; Types: full
 Name: "n2026man"; Description: "Navisworks Manage 2026";   Types: full custom
 Name: "n2026sim"; Description: "Navisworks Simulate 2026"; Types: full
+Name: "n2027man"; Description: "Navisworks Manage 2027";   Types: full custom
+Name: "n2027sim"; Description: "Navisworks Simulate 2027"; Types: full
 
 [Files]
 ; Per-year layout: each Navisworks release gets its own subfolder holding the DLL built against that
@@ -105,6 +107,10 @@ Source: "..\BIMCamel\Resources\*.png";   DestDir: "{app}\2025\Resources"; Compon
 Source: "{#StageDir}\2026\BIMCamel.dll"; DestDir: "{app}\2026";           Components: n2026man n2026sim; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\BIMCamel\BIMCamel.xaml";     DestDir: "{app}\2026\en-US";     Components: n2026man n2026sim; Flags: ignoreversion
 Source: "..\BIMCamel\Resources\*.png";   DestDir: "{app}\2026\Resources"; Components: n2026man n2026sim; Flags: ignoreversion
+
+Source: "{#StageDir}\2027\BIMCamel.dll"; DestDir: "{app}\2027";           Components: n2027man n2027sim; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\BIMCamel\BIMCamel.xaml";     DestDir: "{app}\2027\en-US";     Components: n2027man n2027sim; Flags: ignoreversion
+Source: "..\BIMCamel\Resources\*.png";   DestDir: "{app}\2027\Resources"; Components: n2027man n2027sim; Flags: ignoreversion
 
 [UninstallDelete]
 ; The PackageContents.xml is generated at install time (so it isn't in the install log) and
@@ -312,8 +318,8 @@ begin
 end;
 
 { ── Navisworks detection ────────────────────────────────────────────────────────────────────
-  Find which supported Navisworks (Manage / Simulate, 2024-2026) are actually installed and where.
-  Series numbers: 2024 = 21, 2025 = 22, 2026 = 23 (these are the Nw21/Nw22/Nw23 in the manifest). }
+  Find which supported Navisworks (Manage / Simulate, 2024-2027) are actually installed and where.
+  Series numbers: 2024 = 21, 2025 = 22, 2026 = 23, 2027 = 24 (Nw21/Nw22/Nw23/Nw24 in the manifest). }
 
 { The 64-bit "Program Files" folder, resolved reliably even though Setup is a 32-bit, per-user
   (non-admin) process. We must NOT use the autopf / pf constants here: in non-admin install mode
@@ -379,6 +385,8 @@ begin
   CheckOneNav('Simulate', '2025', '22', 'n2025sim');
   CheckOneNav('Manage',   '2026', '23', 'n2026man');
   CheckOneNav('Simulate', '2026', '23', 'n2026sim');
+  CheckOneNav('Manage',   '2027', '24', 'n2027man');
+  CheckOneNav('Simulate', '2027', '24', 'n2027sim');
 
   Log('BIMCamel: Navisworks detection complete. count=' + IntToStr(NavCount) +
       ' comps=[' + NavComps + ']');
@@ -394,7 +402,9 @@ begin
     (WizardIsComponentSelected('n2025man') and (Pos('n2025man', NavComps) > 0)) or
     (WizardIsComponentSelected('n2025sim') and (Pos('n2025sim', NavComps) > 0)) or
     (WizardIsComponentSelected('n2026man') and (Pos('n2026man', NavComps) > 0)) or
-    (WizardIsComponentSelected('n2026sim') and (Pos('n2026sim', NavComps) > 0));
+    (WizardIsComponentSelected('n2026sim') and (Pos('n2026sim', NavComps) > 0)) or
+    (WizardIsComponentSelected('n2027man') and (Pos('n2027man', NavComps) > 0)) or
+    (WizardIsComponentSelected('n2027sim') and (Pos('n2027sim', NavComps) > 0));
 end;
 
 { Copy the full Setup log somewhere the user can easily find and email to us. Returns the path the
@@ -430,6 +440,7 @@ begin
   if (WizardIsComponentSelected('n2024man') or WizardIsComponentSelected('n2024sim')) and not YearDllExists('2024') then M := M + '2024 ';
   if (WizardIsComponentSelected('n2025man') or WizardIsComponentSelected('n2025sim')) and not YearDllExists('2025') then M := M + '2025 ';
   if (WizardIsComponentSelected('n2026man') or WizardIsComponentSelected('n2026sim')) and not YearDllExists('2026') then M := M + '2026 ';
+  if (WizardIsComponentSelected('n2027man') or WizardIsComponentSelected('n2027sim')) and not YearDllExists('2027') then M := M + '2027 ';
   Result := Trim(M);
 end;
 
@@ -454,7 +465,7 @@ begin
 
   if NavCount = 0 then
     Problem := Problem +
-      '- No supported Navisworks (2024-2026) was found on this PC, so the plug-in will not appear ' +
+      '- No supported Navisworks (2024-2027) was found on this PC, so the plug-in will not appear ' +
       'until a supported Navisworks is installed.' + #13#10
   else if not SelectedMatchesDetected() then
     Problem := Problem +
@@ -493,7 +504,7 @@ begin
   if NavCount > 0 then
     Heading.Caption := 'Supported Navisworks found on this PC:'
   else
-    Heading.Caption := 'No supported Navisworks (2024-2026) was found on this PC.';
+    Heading.Caption := 'No supported Navisworks (2024-2027) was found on this PC.';
 
   Memo := TNewMemo.Create(EnvPage);
   Memo.Parent := EnvPage.Surface;
@@ -564,7 +575,7 @@ procedure CurPageChanged(CurPageID: Integer);
 begin
   if (CurPageID = wpSelectComponents) and (not CompsPreset) and (NavCount > 0) then begin
     CompsPreset := True;
-    WizardSelectComponents('!n2024man,!n2024sim,!n2025man,!n2025sim,!n2026man,!n2026sim');
+    WizardSelectComponents('!n2024man,!n2024sim,!n2025man,!n2025sim,!n2026man,!n2026sim,!n2027man,!n2027sim');
     WizardSelectComponents(NavComps);
     Log('BIMCamel: pre-selected components from detection: [' + NavComps + ']');
   end;
@@ -645,6 +656,8 @@ begin
   if WizardIsComponentSelected('n2025sim') and YearDllExists('2025') then Xml := Xml + CompBlock('2025 Simulate', 'NAVSIM', 'Nw22', '2025');
   if WizardIsComponentSelected('n2026man') and YearDllExists('2026') then Xml := Xml + CompBlock('2026 Manage',   'NAVMAN', 'Nw23', '2026');
   if WizardIsComponentSelected('n2026sim') and YearDllExists('2026') then Xml := Xml + CompBlock('2026 Simulate', 'NAVSIM', 'Nw23', '2026');
+  if WizardIsComponentSelected('n2027man') and YearDllExists('2027') then Xml := Xml + CompBlock('2027 Manage',   'NAVMAN', 'Nw24', '2027');
+  if WizardIsComponentSelected('n2027sim') and YearDllExists('2027') then Xml := Xml + CompBlock('2027 Simulate', 'NAVSIM', 'Nw24', '2027');
 
   Xml := Xml + '</ApplicationPackage>' + #13#10;
   SaveStringToFile(ExpandConstant('{app}\PackageContents.xml'), Xml, False);

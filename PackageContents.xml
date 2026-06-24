@@ -5,6 +5,16 @@
     Description="BIMCamel IFC Exporter — fast, open-source Navisworks to IFC exporter (IFC4 / IFC2x3). Geometry instancing, streaming STEP writer, correct placement.">
   <CompanyDetails Name="BIMCamel" />
 
+  <!-- Navisworks 2027 -->
+  <Components Description="2027 Manage">
+    <RuntimeRequirements OS="Win64" Platform="NAVMAN" SeriesMin="Nw24" SeriesMax="Nw24" />
+    <ComponentEntry AppType="ManagedPlugin" ModuleName=".\2027\BIMCamel.dll" />
+  </Components>
+  <Components Description="2027 Simulate">
+    <RuntimeRequirements OS="Win64" Platform="NAVSIM" SeriesMin="Nw24" SeriesMax="Nw24" />
+    <ComponentEntry AppType="ManagedPlugin" ModuleName=".\2027\BIMCamel.dll" />
+  </Components>
+
   <!-- Navisworks 2026 -->
   <Components Description="2026 Manage">
     <RuntimeRequirements OS="Win64" Platform="NAVMAN" SeriesMin="Nw23" SeriesMax="Nw23" />
