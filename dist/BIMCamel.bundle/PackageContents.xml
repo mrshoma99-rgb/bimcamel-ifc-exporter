@@ -6,9 +6,10 @@
   <CompanyDetails Name="BIMCamel" Url="https://www.bimcamel.com" />
 
   <!-- One DLL PER RELEASE: a Navisworks plug-in must be compiled against the API of the release it
-       runs in (2024 = Api v21, 2025 = v22, 2026 = v23). A single DLL built against one year loads in
-       the others but its ribbon tab silently fails to register, so each component points at its own
-       year folder. Drop the matching per-year build of BIMCamel.dll into .\2024\, .\2025\, .\2026\. -->
+       runs in (2024 = Api v21, 2025 = v22, 2026 = v23, 2027 = v24). A single DLL built against one
+       year loads in the others but its ribbon tab silently fails to register, so each component points
+       at its own year folder. Drop the matching per-year build of BIMCamel.dll into .\2024\, .\2025\,
+       .\2026\, .\2027\. -->
 
   <!-- Navisworks 2027 -->
   <Components Description="2027 Manage">

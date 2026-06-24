@@ -37,7 +37,7 @@ export — BIMCamel fills that gap without the slowness and setup friction of th
   IFC2x3 baked placement. All split parts / batch files share one origin so they overlay.
 - **Reporting** — element/triangle counts, file size, a per-entity-type size profile, a phase-timing
   breakdown, and peak memory; export profiles save/load all settings as JSON.
-- Pure managed, **no third-party runtime dependency**; ships for Navisworks **2024 / 2025 / 2026**,
+- Pure managed, **no third-party runtime dependency**; ships for Navisworks **2024 / 2025 / 2026 / 2027**,
   Manage and Simulate.
 
 ## Install
@@ -48,7 +48,7 @@ One installer does everything:
 - Installs **just for you** — no admin rights, no UAC prompt. The plug-in goes into your own
   `%AppData%\Autodesk\ApplicationPlugins` folder (the location Navisworks reliably auto-loads for
   your account), so it works without needing a machine administrator.
-- A **Navisworks check** page shows which versions (2024/2025/2026, Manage / Simulate) it found and
+- A **Navisworks check** page shows which versions (2024/2025/2026/2027, Manage / Simulate) it found and
   pre-selects them, so the plug-in is registered for exactly what you have installed.
 - If a previous BIMCamel install is detected (including a leftover machine-wide "all users" install
   from older builds, or a manual folder copy), it's **upgraded / removed automatically** — elevating
@@ -64,7 +64,7 @@ Restart Navisworks — a **BIMCamel** ribbon tab appears with **IFC exporter** a
 
 **Manual install (no tooling):** copy a built `BIMCamel.bundle` folder into
 `%AppData%\Autodesk\ApplicationPlugins\` — Navisworks loads it on next launch. A ready-to-copy
-skeleton (with a `2024/` `2025/` `2026/` folder per version) lives in [`dist/`](dist/); drop the
+skeleton (with a `2024/` `2025/` `2026/` `2027/` folder per version) lives in [`dist/`](dist/); drop the
 matching per-version DLL into each year folder first — see [`dist/README.md`](dist/README.md).
 
 ## Quick start
@@ -80,7 +80,7 @@ matching per-version DLL into each year folder first — see [`dist/README.md`](
 ## Build from source
 
 Requires the **.NET SDK**. The per-year Navisworks API reference assemblies are restored from NuGet
-(the community-maintained `Navisworks.2024` / `Navisworks.2025` / `Navisworks.2026` matched-set
+(the community-maintained `Navisworks.2024` / `Navisworks.2025` / `Navisworks.2026` / `Navisworks.2027` matched-set
 packages — each bundles the genuine `Autodesk.Navisworks.Api` + `ComApi` + `Interop.ComApi` at that
 release's assembly version), so **no Navisworks installation is needed to build**.
 
@@ -99,7 +99,7 @@ To produce the installer (needs free [Inno Setup 6 or 7](https://jrsoftware.org/
 installer\build_installers.ps1
 ```
 
-The script builds the plugin in Release **once per Navisworks version (2024 / 2025 / 2026)**, each
+The script builds the plugin in Release **once per Navisworks version (2024 / 2025 / 2026 / 2027)**, each
 against its own API restored from NuGet, generates the wizard images / icon from the camel logo, and
 compiles `installer\output\BIMCamel_Setup.exe`.
 
