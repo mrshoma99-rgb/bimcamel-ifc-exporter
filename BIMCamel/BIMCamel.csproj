@@ -35,29 +35,31 @@
     -->
     <UseLocalNavisworks Condition="'$(NavisworksDir)' != ''">true</UseLocalNavisworks>
 
-    <!-- Per-year NuGet package version. Each Navisworks.<year> package (community repackage of the
-         genuine per-release Autodesk reference assemblies) bundles Autodesk.Navisworks.Api + ComApi +
-         Interop.ComApi at the MATCHING per-release assembly version (2024 = v21, 2025 = v22,
-         2026 = v23, 2027 = v24), so the managed API, COM bridge and COM interop all line up.
-         Derived from NavisworksYear; override with -p:NavisPkgVersion=… if a package version differs.
-         (We use these single matched-set packages rather than the split Chuongmep packages because the
-         latter's Interop.ComApi stalled at v20 while its per-year ComApi advanced to v21–v23 — an
-         unsatisfiable mismatch that fails to compile with CS1705.) -->
-    <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2024'">0.0.4</NavisPkgVersion>
-    <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2025'">1.0.0</NavisPkgVersion>
-    <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2026'">23.1.1</NavisPkgVersion>
-    <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2027'">24.0.0</NavisPkgVersion>
+    <!-- Per-year NuGet package version. We use Speckle.Navisworks.API: one package per Navisworks
+         release (versioned <year>.0.x), each a single matched-set of the genuine per-release Autodesk
+         reference assemblies — Autodesk.Navisworks.Api + ComApi + Interop.ComApi all from the SAME
+         install, so the managed API, COM bridge and COM interop line up (2024 = v21, 2025 = v22,
+         2026 = v23, 2027 = v24). Derived from NavisworksYear; override with -p:NavisPkgVersion=….
+         History: the earlier per-year `Navisworks.<year>` community packages only had assemblies for
+         2024 — the 2025/2026/2027 ones are empty placeholders, so those years never actually compiled.
+         The split Chuongmep packages don't work either: their Interop.ComApi stalled at v20 while the
+         per-year ComApi advanced to v21–v23 — an unsatisfiable mismatch that fails with CS1705. -->
+    <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2024'">2024.0.0</NavisPkgVersion>
+    <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2025'">2025.0.0</NavisPkgVersion>
+    <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2026'">2026.0.1</NavisPkgVersion>
+    <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2027'">2027.0.0</NavisPkgVersion>
 
     <BundleRoot>$(APPDATA)\Autodesk\ApplicationPlugins\BIMCamel.bundle</BundleRoot>
   </PropertyGroup>
 
   <!-- ── Navisworks API references from NuGet (default — no Navisworks install needed) ──────────
-       One matched-set package per year supplies Autodesk.Navisworks.Api + ComApi + Interop.ComApi.
-       Reference-only via ExcludeAssets=runtime: the genuine Autodesk DLLs are made available to
-       compile against but are NOT copied into the output / bundle (the user's installed, licensed
-       Navisworks supplies them at run time). Equivalent to <Private>False</Private> on a Reference. -->
+       One Speckle.Navisworks.API matched-set package per year supplies Autodesk.Navisworks.Api +
+       ComApi + Interop.ComApi. Reference-only via ExcludeAssets=runtime: the genuine Autodesk DLLs are
+       made available to compile against but are NOT copied into the output / bundle (the user's
+       installed, licensed Navisworks supplies them at run time). Equivalent to <Private>False</Private>
+       on a Reference. -->
   <ItemGroup Condition="'$(UseLocalNavisworks)' != 'true'">
-    <PackageReference Include="Navisworks.$(NavisworksYear)" Version="$(NavisPkgVersion)">
+    <PackageReference Include="Speckle.Navisworks.API" Version="$(NavisPkgVersion)">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
   </ItemGroup>

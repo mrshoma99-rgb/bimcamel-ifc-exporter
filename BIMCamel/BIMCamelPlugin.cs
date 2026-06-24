@@ -33,20 +33,56 @@ namespace BIMCamel
         {
             AssemblyResolver.Ensure();
 
-            if (commandId == "ID_Button_About") { BIMCamel.UI.AboutDialog.Show(); return 0; }
-
-            var record = Autodesk.Navisworks.Api.Application.Plugins.FindPlugin(DockPaneKey);
-            if (record is DockPanePluginRecord dockRecord)
+            try
             {
+                if (commandId == "ID_Button_About") { BIMCamel.UI.AboutDialog.Show(); return 0; }
+
+                var record = Autodesk.Navisworks.Api.Application.Plugins.FindPlugin(DockPaneKey);
+                if (record == null)
+                {
+                    ShowError(
+                        "The BIMCamel exporter panel is not registered with Navisworks " +
+                        "(looked up \"" + DockPaneKey + "\" and found nothing).\n\n" +
+                        "This almost always means the BIMCamel.dll in this Navisworks year folder was built " +
+                        "against a different Navisworks release. A DLL built for the wrong year still loads its " +
+                        "ribbon button but its dock pane silently fails to register.\n\n" +
+                        "Fix: install the build that matches this Navisworks version " +
+                        "(2024 = API v21, 2025 = v22, 2026 = v23, 2027 = v24).");
+                    return 0;
+                }
+
+                if (!(record is DockPanePluginRecord dockRecord))
+                {
+                    ShowError("The BIMCamel panel registered as an unexpected plugin type: " +
+                              record.GetType().Name + ".");
+                    return 0;
+                }
+
                 if (!dockRecord.IsLoaded)
                     dockRecord.LoadPlugin();
 
                 if (dockRecord.LoadedPlugin is DockPanePlugin dockPane)
                     dockPane.Visible = !dockPane.Visible;
+                else
+                    ShowError("The BIMCamel panel failed to load (LoadedPlugin was " +
+                              (dockRecord.LoadedPlugin?.GetType().Name ?? "null") + ").");
+            }
+            catch (Exception ex)
+            {
+                ShowError("BIMCamel could not open the IFC exporter panel:\n\n" + ex);
             }
 
             return 0;
         }
+
+        // Navisworks swallows exceptions thrown from a command handler, so any failure here would
+        // otherwise be invisible (the journal just shows BEGIN.CMD/END.CMD with nothing happening).
+        // Surface it to the user instead.
+        internal static void ShowError(string message) =>
+            System.Windows.Forms.MessageBox.Show(
+                message, "BIMCamel IFC Exporter",
+                System.Windows.Forms.MessageBoxButtons.OK,
+                System.Windows.Forms.MessageBoxIcon.Warning);
 
         public override CommandState CanExecuteCommand(string commandId) =>
             new CommandState { IsEnabled = true, IsVisible = true };
