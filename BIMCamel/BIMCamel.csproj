@@ -75,6 +75,12 @@
       <HintPath>$(NavisworksDir)\Autodesk.Navisworks.Interop.ComApi.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <!-- Required by BIMCamelRibbonLoader for programmatic ribbon construction.
+         Not included in the NuGet API packages — only available from a local NW install. -->
+    <Reference Include="AdWindows">
+      <HintPath>$(NavisworksDir)\AdWindows.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
   </ItemGroup>
 
   <!-- System assemblies (both reference paths) -->

@@ -6,24 +6,12 @@ using Autodesk.Navisworks.Api.Plugins;
 namespace BIMCamel
 {
     /// <summary>
-    /// Ribbon command that toggles the BIMCamel IFC Exporter dock pane.
-    /// The XAML layout (BIMCamel.xaml) must deploy to an en-US\ subfolder next to the DLL.
+    /// Handles commands routed from the BIMCamel ribbon tab (built programmatically by
+    /// <see cref="BIMCamelRibbonLoader"/>). Can also be invoked via keyboard shortcuts.
     /// </summary>
     [Plugin("BIMCamel.Command", "BIMCamel",
         DisplayName = "BIMCamel IFC Exporter",
         ToolTip = "Fast Navisworks → IFC export (IFC4 / IFC2x3)")]
-    [RibbonLayout("BIMCamel.xaml")]
-    [RibbonTab("ID_Tab_BIMCamel")]
-    [Command("ID_Button_OpenPane",
-        DisplayName = "IFC exporter",
-        Icon = "Resources\\export_16.png",
-        LargeIcon = "Resources\\export_32.png",
-        ToolTip = "Open the BIMCamel IFC exporter panel")]
-    [Command("ID_Button_About",
-        DisplayName = "About",
-        Icon = "Resources\\camel_16.png",
-        LargeIcon = "Resources\\camel_32.png",
-        ToolTip = "About BIMCamel — bimcamel.com")]
     public class BIMCamelPlugin : CommandHandlerPlugin
     {
         // The dock-pane lookup key is "<pluginId>.<developerId>".
