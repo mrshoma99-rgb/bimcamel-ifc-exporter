@@ -28,7 +28,7 @@
 
 #define AppName    "BIMCamel IFC Exporter"
 #define AppShort   "BIMCamel"
-#define AppVer     "0.3.2"
+#define AppVer     "0.4.0"
 #define AppGuid    "8A2F1B3C-9D4E-4A5F-8B6C-7E1F2A3B4C5D"
 #define AppId      "{{" + AppGuid + "}"
 #define AppUrl     "https://www.bimcamel.com"
