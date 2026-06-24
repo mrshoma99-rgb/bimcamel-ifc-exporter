@@ -4,7 +4,7 @@ Thanks to everyone who has contributed to BIMCamel.
 
 ## Project creator & maintainer
 
-- **Ahmed Naser** ([@mrshoma99-rgb](https://github.com/mrshoma99-rgb)) — created BIMCamel, core
+- **Ahmed Naser** ([@mrshoma99-rgb](https://github.com/mrshoma99-rgb) · [@bimcamel](https://twitter.com/bimcamel)) — created BIMCamel, core
   plugin architecture, IFC export engine, UI, installer, and ongoing maintenance.
   [bimcamel.com](https://bimcamel.com)
 
