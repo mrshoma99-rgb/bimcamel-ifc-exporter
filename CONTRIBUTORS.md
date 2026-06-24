@@ -13,6 +13,7 @@ Thanks to everyone who has contributed to BIMCamel.
 - **José Antônio Ribeiro Vargas** ([@JoseARVargas](https://github.com/JoseARVargas)) — Navisworks 2027
   support (API v24 / series Nw24): NuGet package mapping, `PackageContents.xml` entries, installer
   detection and manifest generation.
+- **Hamada** ([@themodmin](https://github.com/themodmin)) — testing & QA.
 
 ## AI assistance
 
