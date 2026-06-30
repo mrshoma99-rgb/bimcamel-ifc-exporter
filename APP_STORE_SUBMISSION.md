@@ -251,8 +251,9 @@ A YouTube demo link is optional but recommended.
 ## 8. Quick-start help file (bundle this in the ZIP)
 
 Autodesk asks for a help/quick-start file inside the ZIP (txt / doc / html / pdf,
-unzipped/plain). Save the following as `BIMCamel_QuickStart.pdf` (or `.html`) and
-include it next to `PackageContents.xml`:
+unzipped/plain). A ready-made one ships at the repo root —
+[`BIMCamel_QuickStart.html`](BIMCamel_QuickStart.html) — open it in a browser and
+"Print → Save as PDF" if you prefer a PDF. Its content:
 
 ```
 BIMCamel IFC Exporter — Quick Start
@@ -309,10 +310,9 @@ store:
 - `Name`, `Author`, `CompanyDetails`/`Url`, `ProductCode` GUID present ✅
 
 **Action items before zipping:**
-1. **Add the missing `2027/` folder.** `dist/BIMCamel.bundle/` has `2024/ 2025/ 2026/`
-   but **no `2027/`**, while `PackageContents.xml` points `.\2027\BIMCamel.dll`. Create
-   `2027/` (with its `en-US/` + `Resources/`) and drop the 2027 build in, or the 2027
-   components reference a file that isn't there.
+1. ~~Add the missing `2027/` folder.~~ ✅ Done — `dist/BIMCamel.bundle/2027/` now exists
+   (with its `en-US/` + `Resources/`) so all four years line up with the manifest. Just
+   drop the 2027 Release build into it.
 2. **Bump `Version`** in `PackageContents.xml` to match the release you submit.
 3. **Confirm each year's `BIMCamel.dll`** is the Release build compiled against *that*
    year's API (a wrong-year DLL loads but the ribbon silently won't appear).
@@ -329,7 +329,8 @@ foreach ($y in 2024,2025,2026,2027) {
 }
 
 # 2. Add the quick-start help file next to PackageContents.xml
-Copy-Item BIMCamel_QuickStart.pdf dist\BIMCamel.bundle\
+#    (BIMCamel_QuickStart.html ships in the repo root; or print it to PDF first)
+Copy-Item BIMCamel_QuickStart.html dist\BIMCamel.bundle\
 
 # 3. Remove the PLACE_*.txt placeholders, then zip the bundle FOLDER (not its contents)
 Get-ChildItem dist\BIMCamel.bundle -Recurse -Filter PLACE_*.txt | Remove-Item

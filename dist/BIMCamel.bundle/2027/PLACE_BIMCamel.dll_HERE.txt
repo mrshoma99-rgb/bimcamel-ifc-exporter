@@ -1,0 +1,16 @@
+Put the Navisworks 2027 build of BIMCamel.dll in this folder (2027\), next to the en-US\ and
+Resources\ folders.
+
+IMPORTANT: this DLL must be built against the Navisworks 2027 API (Autodesk.Navisworks.Api v24).
+A DLL built against another year still loads, but its BIMCamel ribbon tab will NOT appear.
+
+Build it with:
+    dotnet build BIMCamel\BIMCamel.csproj -c Release ^
+        -p:NavisworksDir="C:\Program Files\Autodesk\Navisworks Manage 2027"
+The DLL is then at:  BIMCamel\bin\Release\net48\BIMCamel.dll
+
+Once the DLL is here, copy the whole BIMCamel.bundle folder into:
+    %AppData%\Autodesk\ApplicationPlugins\
+
+You only need the year folder(s) for the Navisworks version(s) you actually run; the others can be
+left empty. You can delete this text file.

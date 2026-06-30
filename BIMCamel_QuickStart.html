@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BIMCamel IFC Exporter — Quick Start</title>
+<style>
+  :root { --ink:#1d2733; --muted:#5a6b7b; --accent:#b9742f; --rule:#e4e8ec; --bg:#ffffff; }
+  * { box-sizing: border-box; }
+  body {
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink); background: var(--bg);
+    max-width: 760px; margin: 0 auto; padding: 40px 24px 64px;
+  }
+  header { border-bottom: 2px solid var(--accent); padding-bottom: 16px; margin-bottom: 28px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  .tagline { color: var(--muted); margin: 0; font-size: 15px; }
+  h2 { font-size: 18px; margin: 32px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--rule); }
+  ol, ul { padding-left: 22px; }
+  li { margin: 5px 0; }
+  code { background: #f4f6f8; padding: 1px 5px; border-radius: 4px; font-size: 14px; }
+  .note {
+    background: #fdf4ea; border-left: 4px solid var(--accent);
+    padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 18px 0;
+  }
+  .req { color: var(--muted); font-size: 15px; }
+  footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 14px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>BIMCamel IFC Exporter — Quick Start</h1>
+  <p class="tagline">Fast, free, open-source Navisworks → IFC exporter (IFC4 &amp; IFC2x3)</p>
+</header>
+
+<h2>What it does</h2>
+<p>
+  Exports your Autodesk Navisworks model to IFC (IFC4 or IFC2x3). Navisworks has no native
+  IFC export; BIMCamel adds it with a fast, memory-bounded engine and a zero-config
+  first-click export.
+</p>
+
+<h2>Requirements</h2>
+<p class="req">
+  Autodesk Navisworks Manage or Simulate <strong>2024, 2025, 2026 or 2027</strong> (Win64),
+  with .NET Framework 4.8 (installed alongside Navisworks).
+</p>
+
+<h2>After install</h2>
+<p>
+  Restart Navisworks. A <strong>BIMCamel</strong> tab appears on the ribbon with two buttons:
+  <strong>IFC exporter</strong> and <strong>About</strong>. If the tab is missing, open
+  Tools / Plug-ins to confirm BIMCamel loaded for your Navisworks version.
+</p>
+
+<h2>Export in 3 steps</h2>
+<ol>
+  <li><strong>BIMCamel</strong> tab → <strong>IFC exporter</strong>.</li>
+  <li>Pick a schema (<strong>IFC4</strong> by default) and scope (<strong>whole model</strong>
+      by default). Everything else has sensible defaults.</li>
+  <li>Click <strong>Export IFC</strong>, choose a path. Done.</li>
+</ol>
+
+<h2>Useful options</h2>
+<ul>
+  <li><strong>Scope:</strong> whole model, current selection, active section box, a
+      saved/search set, or <strong>batch</strong> (multiple sets → one IFC each).</li>
+  <li><strong>Quality presets:</strong> Small file / Balanced / High detail.</li>
+  <li>Object → IFC class mapping; property-set mapping &amp; dedup; base quantities
+      (volume / area / length); multi-storey spatial structure from a Level property.</li>
+  <li><strong>Georeferencing:</strong> base-point modes with live preview
+      (IFC4 <code>IfcMapConversion</code>; IFC2x3 baked placement).</li>
+  <li><strong>Size splitting:</strong> cap the output size; large exports roll into
+      <code>name_001.ifc</code>, <code>name_002.ifc</code>, … each a complete, standalone IFC.</li>
+  <li><strong>Export profiles:</strong> save / load all settings as JSON.</li>
+</ul>
+
+<div class="note">
+  <strong>Performance tip:</strong> Deactivate any active DataTools / external-database link
+  (<strong>Home → DataTools</strong>) before exporting — it runs one query per object and can
+  add many minutes to a large export.
+</div>
+
+<footer>
+  Support &amp; documentation: <a href="https://www.bimcamel.com">www.bimcamel.com</a><br />
+  Source &amp; issues: <a href="https://github.com/mrshoma99-rgb/bimcamel-ifc-exporter">github.com/mrshoma99-rgb/bimcamel-ifc-exporter</a><br />
+  Free and open-source under the MIT license. Not affiliated with Autodesk.
+</footer>
+</body>
+</html>
