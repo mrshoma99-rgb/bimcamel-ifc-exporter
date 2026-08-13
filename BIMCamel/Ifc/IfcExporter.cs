@@ -52,6 +52,9 @@ namespace BIMCamel.Ifc
 
         /// <summary>Navisworks sets exported as IfcGroup / IfcSystem / IfcZone.</summary>
         public int GroupCount;
+
+        /// <summary>Comparison against the previous export's manifest, when there was one.</summary>
+        public RevisionManifest.Diff? Revision;
     }
 
     /// <summary>
@@ -80,9 +83,12 @@ namespace BIMCamel.Ifc
             // that says "the origin is at the origin in an unnamed CRS" is noise at best.
             bool georef = coords.WriteGeoref && schema == IfcSchema.Ifc4 && coords.HasGeorefData;
             bool split = splitLimitBytes > 0;
+            // One manifest per EXPORT, not per split part — the parts are one deliverable.
+            var previous = RevisionManifest.Load(basePath);
+            var manifest = new RevisionManifest { Schema = schema == IfcSchema.Ifc4 ? "IFC4" : "IFC2X3", Written = DateTime.Now.ToString("yyyy-MM-dd HH:mm") };
 
             int part = 1;
-            var doc = new Doc(PartPath(basePath, part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names);
+            var doc = new Doc(PartPath(basePath, part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest);
             bool needRoll = false;
             int index = 0;
             foreach (var el in elements)
@@ -94,13 +100,14 @@ namespace BIMCamel.Ifc
                 if (needRoll)
                 {
                     doc.Finish(schema, computeQuantities, summary);
-                    doc = new Doc(PartPath(basePath, ++part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names);
+                    doc = new Doc(PartPath(basePath, ++part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest);
                     needRoll = false;
                 }
                 WriteMeshElement(doc, schema, meshWriter, el, t, unitScale, computeQuantities, index);
                 if (split && doc.W.BytesWritten >= splitLimitBytes) needRoll = true;
             }
             doc.Finish(schema, computeQuantities, summary);
+            SaveManifest(basePath, manifest, previous, summary);
             FillSummaryMeta(summary, schema, minX, minY, minZ, georef, coords, false);
             return summary;
         }
@@ -118,9 +125,12 @@ namespace BIMCamel.Ifc
             // that says "the origin is at the origin in an unnamed CRS" is noise at best.
             bool georef = coords.WriteGeoref && schema == IfcSchema.Ifc4 && coords.HasGeorefData;
             bool split = splitLimitBytes > 0;
+            // One manifest per EXPORT, not per split part — the parts are one deliverable.
+            var previous = RevisionManifest.Load(basePath);
+            var manifest = new RevisionManifest { Schema = schema == IfcSchema.Ifc4 ? "IFC4" : "IFC2X3", Written = DateTime.Now.ToString("yyyy-MM-dd HH:mm") };
 
             int part = 1;
-            var doc = new Doc(PartPath(basePath, part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names);
+            var doc = new Doc(PartPath(basePath, part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest);
             bool needRoll = false;
             int index = 0;
             foreach (var el in elements)
@@ -130,13 +140,14 @@ namespace BIMCamel.Ifc
                 if (needRoll)
                 {
                     doc.Finish(schema, computeQuantities, summary);
-                    doc = new Doc(PartPath(basePath, ++part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names);
+                    doc = new Doc(PartPath(basePath, ++part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest);
                     needRoll = false;
                 }
                 WriteInstancedElement(doc, schema, meshWriter, el, identity, minX, minY, minZ, computeQuantities, index);
                 if (split && doc.W.BytesWritten >= splitLimitBytes) needRoll = true;
             }
             doc.Finish(schema, computeQuantities, summary);
+            SaveManifest(basePath, manifest, previous, summary);
             FillSummaryMeta(summary, schema, minX, minY, minZ, georef, coords, true);
             return summary;
         }
@@ -156,6 +167,7 @@ namespace BIMCamel.Ifc
             public readonly SkelBase S;
             public readonly StoreyTable Storeys;
             public readonly Ids Id;
+            public readonly RevisionManifest Manifest;
             public readonly List<Occ> Occ = new();
             public readonly Dictionary<int, List<int>> ByStorey = new();
             public readonly PsetDedup Psets = new();
@@ -169,8 +181,10 @@ namespace BIMCamel.Ifc
             private readonly string _groupEntity;
 
             public Doc(string path, int coordDecimals, IfcSchema schema, CoordOptions coords,
-                       double minX, double minY, double minZ, bool georef, string author, SpatialNames names)
+                       double minX, double minY, double minZ, bool georef, string author, SpatialNames names,
+                       RevisionManifest manifest)
             {
+                Manifest = manifest;
                 _path = path;
                 _classSystem = names.ClassificationSystem;
                 _groupEntity = names.GroupEntity;
@@ -232,6 +246,15 @@ namespace BIMCamel.Ifc
             if (!d.ByStorey.TryGetValue(storeyId, out var lst)) { lst = new List<int>(); d.ByStorey[storeyId] = lst; }
             lst.Add(id);
             d.Occ.Add(new Occ { Id = id, ClassKey = el.ClassKey ?? "", TypeName = el.TypeName ?? "", Material = el.MaterialName ?? "", ClassCode = el.ClassCode ?? "", Group = el.GroupName ?? "" });
+
+            // Revision signature. Geometry is hashed from the vertices themselves — they are
+            // already in memory here, so this is one extra pass over coordinates we have.
+            var hm = RevisionManifest.Hasher.Start();
+            HashSemantics(ref hm, el.ClassKey, el.TypeName, el.Level, el.MaterialName, el.ClassCode, el.GroupName);
+            hm.Add(el.Indices.Count);
+            for (int i = 0; i < el.Vertices.Count; i++) hm.Add(el.Vertices[i]);
+            d.Manifest.Elements[guid] = hm.Value;
+
             d.Tris += el.Indices.Count / 3; d.Elem++;
         }
 
@@ -302,7 +325,43 @@ namespace BIMCamel.Ifc
             if (!d.ByStorey.TryGetValue(storeyId, out var lst)) { lst = new List<int>(); d.ByStorey[storeyId] = lst; }
             lst.Add(id);
             d.Occ.Add(new Occ { Id = id, ClassKey = el.ClassKey ?? "", TypeName = el.TypeName ?? "", Material = el.MaterialName ?? "", ClassCode = el.ClassCode ?? "", Group = el.GroupName ?? "" });
+
+            // Revision signature. Each instance already carries a 128-bit content hash of its
+            // mesh, so folding those in with the placements costs nothing and is stronger than
+            // any summary statistic would be.
+            var hm = RevisionManifest.Hasher.Start();
+            HashSemantics(ref hm, el.ClassKey, el.TypeName, el.Level, el.MaterialName, el.ClassCode, el.GroupName);
+            foreach (var inst in el.Instances)
+            {
+                if (inst.Mesh == null || inst.Mesh.Indices.Count == 0) continue;
+                hm.Add((long)inst.Key.H0); hm.Add((long)inst.Key.H1); hm.Add(inst.Key.V); hm.Add(inst.Key.T);
+                for (int i = 0; i < 9; i++) hm.Add(inst.Rotation[i]);
+                for (int i = 0; i < 3; i++) hm.Add(inst.Translation[i]);
+            }
+            d.Manifest.Elements[guid] = hm.Value;
+
             d.Elem++;
+        }
+
+
+        /// <summary>
+        /// Writes this export's manifest and, when a previous one was sitting next to the target,
+        /// reports what changed. A failure here must never fail the export — the IFC is the
+        /// deliverable, the manifest is a convenience.
+        /// </summary>
+        private static void SaveManifest(string basePath, RevisionManifest manifest, RevisionManifest? previous, ExportSummary summary)
+        {
+            if (previous != null && previous.Elements.Count > 0)
+                summary.Revision = RevisionManifest.Compare(previous, manifest);
+            try { manifest.Save(basePath); } catch { }
+        }
+
+
+        /// <summary>The semantic half of an element's revision signature — everything we write
+        /// about it that is not geometry.</summary>
+        private static void HashSemantics(ref RevisionManifest.Hasher h, string? classKey, string? type, string? level, string? material, string? code, string? group)
+        {
+            h.Add(classKey); h.Add(type); h.Add(level); h.Add(material); h.Add(code); h.Add(group);
         }
 
         // basePath unchanged when not splitting; else "name_001.ifc", "name_002.ifc", … in the same folder.

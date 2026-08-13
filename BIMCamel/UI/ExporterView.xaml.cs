@@ -922,6 +922,7 @@ namespace BIMCamel.UI
                 : "Instancing  : off");
             sb.AppendLine($"Class rules : {ruleCount} set rule(s)");
             sb.Append(MappingLines(s));
+            if (s.Revision != null) sb.Append(s.Revision.Report());
             sb.AppendLine($"Storeys     : {s.StoreyCount}");
             sb.AppendLine($"Type objects: {s.TypeCount}   Materials: {s.MaterialCount}   Classifications: {s.ClassificationCount}");
             if (s.GroupCount > 0) sb.AppendLine($"Groups      : {s.GroupCount} (from Navisworks sets)");
