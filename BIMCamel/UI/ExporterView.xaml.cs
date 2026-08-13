@@ -393,7 +393,6 @@ namespace BIMCamel.UI
                 if (doc == null || doc.Models.Count == 0) { SetStatus("Open a model first."); return; }
                 // Reset BEFORE scope collection — the collector counts recovered branch geometry.
                 BIMCamel.Geometry.ExportIssues.Reset();
-                BIMCamel.Geometry.GeometryHandleProbe.Reset();
 
                 var schema = CmbSchema.SelectedIndex == 1 ? IfcSchema.Ifc2x3 : IfcSchema.Ifc4;
                 string schemaName = schema == IfcSchema.Ifc4 ? "IFC4" : "IFC2x3";
@@ -706,7 +705,6 @@ namespace BIMCamel.UI
             sb.AppendLine(s.Instanced
                 ? $"Instancing  : ON · {s.UniqueGeometries:N0} unique / {s.InstanceCount:N0} instances" + (s.UniqueGeometries > 0 ? $"  (×{(double)s.InstanceCount / s.UniqueGeometries:0.0})" : "")
                 : "Instancing  : off");
-            sb.Append(BIMCamel.Geometry.GeometryHandleProbe.Report());
             sb.AppendLine($"Class rules : {ruleCount} set→class");
             sb.AppendLine($"Storeys     : {s.StoreyCount}");
             sb.AppendLine($"Type objects: {s.TypeCount}   Materials: {s.MaterialCount}   Classifications: {s.ClassificationCount}");

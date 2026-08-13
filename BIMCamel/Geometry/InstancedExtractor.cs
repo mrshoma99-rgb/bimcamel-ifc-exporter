@@ -152,9 +152,7 @@ namespace BIMCamel.Geometry
                         }
 
                         inst.Mesh = lm;
-                        var (full, geomOnly) = Keys(lm);
-                        inst.Key = full;      // the exporter dedups by this key, per output file (option C)
-                        GeometryHandleProbe.Record(frag, geomOnly);
+                        inst.Key = Key(lm);   // the exporter dedups by this key, per output file (option C)
                         el.Instances.Add(inst);
                     }
                 }
@@ -190,12 +188,11 @@ namespace BIMCamel.Geometry
         }
 
         /// <summary>
-        /// Content keys for one local mesh, in a single hashing pass: <c>full</c> folds the colour
-        /// in (identical geometry in two colours must stay two unique meshes), <c>geomOnly</c> does
-        /// not — the probe needs pure geometry identity, since one shared mesh legitimately appears
-        /// in several colours and that must not read as a handle conflict.
+        /// Content key for one local mesh, in a single hashing pass. Colour is folded in, so
+        /// identical geometry in two colours stays two unique meshes (each styled once on its
+        /// own IfcRepresentationMap).
         /// </summary>
-        private static (DedupKey full, DedupKey geomOnly) Keys(LocalMesh lm)
+        private static DedupKey Key(LocalMesh lm)
         {
             const ulong P0 = 1099511628211UL, P1 = 1099511628219UL; // two distinct odd multipliers
             ulong h0 = 14695981039346656037UL;
@@ -215,7 +212,6 @@ namespace BIMCamel.Geometry
                 h0 = (h0 ^ q) * P0;
                 h1 = (h1 ^ q) * P1;
             }
-            var geomOnly = new DedupKey(h0, h1, verts.Count / 3, idx.Count / 3);
 
             // Fold quantised colour in so identical geometry in different colours becomes distinct
             // unique meshes (each styled once on its IfcRepresentationMap) — v4 D.
@@ -226,7 +222,7 @@ namespace BIMCamel.Geometry
                     ((long)Math.Round(m.B * 255) << 8) | (long)Math.Round(m.Transparency * 255));
                 h0 = (h0 ^ c) * P0; h1 = (h1 ^ c) * P1;
             }
-            return (new DedupKey(h0, h1, verts.Count / 3, idx.Count / 3), geomOnly);
+            return new DedupKey(h0, h1, verts.Count / 3, idx.Count / 3);
         }
     }
 }

@@ -12,9 +12,15 @@ namespace BIMCamel.Geometry
     /// (the fragment's local→world matrix, set by the caller before each fragment) is applied
     /// here so the collected mesh is already in WORLD coordinates.
     ///
-    /// Phase-0 note: this implementation favours clarity over speed (it uses Array.GetValue,
-    /// which is known-slow for this API). The performance pass (IMPLEMENTATION_PLAN.md §5, P4)
-    /// will replace per-element access with a bulk Marshal.Copy of the vertex buffer.
+    /// Performance note: this per-vertex callback IS the export's cost centre (82–92% of wall
+    /// clock on real models, a near-constant ~2.9 us/vertex). IMPLEMENTATION_PLAN.md §5 P4 hoped
+    /// to replace it with a bulk Marshal.Copy of a vertex buffer — that is not possible.
+    /// GenerateSimplePrimitives is the ONLY geometry-read surface Navisworks exposes (verified by
+    /// reflecting both Autodesk.Navisworks.Api and .Interop.ComApi: no bulk vertex/triangle/mesh
+    /// buffer API exists in either), and fragment geometry handles, which would have let us skip
+    /// re-reading repeated meshes, are unusable: InwOaFragment3.Geometry throws
+    /// COMException "&lt;&lt;NavisWorks Error - Not implemented&gt;&gt;" on a real install. So the work
+    /// here is to make each callback cheap, not to avoid the callbacks.
     /// </summary>
     public sealed class PrimitiveSink : InwSimplePrimitivesCB
     {
@@ -44,9 +50,8 @@ namespace BIMCamel.Geometry
         public double MinX = double.MaxValue, MinY = double.MaxValue, MinZ = double.MaxValue;
         public double MaxX = double.MinValue, MaxY = double.MinValue, MaxZ = double.MinValue;
 
-        // Reused scratch + a one-shot fallback flag for the fast coord read (v4 S1).
+        // Reused scratch for the fast coord read (v4 S1).
         private readonly float[] _c3 = new float[3];
-        private bool _coordIsFloat = true;
 
         public void Triangle(InwSimpleVertex v1, InwSimpleVertex v2, InwSimpleVertex v3)
         {
@@ -63,18 +68,21 @@ namespace BIMCamel.Geometry
 
         private int AddVertex(InwSimpleVertex v)
         {
-            // v.coord surfaces as a 1-based Single[*] SAFEARRAY. The old path boxed every ordinate
-            // (Convert.ToDouble(GetValue)) — ~3 boxings per vertex, tens of millions per model.
-            // Array.Copy into a reused float[3] is a typed block copy with no boxing (v4 S1).
-            // A documented (rare) variant returns doubles; on the first type mismatch we latch to
-            // the slow path so the export still succeeds.
+            // v.coord surfaces as a 1-based Single[*] SAFEARRAY (rarely a Double[] variant). A
+            // direct 'is' check selects the fast, no-allocation Array.Copy path with NO exception
+            // ever thrown on either branch — unlike a try/catch, this stays correct regardless of
+            // how often a fresh PrimitiveSink is created. That matters here: the instanced path
+            // constructs a NEW PrimitiveSink per FRAGMENT (hundreds of thousands per export), so an
+            // exception-driven "learn once" flag living on the instance never gets to stay learned;
+            // if coord were ever not float[] on some Navisworks build, every single fragment would
+            // pay a real CLR exception on its first vertex instead of the type check settling it once.
             var c = (Array)v.coord;
             int lb = c.GetLowerBound(0); // COM SAFEARRAYs may be 1-based
             double lx, ly, lz;
-            if (_coordIsFloat)
+            if (c is float[])
             {
-                try { Array.Copy(c, lb, _c3, 0, 3); lx = _c3[0]; ly = _c3[1]; lz = _c3[2]; }
-                catch { _coordIsFloat = false; lx = Convert.ToDouble(c.GetValue(lb)); ly = Convert.ToDouble(c.GetValue(lb + 1)); lz = Convert.ToDouble(c.GetValue(lb + 2)); }
+                Array.Copy(c, lb, _c3, 0, 3);
+                lx = _c3[0]; ly = _c3[1]; lz = _c3[2];
             }
             else
             {
