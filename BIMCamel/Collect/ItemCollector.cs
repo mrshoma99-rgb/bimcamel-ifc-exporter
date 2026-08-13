@@ -122,23 +122,47 @@ namespace BIMCamel.Collect
             catch { return "P:" + (item.DisplayName ?? ""); }
         }
 
-        /// <summary>
-        /// Build a map of item-key → IFC class key from set→class rules. Resolves each set once;
-        /// earlier rules win on overlap.
-        /// </summary>
-        public static Dictionary<string, string> BuildClassMap(Document doc, IEnumerable<(SelectionSet set, string classKey)> rules)
+        /// <summary>One mapping-grid row resolved to its set: what class and classification it assigns.</summary>
+        public readonly struct SetRule
         {
-            var map = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var (set, classKey) in rules)
+            public readonly SelectionSet Set;
+            public readonly string ClassKey;
+            public readonly string Classification;
+            public SetRule(SelectionSet set, string classKey, string classification)
+            { Set = set; ClassKey = classKey ?? ""; Classification = classification ?? ""; }
+        }
+
+        /// <summary>item-key → assigned value, for both things a set rule can assign.</summary>
+        public sealed class SetMaps
+        {
+            public readonly Dictionary<string, string> Class = new Dictionary<string, string>(StringComparer.Ordinal);
+            public readonly Dictionary<string, string> Classification = new Dictionary<string, string>(StringComparer.Ordinal);
+            public bool Any => Class.Count > 0 || Classification.Count > 0;
+        }
+
+        /// <summary>
+        /// Resolve set→class and set→classification rules in ONE pass over the sets. Earlier rules
+        /// win on overlap, per assignment kind — a row that only sets a classification does not
+        /// consume the class slot, so a broad "all walls → IfcWall" rule and a narrow "external
+        /// walls → Uniclass code" rule compose instead of competing.
+        /// </summary>
+        public static SetMaps BuildSetMaps(Document doc, IEnumerable<SetRule> rules)
+        {
+            var maps = new SetMaps();
+            foreach (var rule in rules)
             {
-                if (set == null || string.IsNullOrEmpty(classKey)) continue;
-                foreach (var leaf in GetItemsFromSet(doc, set))
+                if (rule.Set == null) continue;
+                bool wantsClass = rule.ClassKey.Length > 0;
+                bool wantsCode = rule.Classification.Length > 0;
+                if (!wantsClass && !wantsCode) continue;
+                foreach (var leaf in GetItemsFromSet(doc, rule.Set))
                 {
                     var k = ItemKey(leaf);
-                    if (!map.ContainsKey(k)) map[k] = classKey;
+                    if (wantsClass && !maps.Class.ContainsKey(k)) maps.Class[k] = rule.ClassKey;
+                    if (wantsCode && !maps.Classification.ContainsKey(k)) maps.Classification[k] = rule.Classification;
                 }
             }
-            return map;
+            return maps;
         }
 
         /// <summary>

@@ -21,37 +21,79 @@ namespace BIMCamel.Data
     {
         public readonly struct IfcClass
         {
-            public readonly string Ifc4;     // IFC4 occurrence entity (9 attrs incl. PredefinedType)
+            public readonly string Ifc4;     // IFC4 occurrence entity
             public readonly string Ifc2x3;   // IFC2x3 occurrence entity ("" ⇒ export as proxy in 2x3)
             public readonly int Args2x3;     // attribute count of the IFC2x3 entity (8 or 9)
-            public IfcClass(string ifc4, string ifc2x3 = "", int args2x3 = 0)
-            { Ifc4 = ifc4; Ifc2x3 = ifc2x3 ?? ""; Args2x3 = args2x3; }
+
+            /// <summary>
+            /// IFC4 attributes AFTER the 8 shared IfcElement ones (GlobalId, OwnerHistory, Name,
+            /// Description, ObjectType, ObjectPlacement, Representation, Tag). <c>{P}</c> marks
+            /// where PredefinedType goes. Most elements are just "{P}" — a plain 9-attribute
+            /// entity — but several are NOT, and getting the count wrong is precisely the class of
+            /// bug that made Revit reject our IFC4 files. Doors and windows, for instance, carry
+            /// OverallHeight and OverallWidth before PredefinedType and two more after it.
+            /// </summary>
+            public readonly string Tail4;
+
+            /// <summary>
+            /// IFC4 attributes after the 9 shared IfcElementType ones (GlobalId, OwnerHistory,
+            /// Name, Description, ApplicableOccurrence, HasPropertySets, RepresentationMaps, Tag,
+            /// ElementType). Same <c>{P}</c> convention. PredefinedType is MANDATORY on IFC4 type
+            /// entities, and some types have further mandatory attributes after it.
+            /// </summary>
+            public readonly string TypeTail4;
+
+            /// <summary>
+            /// buildingSMART base-quantity set name for this class (e.g. Qto_WallBaseQuantities).
+            /// Empty ⇒ no standard set is defined for it and the generic fallback is used.
+            /// </summary>
+            public readonly string Qto;
+
+            public IfcClass(string ifc4, string ifc2x3 = "", int args2x3 = 0,
+                            string tail4 = "{P}", string typeTail4 = "{P}", string qto = "")
+            {
+                Ifc4 = ifc4; Ifc2x3 = ifc2x3 ?? ""; Args2x3 = args2x3;
+                Tail4 = tail4; TypeTail4 = typeTail4; Qto = qto ?? "";
+            }
         }
 
         // Friendly name → dual-schema entities. Architectural: Ifc2x3 = "" (proxy). MEP: generic flow class.
         public static readonly Dictionary<string, IfcClass> Catalog = new(StringComparer.OrdinalIgnoreCase)
         {
             // Architectural / structural (IFC2x3 → proxy)
-            { "Wall", new IfcClass("IFCWALL") },
-            { "Wall (standard case)", new IfcClass("IFCWALLSTANDARDCASE") },
-            { "Slab", new IfcClass("IFCSLAB") },
-            { "Beam", new IfcClass("IFCBEAM") },
-            { "Column", new IfcClass("IFCCOLUMN") },
-            { "Member", new IfcClass("IFCMEMBER") },
-            { "Plate", new IfcClass("IFCPLATE") },
-            { "Footing", new IfcClass("IFCFOOTING") },
-            { "Railing", new IfcClass("IFCRAILING") },
+            { "Wall", new IfcClass("IFCWALL", qto: "Qto_WallBaseQuantities") },
+            { "Wall (standard case)", new IfcClass("IFCWALLSTANDARDCASE", qto: "Qto_WallBaseQuantities") },
+            { "Slab", new IfcClass("IFCSLAB", qto: "Qto_SlabBaseQuantities") },
+            { "Beam", new IfcClass("IFCBEAM", qto: "Qto_BeamBaseQuantities") },
+            { "Column", new IfcClass("IFCCOLUMN", qto: "Qto_ColumnBaseQuantities") },
+            { "Member", new IfcClass("IFCMEMBER", qto: "Qto_MemberBaseQuantities") },
+            { "Plate", new IfcClass("IFCPLATE", qto: "Qto_PlateBaseQuantities") },
+            { "Footing", new IfcClass("IFCFOOTING", qto: "Qto_FootingBaseQuantities") },
+            { "Railing", new IfcClass("IFCRAILING", qto: "Qto_RailingBaseQuantities") },
             { "Stair", new IfcClass("IFCSTAIR") },
             { "Ramp", new IfcClass("IFCRAMP") },
-            { "Roof", new IfcClass("IFCROOF") },
-            { "Covering", new IfcClass("IFCCOVERING") },
+            { "Roof", new IfcClass("IFCROOF", qto: "Qto_RoofBaseQuantities") },
+            { "Covering", new IfcClass("IFCCOVERING", qto: "Qto_CoveringBaseQuantities") },
             { "Curtain wall", new IfcClass("IFCCURTAINWALL") },
             { "Chimney", new IfcClass("IFCCHIMNEY") },
             { "Shading device", new IfcClass("IFCSHADINGDEVICE") },
-            { "Furniture", new IfcClass("IFCFURNITURE") },
-            { "Building element proxy", new IfcClass("IFCBUILDINGELEMENTPROXY") },
+            // IfcFurnitureType diverges: AssemblyPlace is MANDATORY and sits before PredefinedType.
+            { "Furniture", new IfcClass("IFCFURNITURE", typeTail4: ".NOTDEFINED.,{P}") },
+            { "Building element proxy", new IfcClass("IFCBUILDINGELEMENTPROXY", qto: "Qto_BuildingElementProxyQuantities") },
+            // Openings-adjacent architectural classes. These do NOT have the plain 9-attribute
+            // signature — see IfcClass.Tail4. IfcDoor/IfcWindow carry OverallHeight + OverallWidth
+            // before PredefinedType and two operation/partitioning attributes after it (13 total);
+            // their type entities add a second MANDATORY enum after PredefinedType.
+            { "Door", new IfcClass("IFCDOOR", tail4: "$,$,{P},$,$", typeTail4: "{P},.NOTDEFINED.,$,$", qto: "Qto_DoorBaseQuantities") },
+            { "Window", new IfcClass("IFCWINDOW", tail4: "$,$,{P},$,$", typeTail4: "{P},.NOTDEFINED.,$,$", qto: "Qto_WindowBaseQuantities") },
+            // IfcStairFlight adds NumberOfRisers, NumberOfTreads, RiserHeight, TreadLength before
+            // PredefinedType (13); IfcPile adds ConstructionType after it (10).
+            { "Stair flight", new IfcClass("IFCSTAIRFLIGHT", tail4: "$,$,$,$,{P}", qto: "Qto_StairFlightBaseQuantities") },
+            { "Ramp flight", new IfcClass("IFCRAMPFLIGHT", qto: "Qto_RampFlightBaseQuantities") },
+            { "Pile", new IfcClass("IFCPILE", tail4: "{P},$", qto: "Qto_PileBaseQuantities") },
+            { "Building element part", new IfcClass("IFCBUILDINGELEMENTPART") },
             // Piping
-            { "Pipe segment", new IfcClass("IFCPIPESEGMENT", "IFCFLOWSEGMENT", 8) },
+            { "Pipe segment", new IfcClass("IFCPIPESEGMENT", "IFCFLOWSEGMENT", 8, qto: "Qto_PipeSegmentBaseQuantities") },
             { "Pipe fitting", new IfcClass("IFCPIPEFITTING", "IFCFLOWFITTING", 8) },
             { "Valve", new IfcClass("IFCVALVE", "IFCFLOWCONTROLLER", 8) },
             { "Pump", new IfcClass("IFCPUMP", "IFCFLOWMOVINGDEVICE", 8) },
@@ -61,7 +103,7 @@ namespace BIMCamel.Data
             { "Filter", new IfcClass("IFCFILTER", "IFCFLOWTREATMENTDEVICE", 8) },
             { "Strainer", new IfcClass("IFCFILTER", "IFCFLOWTREATMENTDEVICE", 8) },
             // HVAC / ducting
-            { "Duct segment", new IfcClass("IFCDUCTSEGMENT", "IFCFLOWSEGMENT", 8) },
+            { "Duct segment", new IfcClass("IFCDUCTSEGMENT", "IFCFLOWSEGMENT", 8, qto: "Qto_DuctSegmentBaseQuantities") },
             { "Duct fitting", new IfcClass("IFCDUCTFITTING", "IFCFLOWFITTING", 8) },
             { "Duct silencer", new IfcClass("IFCDUCTSILENCER", "IFCFLOWTREATMENTDEVICE", 8) },
             { "Air terminal", new IfcClass("IFCAIRTERMINAL", "IFCFLOWTERMINAL", 8) },
@@ -130,6 +172,119 @@ namespace BIMCamel.Data
             if (TypeExceptions.TryGetValue(friendlyClass, out var t)) return t;
             if (Catalog.TryGetValue(friendlyClass, out var c)) return c.Ifc4 + "TYPE";
             return "IFCBUILDINGELEMENTPROXYTYPE";
+        }
+
+        /// <summary>
+        /// Trailing IFC4 occurrence attributes (after the 8 shared IfcElement ones) with
+        /// PredefinedType substituted. Unknown classes fall back to the plain 9-attribute shape,
+        /// which is what IfcBuildingElementProxy uses.
+        /// </summary>
+        public static string Tail4For(string friendlyClass, string predefToken)
+        {
+            string tail = Catalog.TryGetValue(friendlyClass ?? "", out var c) ? c.Tail4 : "{P}";
+            return tail.Replace("{P}", predefToken);
+        }
+
+        /// <summary>Trailing IFC4 type attributes (after the 9 shared IfcElementType ones).</summary>
+        public static string TypeTail4For(string friendlyClass, string predefToken)
+        {
+            string tail = Catalog.TryGetValue(friendlyClass ?? "", out var c) ? c.TypeTail4 : "{P}";
+            return tail.Replace("{P}", predefToken);
+        }
+
+        /// <summary>
+        /// buildingSMART base-quantity set name for a class. Falls back to
+        /// <c>Qto_BuildingElementProxyQuantities</c> for unmapped elements (which really are
+        /// proxies) and to the generic <c>Qto_BaseQuantities</c> for mapped classes that have no
+        /// standard set defined — the previous behaviour was to use the generic name for
+        /// everything, so no consumer keying on standard names ever matched.
+        /// </summary>
+        public static string QtoSetFor(string? friendlyClass)
+        {
+            if (string.IsNullOrEmpty(friendlyClass)) return "Qto_BuildingElementProxyQuantities";
+            if (Catalog.TryGetValue(friendlyClass!, out var c) && c.Qto.Length > 0) return c.Qto;
+            return "Qto_BaseQuantities";
+        }
+
+        /// <summary>
+        /// Keyword → friendly class, for proposing a mapping from a set's NAME. Keys are the words
+        /// people actually name sets after — Revit category names, mostly plural. Matching is
+        /// longest-keyword-first, so "curtain wall" wins over "wall" and "duct fitting" over "duct".
+        ///
+        /// This is a suggestion engine, not a source of truth: a set called "Structural Framing"
+        /// really is usually beams, but the user reviews the proposal before exporting.
+        /// </summary>
+        private static readonly Dictionary<string, string> AutoMapKeywords = new(StringComparer.OrdinalIgnoreCase)
+        {
+            // Architectural
+            { "curtain wall", "Curtain wall" }, { "curtain panel", "Curtain wall" },
+            { "wall", "Wall" }, { "walls", "Wall" },
+            { "door", "Door" }, { "doors", "Door" },
+            { "window", "Window" }, { "windows", "Window" },
+            { "floor", "Slab" }, { "floors", "Slab" }, { "slab", "Slab" }, { "slabs", "Slab" },
+            { "roof", "Roof" }, { "roofs", "Roof" },
+            { "ceiling", "Covering" }, { "ceilings", "Covering" }, { "covering", "Covering" }, { "finish", "Covering" },
+            { "stair flight", "Stair flight" }, { "stair", "Stair" }, { "stairs", "Stair" },
+            { "ramp flight", "Ramp flight" }, { "ramp", "Ramp" }, { "ramps", "Ramp" },
+            { "railing", "Railing" }, { "railings", "Railing" }, { "handrail", "Railing" }, { "balustrade", "Railing" },
+            { "furniture", "Furniture" }, { "casework", "Furniture" },
+            { "chimney", "Chimney" },
+            { "shading", "Shading device" }, { "louvre", "Shading device" }, { "louver", "Shading device" },
+            // Structural
+            { "structural framing", "Beam" }, { "framing", "Beam" }, { "beam", "Beam" }, { "beams", "Beam" },
+            { "structural column", "Column" }, { "column", "Column" }, { "columns", "Column" },
+            { "brace", "Member" }, { "bracing", "Member" }, { "truss", "Member" }, { "member", "Member" },
+            { "plate", "Plate" }, { "plates", "Plate" },
+            { "foundation", "Footing" }, { "footing", "Footing" }, { "footings", "Footing" }, { "pad", "Footing" },
+            { "pile", "Pile" }, { "piles", "Pile" },
+            { "fastener", "Fastener" }, { "bolt", "Fastener" }, { "bolts", "Fastener" },
+            // Piping
+            { "pipe fitting", "Pipe fitting" }, { "pipe accessor", "Valve" },
+            { "pipe", "Pipe segment" }, { "pipes", "Pipe segment" }, { "piping", "Pipe segment" },
+            { "valve", "Valve" }, { "valves", "Valve" },
+            { "pump", "Pump" }, { "pumps", "Pump" },
+            { "tank", "Tank" }, { "tanks", "Tank" }, { "vessel", "Tank" },
+            { "strainer", "Strainer" }, { "filter", "Filter" },
+            { "flow meter", "Flow meter" },
+            { "sanitary", "Sanitary terminal" }, { "plumbing fixture", "Sanitary terminal" },
+            // HVAC
+            { "duct fitting", "Duct fitting" }, { "duct accessor", "Duct silencer" },
+            { "duct", "Duct segment" }, { "ducts", "Duct segment" }, { "ductwork", "Duct segment" },
+            { "air terminal", "Air terminal" }, { "diffuser", "Air terminal" }, { "grille", "Air terminal" },
+            { "fan", "Fan" }, { "fans", "Fan" },
+            { "coil", "Coil" }, { "boiler", "Boiler" }, { "chiller", "Chiller" },
+            { "compressor", "Compressor" }, { "heat exchanger", "Heat exchanger" },
+            { "radiator", "Space heater" }, { "space heater", "Space heater" },
+            { "ahu", "Unitary equipment" }, { "air handling", "Unitary equipment" },
+            { "mechanical equipment", "Unitary equipment" },
+            // Electrical
+            { "cable tray", "Cable carrier segment" }, { "conduit", "Cable carrier segment" }, { "trunking", "Cable carrier segment" },
+            { "cable", "Cable segment" },
+            { "lighting", "Light fixture" }, { "light fixture", "Light fixture" }, { "luminaire", "Light fixture" },
+            { "socket", "Outlet" }, { "outlet", "Outlet" }, { "receptacle", "Outlet" },
+            { "switch", "Switching device" },
+            { "distribution board", "Distribution board" }, { "panel board", "Distribution board" }, { "switchboard", "Distribution board" },
+            { "transformer", "Transformer" }, { "generator", "Electric generator" }, { "motor", "Electric motor" },
+            { "electrical equipment", "Electric appliance" }, { "electrical fixture", "Electric appliance" },
+            // Controls
+            { "sensor", "Sensor" }, { "actuator", "Actuator" }, { "controller", "Controller" }, { "thermostat", "Sensor" },
+        };
+
+        /// <summary>
+        /// Best-guess friendly class for a set name, or null when nothing matches confidently.
+        /// Longest keyword wins so more specific names ("duct fitting") beat their prefixes ("duct").
+        /// </summary>
+        public static string? GuessClass(string? setName)
+        {
+            if (string.IsNullOrWhiteSpace(setName)) return null;
+            string n = setName!.ToLowerInvariant();
+            string? best = null; int bestLen = 0;
+            foreach (var kv in AutoMapKeywords)
+            {
+                if (kv.Key.Length <= bestLen) continue;
+                if (n.IndexOf(kv.Key, StringComparison.OrdinalIgnoreCase) >= 0) { best = kv.Value; bestLen = kv.Key.Length; }
+            }
+            return best;
         }
 
         /// <summary>Friendly class names for the UI dropdown (sorted, proxy first as the default).</summary>
