@@ -36,7 +36,7 @@ namespace BIMCamel.Geometry
         public List<MeshInstance> Instances = new List<MeshInstance>();
         public List<Data.IfcProp>? Properties;
         public string? ClassKey;
-        public string TypeName = "", Level = "", MaterialName = "", ClassCode = "";
+        public string TypeName = "", Level = "", MaterialName = "", ClassCode = "", GroupName = "";
     }
 
     /// <summary>
@@ -79,6 +79,7 @@ namespace BIMCamel.Geometry
         {
             bool hasClass = o.ClassMap != null && o.ClassMap.Count > 0;
             bool hasCode = o.ClassificationMap != null && o.ClassificationMap.Count > 0;
+            bool hasGroup = o.GroupMap != null && o.GroupMap.Count > 0;
             bool hasRoles = o.Roles != null && o.Roles.Any;
             int done = 0;
 
@@ -88,7 +89,7 @@ namespace BIMCamel.Geometry
                 // One unreadable item must not abort the whole export: before this, a COM failure
                 // or OutOfMemory on a single heavy mesh threw out of the iterator, leaving a
                 // truncated IFC on disk (the writer's footer/flush never ran).
-                try { el = BuildElement(item, unitScale, o, hasClass, hasCode, hasRoles); }
+                try { el = BuildElement(item, unitScale, o, hasClass, hasCode, hasGroup, hasRoles); }
                 catch (Exception ex) { ExportIssues.Fail(MeshExtractor.SafeName(item), ex); el = null; }
 
                 done++;
@@ -98,9 +99,9 @@ namespace BIMCamel.Geometry
         }
 
         /// <summary>Reads one item's instanced meshes + semantics; null when it contributes nothing.</summary>
-        private static InstancedElement? BuildElement(ModelItem item, double unitScale, ExtractOptions o, bool hasClass, bool hasCode, bool hasRoles)
+        private static InstancedElement? BuildElement(ModelItem item, double unitScale, ExtractOptions o, bool hasClass, bool hasCode, bool hasGroup, bool hasRoles)
         {
-                string key = hasClass || hasCode ? Collect.ItemCollector.ItemKey(item) : "";
+                string key = hasClass || hasCode || hasGroup ? Collect.ItemCollector.ItemKey(item) : "";
                 var el = new InstancedElement
                 {
                     Name = item.DisplayName ?? "",
@@ -187,6 +188,7 @@ namespace BIMCamel.Geometry
                 // A set rule is an explicit decision by the user; it outranks whatever the source
                 // property happened to contain.
                 if (hasCode && o.ClassificationMap!.TryGetValue(key, out var cc)) el.ClassCode = cc;
+                if (hasGroup && o.GroupMap!.TryGetValue(key, out var gn)) el.GroupName = gn;
                 ExportTiming.HarvestTicks += ExportTiming.Now - th;
 
                 return el;

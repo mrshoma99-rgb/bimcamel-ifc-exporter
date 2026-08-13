@@ -49,6 +49,9 @@ namespace BIMCamel.Ifc
         public bool GeorefSkippedNoData;
         public string CrsName = "";
         public double SurveyE, SurveyN, SurveyH;
+
+        /// <summary>Navisworks sets exported as IfcGroup / IfcSystem / IfcZone.</summary>
+        public int GroupCount;
     }
 
     /// <summary>
@@ -61,7 +64,7 @@ namespace BIMCamel.Ifc
     public static class IfcExporter
     {
         // Collected per emitted occurrence, for post-loop relationship batching.
-        private struct Occ { public int Id; public string ClassKey, TypeName, Material, ClassCode; }
+        private struct Occ { public int Id; public string ClassKey, TypeName, Material, ClassCode, Group; }
 
         public static ExportSummary Export(
             string basePath, IfcSchema schema, IEnumerable<ElementMesh> elements,
@@ -163,12 +166,14 @@ namespace BIMCamel.Ifc
             public readonly Dictionary<string, int> ByEntity = new(StringComparer.Ordinal);
             private readonly string _path;
             private readonly string _classSystem;
+            private readonly string _groupEntity;
 
             public Doc(string path, int coordDecimals, IfcSchema schema, CoordOptions coords,
                        double minX, double minY, double minZ, bool georef, string author, SpatialNames names)
             {
                 _path = path;
                 _classSystem = names.ClassificationSystem;
+                _groupEntity = names.GroupEntity;
                 W = new StreamingStepWriter(path, coordDecimals);
                 W.WriteHeader(schema, System.IO.Path.GetFileName(path), author);
                 // Salted by PROJECT, deliberately not by file name: a revision exported as
@@ -184,7 +189,7 @@ namespace BIMCamel.Ifc
             {
                 WriteSpatialContainment(W, Id, S.Owner, ByStorey, Storeys);
                 WriteDeferredPsetRels(W, Id, S.Owner, Psets, sum);
-                FinishRelationships(W, Id, schema, S.Owner, Occ, sum, _classSystem);
+                FinishRelationships(W, Id, schema, S.Owner, Occ, sum, _classSystem, _groupEntity);
                 Storeys.WriteAggregation();
                 W.WriteFooter();
                 W.Dispose();
@@ -226,7 +231,7 @@ namespace BIMCamel.Ifc
             }
             if (!d.ByStorey.TryGetValue(storeyId, out var lst)) { lst = new List<int>(); d.ByStorey[storeyId] = lst; }
             lst.Add(id);
-            d.Occ.Add(new Occ { Id = id, ClassKey = el.ClassKey ?? "", TypeName = el.TypeName ?? "", Material = el.MaterialName ?? "", ClassCode = el.ClassCode ?? "" });
+            d.Occ.Add(new Occ { Id = id, ClassKey = el.ClassKey ?? "", TypeName = el.TypeName ?? "", Material = el.MaterialName ?? "", ClassCode = el.ClassCode ?? "", Group = el.GroupName ?? "" });
             d.Tris += el.Indices.Count / 3; d.Elem++;
         }
 
@@ -296,7 +301,7 @@ namespace BIMCamel.Ifc
             }
             if (!d.ByStorey.TryGetValue(storeyId, out var lst)) { lst = new List<int>(); d.ByStorey[storeyId] = lst; }
             lst.Add(id);
-            d.Occ.Add(new Occ { Id = id, ClassKey = el.ClassKey ?? "", TypeName = el.TypeName ?? "", Material = el.MaterialName ?? "", ClassCode = el.ClassCode ?? "" });
+            d.Occ.Add(new Occ { Id = id, ClassKey = el.ClassKey ?? "", TypeName = el.TypeName ?? "", Material = el.MaterialName ?? "", ClassCode = el.ClassCode ?? "", Group = el.GroupName ?? "" });
             d.Elem++;
         }
 
@@ -462,7 +467,7 @@ namespace BIMCamel.Ifc
         }
 
         // ── post-loop relationship batches: types (IFC4), materials, classification (IFC4) ──
-        private static void FinishRelationships(StreamingStepWriter w, Ids ids, IfcSchema schema, int owner, List<Occ> occ, ExportSummary summary, string system)
+        private static void FinishRelationships(StreamingStepWriter w, Ids ids, IfcSchema schema, int owner, List<Occ> occ, ExportSummary summary, string system, string groupEntity)
         {
             // Type objects (IFC4 only — 2x3 type signatures diverge).
             if (schema == IfcSchema.Ifc4)
@@ -526,6 +531,23 @@ namespace BIMCamel.Ifc
                     }
                 }
                 summary.ClassificationCount += codes.Count;
+            }
+
+            // Groups / systems / zones from Navisworks sets. A saved or search set is exactly the
+            // membership IfcRelAssignsToGroup wants, so this is the one commonly-expected
+            // relationship we can reconstruct honestly rather than infer.
+            if (groupEntity.Length > 0)
+            {
+                var groups = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+                foreach (var o in occ) if (!string.IsNullOrWhiteSpace(o.Group)) AddTo(groups, o.Group, o.Id);
+                foreach (var kv in groups)
+                {
+                    // IfcGroup and IfcSystem are 5 attributes; IFC4's IfcZone adds LongName.
+                    string tail = groupEntity == "IFCZONE" && schema == IfcSchema.Ifc4 ? ",$" : "";
+                    int gid = w.Write($"{groupEntity}({ids.G("group:" + kv.Key)},{Ref(owner)},{Str(kv.Key)},$,${tail})");
+                    w.Write($"IFCRELASSIGNSTOGROUP({ids.G("relgroup:" + kv.Key)},{Ref(owner)},$,$,({Join(kv.Value)}),$,{Ref(gid)})");
+                }
+                summary.GroupCount += groups.Count;
             }
         }
 

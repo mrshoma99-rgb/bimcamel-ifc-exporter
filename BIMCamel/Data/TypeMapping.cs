@@ -157,7 +157,31 @@ namespace BIMCamel.Data
         }
 
         public static string Encode(string friendly, string? predef)
-            => string.IsNullOrWhiteSpace(predef) ? friendly : friendly + "|" + predef!.Trim();
+        {
+            string p = NormalizePredef(predef);
+            return p.Length == 0 ? friendly : friendly + "|" + p;
+        }
+
+        /// <summary>
+        /// Coerces free-typed PredefinedType text into a legal IFC enumeration token, or "" when
+        /// nothing usable remains. The mapping grid takes this as plain text, and it is injected
+        /// straight into the file as <c>.VALUE.</c> — so "solid wall" or a trailing space used to
+        /// produce a token no reader accepts, silently, with no warning anywhere.
+        /// </summary>
+        public static string NormalizePredef(string? predef)
+        {
+            if (string.IsNullOrWhiteSpace(predef)) return "";
+            var sb = new System.Text.StringBuilder(predef!.Length);
+            foreach (char c in predef.Trim().ToUpperInvariant())
+            {
+                if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) sb.Append(c);
+                else if (c == ' ' || c == '-' || c == '_') sb.Append('_');
+                // anything else is dropped rather than smuggled into the file
+            }
+            var s = sb.ToString().Trim('_');
+            // An IFC enumeration token must start with a letter.
+            return s.Length > 0 && s[0] >= 'A' && s[0] <= 'Z' ? s : "";
+        }
 
         // Friendly class → IFC4 *Type entity. Default = element name + "TYPE"; exceptions listed.
         private static readonly Dictionary<string, string> TypeExceptions = new(StringComparer.OrdinalIgnoreCase)

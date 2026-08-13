@@ -782,6 +782,8 @@
                 </WrapPanel>
                 <TextBlock Style="{StaticResource Lbl}" Text="Classification system name" Margin="0,13,0,5"/>
                 <TextBox x:Name="TxtClassSystem" ToolTip="Name of the classification system these codes belong to, e.g. “Uniclass 2015” or “OmniClass”. Written as IfcClassification.Name; blank falls back to a generic source label."/>
+                <TextBlock Style="{StaticResource Lbl}" Text="Also export each mapped set as" Margin="0,11,0,5"/>
+                <ComboBox x:Name="CmbGroups" ToolTip="Emit each mapped Navisworks set as an IFC group, with IfcRelAssignsToGroup membership. Use IfcSystem for MEP systems and IfcZone for spatial zones."/>
                 <Border Background="{DynamicResource ConsoleBg}" CornerRadius="9" Padding="11" Margin="0,13,0,0" MaxHeight="200">
                   <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
                     <TextBlock x:Name="TxtPreview" Foreground="{DynamicResource ConsoleTx}" FontFamily="Consolas"

@@ -91,6 +91,7 @@ namespace BIMCamel.UI
         {
             AddItems(CmbSchema, new[] { "IFC4", "IFC2x3" }); CmbSchema.SelectedIndex = 0;
             AddItems(CmbUnits, new[] { "Auto (from model)", "Millimeters", "Centimeters", "Meters", "Feet", "Inches" }); CmbUnits.SelectedIndex = 0;
+            AddItems(CmbGroups, new[] { "(nothing)", "IfcGroup", "IfcSystem", "IfcZone" }); CmbGroups.SelectedIndex = 0;
             AddItems(CmbQuality, new[] { "Balanced", "Small file", "High detail" }); CmbQuality.SelectedIndex = 0;
             AddItems(CmbBasePoint, new[] { "Geometry origin — recommended (real coords kept in georeferencing)", "Model origin (no offset — keeps world coords)", "Custom base point" }); CmbBasePoint.SelectedIndex = 0;
 
@@ -430,7 +431,8 @@ namespace BIMCamel.UI
                     Building = Def(TxtBuilding.Text, "Building"), Storey = Def(TxtStorey.Text, "Storey"),
                     // Real storey elevations, when the model's grids name the levels.
                     LevelElevations = ModelSurvey.LevelElevations(doc, unitScale),
-                    ClassificationSystem = (TxtClassSystem.Text ?? "").Trim()
+                    ClassificationSystem = (TxtClassSystem.Text ?? "").Trim(),
+                    GroupEntity = CmbGroups.SelectedIndex switch { 1 => "IFCGROUP", 2 => "IFCSYSTEM", 3 => "IFCZONE", _ => "" }
                 };
                 var setRules = BuildSetRules();
                 double weldTolMetres = CmbQuality.SelectedIndex switch { 1 => 1e-3, 2 => 1e-6, _ => 1e-4 };
@@ -533,6 +535,7 @@ namespace BIMCamel.UI
         {
             Props = ChkProps.IsChecked == true, Materials = ChkMaterials.IsChecked == true,
             PsetFilter = SelectedCategories(), ClassMap = maps.Class, ClassificationMap = maps.Classification,
+            GroupMap = CmbGroups.SelectedIndex > 0 ? maps.Group : null,
             ParamMap = BuildParamRules(), Roles = BuildRoles()
         };
 
@@ -921,6 +924,7 @@ namespace BIMCamel.UI
             sb.Append(MappingLines(s));
             sb.AppendLine($"Storeys     : {s.StoreyCount}");
             sb.AppendLine($"Type objects: {s.TypeCount}   Materials: {s.MaterialCount}   Classifications: {s.ClassificationCount}");
+            if (s.GroupCount > 0) sb.AppendLine($"Groups      : {s.GroupCount} (from Navisworks sets)");
             sb.AppendLine($"Property sets: {s.PsetUnique:N0} unique / {s.PsetRefs:N0} refs" + (s.PsetUnique > 0 ? $"  (×{(double)s.PsetRefs / s.PsetUnique:0.0} shared)" : ""));
             sb.AppendLine($"Quantities  : {(s.QuantitiesWritten ? "computed (volume/area/length/width/height)" : "none")}");
             sb.AppendLine($"{(s.FileCount > 1 ? "Total size  " : "File size   ")}: {s.FileSizeBytes / 1024.0:N0} KB");
@@ -1037,7 +1041,8 @@ namespace BIMCamel.UI
             Roles = RolesToText(), ParamRules = ParamRulesToText(),
             ProjectName = TxtProject.Text ?? "", SiteName = TxtSite.Text ?? "", BuildingName = TxtBuilding.Text ?? "", StoreyName = TxtStorey.Text ?? "",
             ClassificationSystem = (TxtClassSystem.Text ?? "").Trim(),
-            Split = ChkSplit.IsChecked == true, SplitMb = TxtSplitMb.Text ?? "200"
+            Split = ChkSplit.IsChecked == true, SplitMb = TxtSplitMb.Text ?? "200",
+            Groups = CmbGroups.SelectedIndex
         };
         private void Apply(ExportProfile p)
         {
@@ -1056,6 +1061,7 @@ namespace BIMCamel.UI
             if (!string.IsNullOrWhiteSpace(p.StoreyName)) TxtStorey.Text = p.StoreyName;
             TxtClassSystem.Text = p.ClassificationSystem ?? "";
             ChkSplit.IsChecked = p.Split; if (!string.IsNullOrWhiteSpace(p.SplitMb)) TxtSplitMb.Text = p.SplitMb;
+            CmbGroups.SelectedIndex = Clamp(p.Groups, CmbGroups.Items.Count);
             TextToRoles(p.Roles); TextToParamRules(p.ParamRules);
             TextToGrid(p.Mapping);
         }

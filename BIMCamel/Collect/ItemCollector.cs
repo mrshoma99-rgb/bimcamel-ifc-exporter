@@ -137,6 +137,8 @@ namespace BIMCamel.Collect
         {
             public readonly Dictionary<string, string> Class = new Dictionary<string, string>(StringComparer.Ordinal);
             public readonly Dictionary<string, string> Classification = new Dictionary<string, string>(StringComparer.Ordinal);
+            /// <summary>itemKey → the name of the first set that claimed it, for IfcGroup export.</summary>
+            public readonly Dictionary<string, string> Group = new Dictionary<string, string>(StringComparer.Ordinal);
             public bool Any => Class.Count > 0 || Classification.Count > 0;
         }
 
@@ -155,11 +157,13 @@ namespace BIMCamel.Collect
                 bool wantsClass = rule.ClassKey.Length > 0;
                 bool wantsCode = rule.Classification.Length > 0;
                 if (!wantsClass && !wantsCode) continue;
+                string setName = rule.Set.DisplayName ?? "";
                 foreach (var leaf in GetItemsFromSet(doc, rule.Set))
                 {
                     var k = ItemKey(leaf);
                     if (wantsClass && !maps.Class.ContainsKey(k)) maps.Class[k] = rule.ClassKey;
                     if (wantsCode && !maps.Classification.ContainsKey(k)) maps.Classification[k] = rule.Classification;
+                    if (setName.Length > 0 && !maps.Group.ContainsKey(k)) maps.Group[k] = setName;
                 }
             }
             return maps;

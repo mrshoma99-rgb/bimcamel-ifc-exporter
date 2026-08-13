@@ -99,5 +99,13 @@ namespace BIMCamel.Ifc
         /// codes from every system under one anonymous source.
         /// </summary>
         public string ClassificationSystem = "";
+
+        /// <summary>
+        /// IFC entity to emit for each mapped Navisworks set — "IFCGROUP", "IFCSYSTEM" or
+        /// "IFCZONE". Empty means don't. Navisworks sets map onto these cleanly, and
+        /// IfcRelAssignsToGroup was the one commonly-expected relationship we could actually
+        /// reconstruct from data we already read.
+        /// </summary>
+        public string GroupEntity = "";
     }
 }

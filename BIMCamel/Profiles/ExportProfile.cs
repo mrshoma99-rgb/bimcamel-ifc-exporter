@@ -50,6 +50,8 @@ namespace BIMCamel.Profiles
         [DataMember] public string ClassificationSystem = "";
         [DataMember] public bool Split;
         [DataMember] public string SplitMb = "200";
+        /// <summary>0 = none, 1 = IfcGroup, 2 = IfcSystem, 3 = IfcZone.</summary>
+        [DataMember] public int Groups;
 
         public static void Save(ExportProfile p, string path)
         {
