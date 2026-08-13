@@ -244,6 +244,79 @@ namespace BIMCamel.Collect
             return true;
         }
 
+        /// <summary>
+        /// A BOUNDED sample of geometry leaves, for the property scan that fills the Semantics
+        /// and Properties tabs.
+        ///
+        /// The scan only ever looks at the first ~1000 items (PropertyHarvester.ScanCategoryParams
+        /// stops there), but it used to be handed the result of a FULL tree walk — so a federated
+        /// model with half a million nodes was walked in its entirety, on the UI thread, to sample
+        /// 0.2% of it. That is what made "Detect from model" appear to hang Navisworks.
+        ///
+        /// This stops as soon as it has enough. The budget is split across the loaded models and
+        /// then topped up, so the sample spans disciplines instead of being 1000 architectural
+        /// elements from whichever model happens to load first — the roles it auto-fills are only
+        /// as good as the spread of properties it saw.
+        /// </summary>
+        public static List<ModelItem> SampleLeaves(Document doc, int cap, Action<int>? onProgress = null)
+        {
+            var result = new List<ModelItem>();
+            if (doc == null || cap <= 0) return result;
+
+            var roots = new List<ModelItem>();
+            try { foreach (var r in doc.Models.RootItems) roots.Add(r); } catch { return result; }
+            if (roots.Count == 0) return result;
+
+            int visited = 0;
+            int perModel = Math.Max(1, cap / roots.Count);
+            // Pass 2 re-walks, so without this the same node would be sampled twice.
+            var seen = new HashSet<ModelItem>();
+
+            // Pass 1: an even slice from each model.
+            foreach (var root in roots)
+            {
+                if (result.Count >= cap) break;
+                TakeFrom(root, result, seen, Math.Min(result.Count + perModel, cap), onProgress, ref visited);
+            }
+            // Pass 2: top up from whichever models still have more to give, so a federation where
+            // one model holds nearly everything still fills the sample. Only runs when pass 1
+            // came up short — i.e. when the models are small and re-walking them is cheap.
+            foreach (var root in roots)
+            {
+                if (result.Count >= cap) break;
+                TakeFrom(root, result, seen, cap, onProgress, ref visited);
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Same shape as <see cref="CollectFrom"/> but abandons the walk the moment
+        /// <paramref name="limit"/> is reached. Sampling does not need the branch-geometry
+        /// recovery rule to be exact — it needs to stop early — so this deliberately does not
+        /// count recovered branches into the export diagnostics.
+        /// </summary>
+        private static bool TakeFrom(ModelItem item, List<ModelItem> result, HashSet<ModelItem> seen, int limit, Action<int>? onProgress, ref int visited)
+        {
+            if (result.Count >= limit) return false;
+            visited++;
+            if ((visited & 0xFF) == 0) onProgress?.Invoke(visited);
+            if (item.IsHidden) return false;
+
+            bool any = false;
+            foreach (var child in item.Children)
+            {
+                if (result.Count >= limit) return any;
+                if (TakeFrom(child, result, seen, limit, onProgress, ref visited)) any = true;
+            }
+
+            if (any) return true;
+            if (!item.HasGeometry) return false;
+            if (result.Count >= limit) return false;
+            if (!seen.Add(item)) return true;   // already sampled on an earlier pass
+            result.Add(item);
+            return true;
+        }
+
         // ── Section box resolution ───────────────────────────────────────────────
 
         /// <summary>

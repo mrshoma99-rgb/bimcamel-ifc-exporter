@@ -284,20 +284,30 @@ namespace BIMCamel.UI
             var doc = NavApp.ActiveDocument;
             if (doc == null || doc.Models.Count == 0) { SetStatus("Open a model first."); return; }
 
-            List<ModelItem> items;
-            if (fromSelection)
-            {
-                var sel = doc.CurrentSelection.SelectedItems;
-                if (sel == null || sel.Count == 0) { SetStatus("Select elements in Navisworks, then Scan selection."); return; }
-                items = ItemCollector.ResolveLeaves(sel);
-            }
-            else items = ResolveScope(doc) ?? ItemCollector.GetVisibleLeafItemsWithGeometry(doc);
-            if (items.Count == 0) { SetStatus("No geometry elements to scan."); return; }
-
+            // The busy indicator has to come up BEFORE the tree walk, not after it. Collecting is
+            // the slow part, and starting the marquee afterwards meant the UI sat frozen for the
+            // whole walk with no sign anything was happening.
             BeginBusyMarquee("Scanning properties…");
             try
             {
-                int cap = fromSelection ? Math.Max(items.Count, 50) : Math.Min(items.Count, 1000);
+                const int SampleCap = 1000;   // ScanCategoryParams stops here anyway
+                List<ModelItem> items;
+                if (fromSelection)
+                {
+                    var sel = doc.CurrentSelection.SelectedItems;
+                    if (sel == null || sel.Count == 0) { SetStatus("Select elements in Navisworks, then Scan selection."); return; }
+                    items = ItemCollector.ResolveLeaves(sel, CollectTick);
+                }
+                else
+                {
+                    // Bounded sample rather than a full tree walk. The scan never looks past
+                    // SampleCap items, so walking a 500k-node federation to feed it was pure
+                    // cost — and it is what made this button look like a hang.
+                    items = ItemCollector.SampleLeaves(doc, SampleCap, CollectTick);
+                }
+                if (items.Count == 0) { SetStatus("No geometry elements to scan."); return; }
+
+                int cap = fromSelection ? Math.Max(items.Count, 50) : SampleCap;
                 _catParams = PropertyHarvester.ScanCategoryParams(items, cap);
 
                 var cats = _catParams.Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase).ToList();
