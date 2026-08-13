@@ -16,6 +16,8 @@ namespace BIMCamel.Geometry
         public double WeldTol;                       // in the vertices' own units (caller sets correctly)
         public HashSet<string>? PsetFilter;
         public Dictionary<string, string>? ClassMap; // itemKey → classKey (encoded class|predef)
+        public Dictionary<string, string>? ClassificationMap; // itemKey → classification code (set rule)
+        public Dictionary<string, string>? GroupMap;         // itemKey → set name (IfcGroup export)
         public List<ParamMapRule>? ParamMap;
         public PropertyRoles? Roles;
     }
@@ -30,6 +32,7 @@ namespace BIMCamel.Geometry
         public List<IfcProp>? Properties;
         public Material? Material;
         public string? ClassKey;              // F5 mapped IFC class (encoded "class|predef")
+        public string GroupName = "";         // Navisworks set this element belongs to (IfcGroup)
         public string TypeName = "";          // → IfcElementType grouping
         public string Level = "";             // → IfcBuildingStorey
         public string MaterialName = "";      // → IfcMaterial
@@ -47,6 +50,8 @@ namespace BIMCamel.Geometry
         public static IEnumerable<ElementMesh> ExtractStream(IEnumerable<ModelItem> items, ExtractOptions o, Action<int>? onProgress = null)
         {
             bool hasClass = o.ClassMap != null && o.ClassMap.Count > 0;
+            bool hasCode = o.ClassificationMap != null && o.ClassificationMap.Count > 0;
+            bool hasGroup = o.GroupMap != null && o.GroupMap.Count > 0;
             bool hasRoles = o.Roles != null && o.Roles.Any;
             int done = 0;
 
@@ -56,7 +61,7 @@ namespace BIMCamel.Geometry
                 // One unreadable item must not abort the whole export: before this, a COM failure
                 // or OutOfMemory on a single heavy mesh threw out of the iterator, leaving a
                 // truncated IFC on disk (the writer's footer/flush never ran).
-                try { em = BuildElement(item, o, hasClass, hasRoles); }
+                try { em = BuildElement(item, o, hasClass, hasCode, hasGroup, hasRoles); }
                 catch (Exception ex) { ExportIssues.Fail(SafeName(item), ex); em = null; }
 
                 done++;
@@ -66,7 +71,7 @@ namespace BIMCamel.Geometry
         }
 
         /// <summary>Reads one item's mesh + semantics; null when it contributes nothing.</summary>
-        private static ElementMesh? BuildElement(ModelItem item, ExtractOptions o, bool hasClass, bool hasRoles)
+        private static ElementMesh? BuildElement(ModelItem item, ExtractOptions o, bool hasClass, bool hasCode, bool hasGroup, bool hasRoles)
         {
             long ts = ExportTiming.Now;
             var coll = new ModelItemCollection { item };
@@ -96,6 +101,7 @@ namespace BIMCamel.Geometry
             // That used to sail through here and get dropped, uncounted, by the exporter.
             if (idx.Count == 0) { ExportIssues.CollapsedByWeld++; return null; }
 
+            string key = hasClass || hasCode || hasGroup ? ItemCollector.ItemKey(item) : "";
             var em = new ElementMesh
             {
                 Name = item.DisplayName ?? "",
@@ -103,7 +109,7 @@ namespace BIMCamel.Geometry
                 Vertices = verts,
                 Indices = idx,
                 Material = o.Materials ? PropertyHarvester.GetMaterial(item) : null,
-                ClassKey = hasClass && o.ClassMap!.TryGetValue(ItemCollector.ItemKey(item), out var ck) ? ck : null
+                ClassKey = hasClass && o.ClassMap!.TryGetValue(key, out var ck) ? ck : null
             };
             ts = ExportTiming.Now;
             if (o.Props)
@@ -116,6 +122,10 @@ namespace BIMCamel.Geometry
                 var rv = PropertyHarvester.ReadRoles(item, o.Roles!);
                 em.TypeName = rv.Type; em.Level = rv.Level; em.MaterialName = rv.Material; em.ClassCode = rv.Classification;
             }
+            // A set rule is an explicit decision by the user; it outranks whatever the source
+            // property happened to contain.
+            if (hasCode && o.ClassificationMap!.TryGetValue(key, out var cc)) em.ClassCode = cc;
+            if (hasGroup && o.GroupMap!.TryGetValue(key, out var gn)) em.GroupName = gn;
             ExportTiming.HarvestTicks += ExportTiming.Now - ts;
             return em;
         }

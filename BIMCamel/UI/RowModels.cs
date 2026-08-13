@@ -70,7 +70,7 @@ namespace BIMCamel.UI
     }
 
     /// <summary>One row of the set → IFC-class mapping grid.</summary>
-    public sealed class MapRow
+    public sealed class MapRow : INotifyPropertyChanged
     {
         public static readonly ObservableCollection<string> SharedSets = new ObservableCollection<string>();
         public static readonly ObservableCollection<string> SharedClasses = new ObservableCollection<string>();
@@ -78,8 +78,21 @@ namespace BIMCamel.UI
         public ObservableCollection<string> Sets => SharedSets;
         public ObservableCollection<string> Classes => SharedClasses;
 
-        public string Set { get; set; } = "";
-        public string IfcClass { get; set; } = "";
-        public string Predefined { get; set; } = "";
+        private string _set = "", _cls = "", _predef = "", _classif = "";
+
+        public string Set { get => _set; set { _set = value ?? ""; OnChanged(nameof(Set)); } }
+        public string IfcClass { get => _cls; set { _cls = value ?? ""; OnChanged(nameof(IfcClass)); } }
+        public string Predefined { get => _predef; set { _predef = value ?? ""; OnChanged(nameof(Predefined)); } }
+
+        /// <summary>
+        /// Classification code applied to every element in this set. A Navisworks search set is
+        /// already an IF/THEN rule, so this column turns the existing set mapping into the rule
+        /// engine — "IF Category = Walls AND Name contains External THEN Uniclass = …" — without
+        /// inventing a second rule language. Overrides the Classification property role.
+        /// </summary>
+        public string Classification { get => _classif; set { _classif = value ?? ""; OnChanged(nameof(Classification)); } }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+        private void OnChanged(string n) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
     }
 }

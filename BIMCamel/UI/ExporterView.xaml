@@ -539,20 +539,21 @@
                     <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
                   </StackPanel>
                   <TextBlock Style="{StaticResource Lbl}" Text="Geometry quality"/>
-                  <ComboBox x:Name="CmbQuality" ToolTip="Mesh tessellation detail vs file size. 'Balanced' suits most models; 'Small file' is coarser, 'High detail' is finer and larger."/>
+                  <ComboBox x:Name="CmbQuality" ToolTip="Vertex welding tolerance and stored coordinate precision. 'Balanced' suits most models; 'Small file' welds more coarsely, 'High detail' preserves finer detail and writes larger files. Navisworks fixes the mesh tessellation when the NWC is made, so this cannot add detail that is not already there."/>
                   <TextBlock Style="{StaticResource Lbl}" Text="Base point" Margin="0,11,0,5"/>
-                  <ComboBox x:Name="CmbBasePoint" ToolTip="Where the IFC origin sits. 'Geometry origin' keeps real-world coordinates in georeferencing; 'Model origin' keeps world coords in the geometry; 'Custom' lets you type a base point."/>
+                  <ComboBox x:Name="CmbBasePoint" ToolTip="Where the IFC local origin sits. This only affects how large the stored coordinates are — the placement chain puts the model back at its world position either way. Real-world georeferencing is the survey point, set under Options."/>
                   <StackPanel x:Name="CoordRow" Margin="0,11,0,0" Visibility="Collapsed"
-                              ToolTip="Custom base point: easting, northing, elevation (metres) and rotation (degrees).">
-                    <TextBlock Style="{StaticResource Lbl}" Text="E, N, Elevation (m), rotation (°)"/>
+                              ToolTip="Custom base point: easting, northing and elevation in metres.">
+                    <TextBlock Style="{StaticResource Lbl}" Text="E, N, Elevation (m)"/>
                     <Grid>
-                      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="6"/><ColumnDefinition Width="*"/><ColumnDefinition Width="6"/><ColumnDefinition Width="*"/><ColumnDefinition Width="6"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="6"/><ColumnDefinition Width="*"/><ColumnDefinition Width="6"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                       <TextBox x:Name="TxtE" Grid.Column="0"/><TextBox x:Name="TxtN" Grid.Column="2"/>
-                      <TextBox x:Name="TxtElev" Grid.Column="4"/><TextBox x:Name="TxtRot" Grid.Column="6"/>
+                      <TextBox x:Name="TxtElev" Grid.Column="4"/>
                     </Grid>
                   </StackPanel>
                   <Button Style="{StaticResource LinkBtn}" Content="↳ Preview base point" Click="OnPreviewBasePoint" ToolTip="Show the base-point coordinates the export will use."/>
                   <TextBlock x:Name="LblPreview" Style="{StaticResource Hint}" FontFamily="Consolas" Text="Base point preview: —"/>
+                  <Button Style="{StaticResource LinkBtn}" Content="↳ Federated model origins" Click="OnFederationReport" ToolTip="List every loaded model's origin, rotation and units, and flag any disagreement — before you export."/>
                 </StackPanel>
               </Border>
 
@@ -562,9 +563,21 @@
                     <TextBlock Style="{StaticResource H3}" Text="OPTIONS"/>
                     <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
                   </StackPanel>
-                  <CheckBox x:Name="ChkGeoref" Content="Write IFC4 georeferencing (IfcMapConversion)" ToolTip="Embed real-world coordinates (IfcMapConversion) so receivers can place the model geographically. IFC4 only."/>
+                  <CheckBox x:Name="ChkGeoref" Content="Write IFC4 georeferencing (IfcMapConversion)" ToolTip="Record where the model sits in a real-world projected CRS. IFC4 only. Written only when you supply a CRS or a survey point below — an empty map conversion is worse than none."/>
+                  <StackPanel x:Name="GeorefRow" Margin="20,7,0,4">
+                    <TextBlock Style="{StaticResource Lbl}" Text="Coordinate reference system (e.g. EPSG:27700)"/>
+                    <TextBox x:Name="TxtCrs"/>
+                    <TextBlock Style="{StaticResource Lbl}" Text="Survey point — model origin in the CRS: E, N, Elevation (m), rotation (°)" Margin="0,7,0,5"/>
+                    <Grid>
+                      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="6"/><ColumnDefinition Width="*"/><ColumnDefinition Width="6"/><ColumnDefinition Width="*"/><ColumnDefinition Width="6"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                      <TextBox x:Name="TxtSurveyE" Grid.Column="0"/><TextBox x:Name="TxtSurveyN" Grid.Column="2"/>
+                      <TextBox x:Name="TxtSurveyElev" Grid.Column="4"/><TextBox x:Name="TxtRot" Grid.Column="6"/>
+                    </Grid>
+                    <TextBlock Style="{StaticResource Hint}" TextWrapping="Wrap"
+                               Text="The survey point is independent of the base point: the base point only decides how big the stored numbers are, this decides where the model is on earth."/>
+                  </StackPanel>
                   <CheckBox x:Name="ChkInstancing" Content="Optimize repeated geometry (instancing)" ToolTip="Reuse identical geometry across elements to shrink the file and speed up export."/>
-                  <CheckBox x:Name="ChkValidate" Content="Validate output after export" ToolTip="Run a basic structural check on the written IFC and report any issues."/>
+                  <CheckBox x:Name="ChkValidate" Content="Validate output after export" ToolTip="Check the written IFC for structural damage and for the mistakes this exporter can make — bad PredefinedType values, wrong attribute counts, dangling references."/>
                   <CheckBox x:Name="ChkProfile" Content="Profile output size (slower)" ToolTip="Break down where the file size and time went. Adds a little overhead."/>
                   <WrapPanel Margin="0,9,0,0">
                     <Button Style="{StaticResource Btn}" Content="💾 Save profile…" Click="OnSaveProfile" ToolTip="Save all current settings (and the set→class mapping) to a reusable .json profile."/>
@@ -731,8 +744,8 @@
                   <TextBlock Style="{StaticResource H3}" Text="MAP NAVISWORKS SETS → IFC CLASSES"/>
                   <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
                 </StackPanel>
-                <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,11"
-                           Text="Assign a Navisworks selection/search set to an IFC class. Build sets in Navisworks, then “Refresh sets”. Unmapped elements stay IfcBuildingElementProxy."/>
+                <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,11" TextWrapping="Wrap"
+                           Text="Assign a Navisworks selection/search set to an IFC class and, optionally, a classification code. A Navisworks search set is already an IF/THEN rule — “Category = Walls AND Name contains External” — so build the rule in Find Items, save it as a set, and map it here. Unmapped elements stay IfcBuildingElementProxy."/>
                 <DataGrid x:Name="GridMap" AutoGenerateColumns="False" HeadersVisibility="Column" CanUserAddRows="False"
                           Background="Transparent" RowBackground="Transparent" BorderBrush="{DynamicResource FieldBd}" BorderThickness="1"
                           GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource Bd}" RowHeight="40"
@@ -753,12 +766,32 @@
                         <TextBox Text="{Binding Predefined, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
                       </DataTemplate></DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Classification" Width="0.7*" MinWidth="78">
+                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                        <TextBox Text="{Binding Classification, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"
+                                 ToolTip="Classification code for every element in this set, e.g. a Uniclass or OmniClass code. Overrides the Classification property role."/>
+                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
                   </DataGrid.Columns>
                 </DataGrid>
                 <WrapPanel Margin="0,10,0,0">
                   <Button Style="{StaticResource Btn}" Content="Refresh sets" Click="OnMapRefresh" ToolTip="Reload the list of saved/search sets from the model."/>
                   <Button Style="{StaticResource Btn}" Content="+ Add rule" Click="OnMapAdd" ToolTip="Add a new set→class rule."/>
+                  <Button Style="{StaticResource Btn}" Content="✨ Auto-map" Click="OnMapAuto" ToolTip="Propose rules by matching each set's name against common category names (Walls → Wall, Doors → Door…). Only fills empty rules; review before exporting."/>
                   <Button Style="{StaticResource Btn}" Content="Clear rules" Click="OnMapClear" ToolTip="Remove all rules."/>
+                </WrapPanel>
+                <TextBlock Style="{StaticResource Lbl}" Text="Classification system name" Margin="0,13,0,5"/>
+                <TextBox x:Name="TxtClassSystem" ToolTip="Name of the classification system these codes belong to, e.g. “Uniclass 2015” or “OmniClass”. Written as IfcClassification.Name; blank falls back to a generic source label."/>
+                <TextBlock Style="{StaticResource Lbl}" Text="Also export each mapped set as" Margin="0,11,0,5"/>
+                <ComboBox x:Name="CmbGroups" ToolTip="Emit each mapped Navisworks set as an IFC group, with IfcRelAssignsToGroup membership. Use IfcSystem for MEP systems and IfcZone for spatial zones."/>
+                <Border Background="{DynamicResource ConsoleBg}" CornerRadius="9" Padding="11" Margin="0,13,0,0" MaxHeight="200">
+                  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                    <TextBlock x:Name="TxtPreview" Foreground="{DynamicResource ConsoleTx}" FontFamily="Consolas"
+                               FontSize="11" TextWrapping="NoWrap" Text="Run a preview to see how many elements map, and how many will export as IfcBuildingElementProxy."/>
+                  </ScrollViewer>
+                </Border>
+                <WrapPanel Margin="0,9,0,0">
+                  <Button Style="{StaticResource Btn}" Content="🔍 Preview mapping" Click="OnPreviewMapping" ToolTip="Resolve the rules against the current scope and report mapped vs unmapped counts, the per-class breakdown, and property coverage — before exporting."/>
                 </WrapPanel>
               </StackPanel>
             </Border>

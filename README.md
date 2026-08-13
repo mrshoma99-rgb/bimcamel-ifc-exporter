@@ -30,11 +30,30 @@ export — BIMCamel fills that gap without the slowness and setup friction of th
 - **Property sets** — category-qualified, typed values, with content **dedup** (identical psets
   shared) and optional parameter renaming/relocation to standard Psets.
 - **Object → IFC class mapping** — assign Navisworks sets to IFC classes (with optional
-  PredefinedType); unmapped elements stay `IfcBuildingElementProxy`.
-- **Type objects, materials, classification, base quantities** (volume / area / length computed
-  from the mesh), **multi-storey** spatial structure from a Level property.
-- **Coordinates & georeferencing** — base-point modes with live preview; IFC4 `IfcMapConversion`,
-  IFC2x3 baked placement. All split parts / batch files share one origin so they overlay.
+  PredefinedType); **auto-map** proposes classes from set names; unmapped elements stay
+  `IfcBuildingElementProxy` — and the report tells you **how many**, which is the number that
+  matters. A Navisworks search set is already an IF/THEN rule, so the same grid also assigns
+  **classification codes**: build "Category = Walls AND Name contains External" in Find Items,
+  save it as a set, map it here.
+- **Pre-export preview** — resolve the mapping against your scope *before* writing anything:
+  mapped vs proxy counts, the per-class breakdown, property coverage and a geometry estimate.
+- **Type objects, materials, classification, base quantities** (volume / area / length / width /
+  height, into the standard per-class `Qto_*BaseQuantities` sets), **multi-storey** spatial
+  structure from a Level property, with **real storey elevations** read from the model's grids.
+- **Groups** — export each mapped set as `IfcGroup`, `IfcSystem` or `IfcZone` with
+  `IfcRelAssignsToGroup` membership.
+- **Coordinates & georeferencing** — base point (where the local origin sits) and survey point
+  (where the model sits on earth) are separate: the base point only decides how large the stored
+  ordinates are, while IFC4 `IfcMapConversion` + `IfcProjectedCRS` carry the CRS and survey
+  offset. Live base-point preview, plus a **federated origin report** listing every loaded
+  model's origin, rotation and units and flagging any disagreement. All split parts / batch files
+  share one origin so they overlay.
+- **Revision-aware** — GlobalIds are deterministic for elements *and* for the spatial tree,
+  property sets, type objects and relationships, so a re-export diffs cleanly. Each export drops
+  a small manifest beside the IFC and reports **NEW / DELETED / MODIFIED / UNCHANGED** against
+  the previous one.
+- **Validation** — on by default, checking the STEP envelope, dangling references, duplicate or
+  malformed GlobalIds, empty mandatory aggregates and malformed enumeration tokens.
 - **Reporting** — element/triangle counts, file size, a per-entity-type size profile, a phase-timing
   breakdown, and peak memory; export profiles save/load all settings as JSON.
 - Pure managed, **no third-party runtime dependency**; ships for Navisworks **2024 / 2025 / 2026 / 2027**,
@@ -84,9 +103,9 @@ matching per-version DLL into each year folder first — see [`dist/README.md`](
 ## Build from source
 
 Requires the **.NET SDK**. The per-year Navisworks API reference assemblies are restored from NuGet
-(the community-maintained `Navisworks.2024` / `Navisworks.2025` / `Navisworks.2026` / `Navisworks.2027` matched-set
-packages — each bundles the genuine `Autodesk.Navisworks.Api` + `ComApi` + `Interop.ComApi` at that
-release's assembly version), so **no Navisworks installation is needed to build**.
+(`Speckle.Navisworks.API`, one matched-set package per release — each bundles the genuine
+`Autodesk.Navisworks.Api` + `ComApi` + `Interop.ComApi` at that release's assembly version), so
+**no Navisworks installation is needed to build**.
 
 ```bat
 dotnet build BIMCamel\BIMCamel.csproj -c Debug -p:NavisworksYear=2025

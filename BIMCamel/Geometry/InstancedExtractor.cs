@@ -36,7 +36,7 @@ namespace BIMCamel.Geometry
         public List<MeshInstance> Instances = new List<MeshInstance>();
         public List<Data.IfcProp>? Properties;
         public string? ClassKey;
-        public string TypeName = "", Level = "", MaterialName = "", ClassCode = "";
+        public string TypeName = "", Level = "", MaterialName = "", ClassCode = "", GroupName = "";
     }
 
     /// <summary>
@@ -78,6 +78,8 @@ namespace BIMCamel.Geometry
         public static IEnumerable<InstancedElement> ExtractStream(IEnumerable<ModelItem> items, double unitScale, ExtractOptions o, Action<int>? onProgress = null)
         {
             bool hasClass = o.ClassMap != null && o.ClassMap.Count > 0;
+            bool hasCode = o.ClassificationMap != null && o.ClassificationMap.Count > 0;
+            bool hasGroup = o.GroupMap != null && o.GroupMap.Count > 0;
             bool hasRoles = o.Roles != null && o.Roles.Any;
             int done = 0;
 
@@ -87,7 +89,7 @@ namespace BIMCamel.Geometry
                 // One unreadable item must not abort the whole export: before this, a COM failure
                 // or OutOfMemory on a single heavy mesh threw out of the iterator, leaving a
                 // truncated IFC on disk (the writer's footer/flush never ran).
-                try { el = BuildElement(item, unitScale, o, hasClass, hasRoles); }
+                try { el = BuildElement(item, unitScale, o, hasClass, hasCode, hasGroup, hasRoles); }
                 catch (Exception ex) { ExportIssues.Fail(MeshExtractor.SafeName(item), ex); el = null; }
 
                 done++;
@@ -97,13 +99,14 @@ namespace BIMCamel.Geometry
         }
 
         /// <summary>Reads one item's instanced meshes + semantics; null when it contributes nothing.</summary>
-        private static InstancedElement? BuildElement(ModelItem item, double unitScale, ExtractOptions o, bool hasClass, bool hasRoles)
+        private static InstancedElement? BuildElement(ModelItem item, double unitScale, ExtractOptions o, bool hasClass, bool hasCode, bool hasGroup, bool hasRoles)
         {
+                string key = hasClass || hasCode || hasGroup ? Collect.ItemCollector.ItemKey(item) : "";
                 var el = new InstancedElement
                 {
                     Name = item.DisplayName ?? "",
                     InstanceGuid = item.InstanceGuid,
-                    ClassKey = hasClass && o.ClassMap!.TryGetValue(Collect.ItemCollector.ItemKey(item), out var ck) ? ck : null
+                    ClassKey = hasClass && o.ClassMap!.TryGetValue(key, out var ck) ? ck : null
                 };
                 var itemMat = o.Materials ? Data.PropertyHarvester.GetMaterial(item) : null; // per-item colour
                 long tc = ExportTiming.Now;
@@ -182,6 +185,10 @@ namespace BIMCamel.Geometry
                     var rv = Data.PropertyHarvester.ReadRoles(item, o.Roles!);
                     el.TypeName = rv.Type; el.Level = rv.Level; el.MaterialName = rv.Material; el.ClassCode = rv.Classification;
                 }
+                // A set rule is an explicit decision by the user; it outranks whatever the source
+                // property happened to contain.
+                if (hasCode && o.ClassificationMap!.TryGetValue(key, out var cc)) el.ClassCode = cc;
+                if (hasGroup && o.GroupMap!.TryGetValue(key, out var gn)) el.GroupName = gn;
                 ExportTiming.HarvestTicks += ExportTiming.Now - th;
 
                 return el;

@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace BIMCamel.Ifc
 {
     /// <summary>How the IFC project/local origin relates to the model's world coordinates.</summary>
@@ -12,33 +14,98 @@ namespace BIMCamel.Ifc
     }
 
     /// <summary>
-    /// Coordinate &amp; georeferencing options (IMPLEMENTATION_PLAN.md §7). The origin offset is
-    /// always lifted into the IfcSite placement so geometry sits near the origin. For IFC4 the
-    /// real-world location is additionally recorded as IfcMapConversion + IfcProjectedCRS; IFC2x3
-    /// has no IfcMapConversion, so the offset is only baked into the placement (reported explicitly).
+    /// Coordinate &amp; georeferencing options (IMPLEMENTATION_PLAN.md §7).
+    ///
+    /// TWO INDEPENDENT CONCEPTS, deliberately kept apart:
+    ///
+    ///   1. BASE POINT (<see cref="Mode"/> + Custom*) — where the IFC local origin sits relative to
+    ///      the model's world coordinates. Vertices are stored as (world − offset) and the same
+    ///      offset is lifted into the IfcSite placement, so a consumer that walks the placement
+    ///      chain lands back on the original world coordinates. This is purely about keeping stored
+    ///      ordinates small and precise; it does NOT move the model.
+    ///
+    ///   2. SURVEY POINT (<see cref="SurveyEastings"/> …) — where the model's world origin sits in a
+    ///      real-world projected CRS. This is the only thing IfcMapConversion should carry.
+    ///
+    /// Before v0.8.4 the base-point offset was written into BOTH the IfcSite placement and
+    /// IfcMapConversion's Eastings/Northings/Height. Because the placement chain already puts the
+    /// geometry at its world position, a consumer honouring both applied the real-world shift a
+    /// second time. IfcMapConversion now carries only the survey offset, and is written only when
+    /// the user has actually supplied georeferencing (a CRS name or a non-zero survey point) —
+    /// an absent map conversion is far better than a confidently wrong one.
     /// </summary>
     public sealed class CoordOptions
     {
         public BasePointMode Mode = BasePointMode.GeometryOrigin;
 
-        // Used when Mode == Custom (metres).
+        // Used when Mode == Custom (metres). Where to put the local origin.
         public double CustomEastings;
         public double CustomNorthings;
         public double CustomElevation;
 
-        /// <summary>Grid/true-north rotation in degrees (recorded in IFC4 georeferencing).</summary>
+        // ── Real-world georeferencing (IFC4 IfcMapConversion + IfcProjectedCRS) ──────────────
+        /// <summary>Position of the model's world origin in the map CRS (metres). Default 0.</summary>
+        public double SurveyEastings;
+        public double SurveyNorthings;
+        public double SurveyElevation;
+
+        /// <summary>Grid/true-north rotation in degrees, clockwise from map north.</summary>
         public double RotationDeg;
+
+        /// <summary>
+        /// Projected CRS identifier, conventionally an EPSG code such as <c>EPSG:27700</c>.
+        /// Written as IfcProjectedCRS.Name. Empty means the user gave us no CRS.
+        /// </summary>
+        public string CrsName = "";
+
+        /// <summary>Optional human description of the CRS (IfcProjectedCRS.Description).</summary>
+        public string CrsDescription = "";
 
         /// <summary>Write IfcMapConversion/IfcProjectedCRS (IFC4 only).</summary>
         public bool WriteGeoref = true;
+
+        /// <summary>
+        /// True when the user has supplied something real to georeference with. Without this the
+        /// georef block would just restate "the origin is the origin in an unnamed CRS", which is
+        /// noise at best and misleading at worst.
+        /// </summary>
+        public bool HasGeorefData =>
+            CrsName.Trim().Length > 0
+            || SurveyEastings != 0 || SurveyNorthings != 0 || SurveyElevation != 0
+            || RotationDeg != 0;
     }
 
-    /// <summary>Names for the IFC spatial skeleton (F9). All have sensible defaults.</summary>
+    /// <summary>
+    /// The IFC spatial skeleton: names for each level of the fixed Project→Site→Building→Storey
+    /// chain (F9), plus real storey elevations when the source model can supply them.
+    /// </summary>
     public sealed class SpatialNames
     {
         public string Project = "BIMCamel Export";
         public string Site = "Site";
         public string Building = "Building";
         public string Storey = "Storey";
+
+        /// <summary>
+        /// Level name → elevation in METRES (world/model datum), read from the Navisworks grid
+        /// levels. Matched case-insensitively against the Level property value that drives storey
+        /// creation. Absent or unmatched levels keep elevation 0, as before.
+        /// </summary>
+        public IReadOnlyDictionary<string, double>? LevelElevations;
+
+        /// <summary>
+        /// Name of the classification system the codes belong to — "Uniclass 2015", "OmniClass".
+        /// Written as IfcClassification.Name. Blank keeps the old generic label, which collapsed
+        /// codes from every system under one anonymous source.
+        /// </summary>
+        public string ClassificationSystem = "";
+
+        /// <summary>
+        /// IFC entity to emit for each mapped Navisworks set — "IFCGROUP", "IFCSYSTEM" or
+        /// "IFCZONE". Empty means don't. Navisworks sets map onto these cleanly, and
+        /// IfcRelAssignsToGroup was the one commonly-expected relationship we could actually
+        /// reconstruct from data we already read.
+        /// </summary>
+        public string GroupEntity = "";
     }
 }

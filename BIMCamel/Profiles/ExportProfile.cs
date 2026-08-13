@@ -26,7 +26,32 @@ namespace BIMCamel.Profiles
         [DataMember] public bool Materials = true;
         [DataMember] public bool Instancing;
         [DataMember] public bool Validate;
+        [DataMember] public bool Quantities = true;
         [DataMember] public string Mapping = "";
+
+        // ── real-world georeferencing (kept apart from the base point above) ──────────────
+        [DataMember] public string Crs = "";
+        [DataMember] public double SurveyE;
+        [DataMember] public double SurveyN;
+        [DataMember] public double SurveyElev;
+
+        // ── the mapping that used to be lost on save ─────────────────────────────────────
+        // Property roles, parameter rules and the spatial names drive IfcBuildingStorey,
+        // IfcElementType, IfcMaterial and IfcClassificationReference — arguably the most valuable
+        // configuration in the tool, and none of it survived a save/load round trip before.
+        /// <summary>Roles as "cat|prop" per line: Type, Level, Material, Classification.</summary>
+        [DataMember] public string Roles = "";
+        /// <summary>Parameter rules, one per line: "srcCategory | srcProperty | targetPset | targetName".</summary>
+        [DataMember] public string ParamRules = "";
+        [DataMember] public string ProjectName = "";
+        [DataMember] public string SiteName = "";
+        [DataMember] public string BuildingName = "";
+        [DataMember] public string StoreyName = "";
+        [DataMember] public string ClassificationSystem = "";
+        [DataMember] public bool Split;
+        [DataMember] public string SplitMb = "200";
+        /// <summary>0 = none, 1 = IfcGroup, 2 = IfcSystem, 3 = IfcZone.</summary>
+        [DataMember] public int Groups;
 
         public static void Save(ExportProfile p, string path)
         {
