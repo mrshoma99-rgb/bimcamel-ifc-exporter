@@ -148,9 +148,13 @@ namespace BIMCamel.Collect
         /// consume the class slot, so a broad "all walls → IfcWall" rule and a narrow "external
         /// walls → Uniclass code" rule compose instead of competing.
         /// </summary>
-        public static SetMaps BuildSetMaps(Document doc, IEnumerable<SetRule> rules)
+        public static SetMaps BuildSetMaps(Document doc, IEnumerable<SetRule> rules, Action<int>? onProgress = null)
         {
+            // onProgress matters here: search-set rules each run a model-wide
+            // FindAll, so a long rule list is a long stretch of work — without
+            // ticks the UI cannot pump and Navisworks appears frozen.
             var maps = new SetMaps();
+            int visited = 0;
             foreach (var rule in rules)
             {
                 if (rule.Set == null) continue;
@@ -164,6 +168,7 @@ namespace BIMCamel.Collect
                     if (wantsClass && !maps.Class.ContainsKey(k)) maps.Class[k] = rule.ClassKey;
                     if (wantsCode && !maps.Classification.ContainsKey(k)) maps.Classification[k] = rule.Classification;
                     if (setName.Length > 0 && !maps.Group.ContainsKey(k)) maps.Group[k] = setName;
+                    if ((++visited & 511) == 0) onProgress?.Invoke(visited);
                 }
             }
             return maps;
