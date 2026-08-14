@@ -4,7 +4,11 @@ A free, open-source **Autodesk Navisworks** plug-in that exports models to **IFC
 built for **speed, small files, and zero-config first-click export**. Navisworks has no native IFC
 export — BIMCamel fills that gap without the slowness and setup friction of the commercial tools.
 
-> More free BIM tools, updates and docs: **[bimcamel.com](https://bimcamel.com)**
+> 📖 **[User Guide](docs/USER_GUIDE.md)** — the full manual: quick export, Smart setup,
+> the Pre-flight panel, mapping, georeferencing, batch, profiles, troubleshooting.
+> Also online with screenshots: **[bimcamel.com/Export-Navisworks-to-Ifc/docs](https://bimcamel.com/Export-Navisworks-to-Ifc/docs)**
+>
+> More free BIM tools and updates: **[bimcamel.com](https://bimcamel.com)**
 
 ---
 
@@ -95,6 +99,10 @@ matching per-version DLL into each year folder first — see [`dist/README.md`](
 1. **BIMCamel** ribbon tab → **IFC exporter** to open the panel.
 2. Pick a schema and scope (default: IFC4, whole model). Everything else has sensible defaults.
 3. Click **Export IFC**, choose a path, done.
+
+For the **detailed, well-mapped deliverable** — Smart setup, semantic roles, set→class mapping,
+classification codes, georeferencing, the Pre-flight checks, batch and profiles — follow the
+**[User Guide](docs/USER_GUIDE.md)**.
 
 > **Slow export?** An active **DataTools / external-database link** runs a query per object and can
 > add many minutes (and floods the console with `DATATOOLS_SQL_EXEC` errors if broken). Deactivate
