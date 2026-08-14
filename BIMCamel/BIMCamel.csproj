@@ -16,7 +16,7 @@
     <!-- Assembly version, read at runtime by the update check and About box. Bump in lockstep
          with dist/RELEASE_VERSION on every release (the release workflow also stamps it
          explicitly via -p:Version). -->
-    <Version>0.9.1</Version>
+    <Version>0.10.0</Version>
 
     <!--
       Per-year build: a plug-in must be compiled against the API of the release it runs in
