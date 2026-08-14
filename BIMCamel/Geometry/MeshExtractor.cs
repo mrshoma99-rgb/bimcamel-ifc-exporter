@@ -20,6 +20,9 @@ namespace BIMCamel.Geometry
         public Dictionary<string, string>? GroupMap;         // itemKey → set name (IfcGroup export)
         public List<ParamMapRule>? ParamMap;
         public PropertyRoles? Roles;
+        /// <summary>Per-operation ItemKey memo, shared with BuildSetMaps so keys
+        /// computed while resolving the rules are not recomputed per element.</summary>
+        public System.Collections.Generic.Dictionary<Autodesk.Navisworks.Api.ModelItem, string>? KeyCache;
     }
 
     /// <summary>One element's world-space triangle mesh + semantic role values, ready for IFC.</summary>
@@ -101,7 +104,7 @@ namespace BIMCamel.Geometry
             // That used to sail through here and get dropped, uncounted, by the exporter.
             if (idx.Count == 0) { ExportIssues.CollapsedByWeld++; return null; }
 
-            string key = hasClass || hasCode || hasGroup ? ItemCollector.ItemKey(item) : "";
+            string key = hasClass || hasCode || hasGroup ? ItemCollector.ItemKey(item, o.KeyCache) : "";
             var em = new ElementMesh
             {
                 Name = item.DisplayName ?? "",

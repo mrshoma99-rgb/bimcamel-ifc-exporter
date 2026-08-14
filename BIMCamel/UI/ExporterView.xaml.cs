@@ -32,9 +32,13 @@ namespace BIMCamel.UI
         private const string AnyCat = "(any category)";
 
         // dynamic data
-        private List<SelectionSet> _savedSets = new List<SelectionSet>();
-        private List<SelectionSet> _batchSets = new List<SelectionSet>();
-        private List<SelectionSet> _mapSets = new List<SelectionSet>();
+        //
+        // ONE list of the document's saved sets, feeding all three surfaces that
+        // show them (saved-set combo, batch checklist, mapping dropdowns). There
+        // used to be three separate lists refreshed by separate buttons, which
+        // meant they could disagree about what sets existed — and two of the
+        // buttons existed only to re-sync them.
+        private List<SelectionSet> _sets = new List<SelectionSet>();
         private readonly ObservableCollection<CheckItem> _cats = new ObservableCollection<CheckItem>();
         private readonly ObservableCollection<CheckItem> _batchItems = new ObservableCollection<CheckItem>();
         private readonly ObservableCollection<ParamRow> _paramRows = new ObservableCollection<ParamRow>();
@@ -61,7 +65,18 @@ namespace BIMCamel.UI
             BuildRoleRows();
             InitControls();
             InitGridsAndLists();
-            Loaded += (_, _) => { UpdateScopeHint(); PreviewBasePoint(); RefreshModelStatus(); };
+            Loaded += (_, _) => { UpdateScopeHint(); PreviewBasePoint(); RefreshModelStatus(); RefreshSets(); RenderPreflight(); };
+            // The set list self-refreshes when the Mapping tab opens (replacing
+            // the old per-tab Refresh buttons), and the pre-flight rows refresh
+            // when the Export tab opens — they show live config state, and this
+            // is the moment the user comes back to commit. OriginalSource guard:
+            // selection changes inside child ComboBoxes bubble up here too.
+            Tabs.SelectionChanged += (_, e) =>
+            {
+                if (!ReferenceEquals(e.OriginalSource, Tabs)) return;
+                if (ReferenceEquals(Tabs.SelectedItem, TabMapping)) RefreshSets();
+                if (ReferenceEquals(Tabs.SelectedItem, TabExport)) RenderPreflight();
+            };
             // Non-blocking, once-a-day update check; prompts on the UI thread if a newer release exists.
             UpdateCheck.Run(action => Dispatcher.BeginInvoke(action));
         }
@@ -228,6 +243,9 @@ namespace BIMCamel.UI
                 Set("AmberBg", "#FFF7E6"); Set("AmberBd", "#FFE1A8"); Set("AmberTx", "#8A5A00");
                 Set("ConsoleBg", "#0E1116"); Set("ConsoleTx", "#CFE3D5"); Set("Ok", "#1A8F4C");
             }
+            // The pre-flight rows are code-built with resolved brushes, so they
+            // do not retint through DynamicResource — rebuild them.
+            RenderPreflight();
         }
 
         // ── scope hint / reveals ────────────────────────────────────────────────
@@ -240,8 +258,8 @@ namespace BIMCamel.UI
             {
                 case 1: LblScopeHint.Text = "→ select items in Navisworks first"; break;
                 case 2: LblScopeHint.Text = "→ enable a section box in Navisworks first"; break;
-                case 3: LblScopeHint.Text = "→ pick a saved set below"; PopulateSets(); break;
-                case 4: LblScopeHint.Text = "→ tick sets below; each becomes its own IFC (choose an output folder)"; PopulateBatchSets(); break;
+                case 3: LblScopeHint.Text = "→ pick a saved set below"; RefreshSets(); break;
+                case 4: LblScopeHint.Text = "→ tick sets below; each becomes its own IFC (choose an output folder)"; RefreshSets(); break;
                 default: LblScopeHint.Text = ""; break;
             }
         }
@@ -253,36 +271,89 @@ namespace BIMCamel.UI
         }
 
         // ── button handlers ───────────────────────────────────────────────────────
-        private void OnBatchRefresh(object s, RoutedEventArgs e) => PopulateBatchSets();
         private void OnBatchAll(object s, RoutedEventArgs e) { foreach (var c in _batchItems) c.Checked = true; }
         private void OnBatchNone(object s, RoutedEventArgs e) { foreach (var c in _batchItems) c.Checked = false; }
         private void OnScanSelection(object s, RoutedEventArgs e) => ScanModel(true);
-        private void OnScanModel(object s, RoutedEventArgs e) => ScanModel(false);
         private void OnCatsAll(object s, RoutedEventArgs e) { foreach (var c in _cats) c.Checked = true; }
         private void OnCatsNone(object s, RoutedEventArgs e) { foreach (var c in _cats) c.Checked = false; }
-        private void OnDetectRoles(object s, RoutedEventArgs e) => ScanModel(false);
         private void OnParamAdd(object s, RoutedEventArgs e) => _paramRows.Add(new ParamRow { SourceCategory = AnyCat });
         private void OnParamRemove(object s, RoutedEventArgs e) { if (GridParams.SelectedItem is ParamRow r) _paramRows.Remove(r); }
-        private void OnMapRefresh(object s, RoutedEventArgs e) => RefreshMapSets();
         private void OnMapAdd(object s, RoutedEventArgs e) => _mapRows.Add(new MapRow());
+        private void OnMapRemove(object s, RoutedEventArgs e) { if (GridMap.SelectedItem is MapRow r) _mapRows.Remove(r); }
         private void OnMapClear(object s, RoutedEventArgs e) => _mapRows.Clear();
-        private void OnMapAuto(object s, RoutedEventArgs e) => AutoMapSets();
         private void OnPreviewMapping(object s, RoutedEventArgs e) => PreviewMapping();
-        private void OnPreviewBasePoint(object s, RoutedEventArgs e) => PreviewBasePoint();
         private void OnFederationReport(object s, RoutedEventArgs e)
         {
             var doc = NavApp.ActiveDocument;
             if (doc == null || doc.Models.Count == 0) { SetStatus("Open a model first."); return; }
-            SetReport("Federated model origins\n──────────────────────────────\n" + ModelSurvey.FederationReport(doc));
-            SetStatus("Federation report written to the Report panel.");
+            TxtCoordReport.Text = ("Federated model origins\n──────────────────────────────\n" + ModelSurvey.FederationReport(doc)).Replace("\n", Environment.NewLine);
+            CoordReportBox.Visibility = Visibility.Visible;
+            SetStatus("Federation report ready below.");
+        }
+
+        // ── smart setup ───────────────────────────────────────────────────────────
+        /// <summary>
+        /// Every auto-detect the pane has, in dependency order, behind one button:
+        /// sets → property/role scan → set→class proposal → mapping preview.
+        /// These were five buttons on three tabs, two of which called the same
+        /// method under different names ("Scan model" and "Detect from model").
+        ///
+        /// Nothing the user typed is ever overwritten: roles fill only when blank,
+        /// auto-map only fills empty rules, and the pset ticks reset only when the
+        /// scan discovers a different pset list (same as any rescan).
+        /// </summary>
+        private void OnSmartSetup(object sender, RoutedEventArgs e)
+        {
+            var doc = NavApp.ActiveDocument;
+            if (doc == null || doc.Models.Count == 0) { SetStatus("Open a model first."); return; }
+            // One busy bracket around the WHOLE chain. The steps self-bracket,
+            // and their interim EndBusy calls would re-enable the UI between
+            // steps — the message pump would then dispatch any clicks queued
+            // during the previous step straight into a half-configured pane
+            // (including a second Smart setup, or Export). _busyChain makes the
+            // interim releases no-ops; only the finally below really releases.
+            _busyChain = true;
+            BeginBusyMarquee("Smart setup — scanning…");
+            try
+            {
+                var sb = new StringBuilder();
+                RefreshSets();
+                sb.AppendLine($"Sets found     : {_sets.Count}");
+
+                if (!ScanModel(false)) { TxtSmartSummary.Text = "No geometry elements found to scan."; return; }
+                sb.AppendLine($"Property sets  : {_cats.Count} discovered (Data tab)");
+                sb.AppendLine($"Semantic roles : {_lastRolesFilled} filled, {_lastRolesKept} kept as you set them");
+
+                var (added, filled, unmatched) = AutoMapSets();
+                sb.AppendLine($"Mapping rules  : {added} added, {filled} filled in, {unmatched} set(s) unmatched");
+
+                // A failed preview must not read as success: say so in the
+                // summary, and keep whatever error the step left in the status
+                // line instead of overwriting it with "complete".
+                var digest = PreviewMapping();
+                sb.AppendLine(digest ?? "Preview        : did not run — open the Mapping tab for the reason");
+
+                sb.Append("Review the ✨ AUTO sections on Data and Mapping, then Export.");
+                TxtSmartSummary.Text = sb.ToString().Replace("\n", Environment.NewLine);
+                if (digest != null) SetStatus("Smart setup complete — review, then Export IFC.");
+            }
+            catch (Exception ex)
+            {
+                TxtSmartSummary.Text = "Smart setup failed: " + ex.Message;
+                SetStatus("Smart setup failed: " + ex.Message);
+            }
+            finally { _busyChain = false; EndBusy(); }
         }
         private void OnCopyReport(object s, RoutedEventArgs e) { if (!string.IsNullOrEmpty(TxtReport.Text)) try { System.Windows.Clipboard.SetText(TxtReport.Text); } catch { } }
 
         // ── unified scan ──────────────────────────────────────────────────────────
-        private void ScanModel(bool fromSelection)
+        // How the last scan's role auto-fill landed, for the Smart-setup summary.
+        private int _lastRolesFilled, _lastRolesKept;
+
+        private bool ScanModel(bool fromSelection)
         {
             var doc = NavApp.ActiveDocument;
-            if (doc == null || doc.Models.Count == 0) { SetStatus("Open a model first."); return; }
+            if (doc == null || doc.Models.Count == 0) { SetStatus("Open a model first."); return false; }
 
             // The busy indicator has to come up BEFORE the tree walk, not after it. Collecting is
             // the slow part, and starting the marquee afterwards meant the UI sat frozen for the
@@ -295,7 +366,7 @@ namespace BIMCamel.UI
                 if (fromSelection)
                 {
                     var sel = doc.CurrentSelection.SelectedItems;
-                    if (sel == null || sel.Count == 0) { SetStatus("Select elements in Navisworks, then Scan selection."); return; }
+                    if (sel == null || sel.Count == 0) { SetStatus("Select elements in Navisworks, then Scan selection."); return false; }
                     items = ItemCollector.ResolveLeaves(sel, CollectTick);
                 }
                 else
@@ -305,7 +376,7 @@ namespace BIMCamel.UI
                     // cost — and it is what made this button look like a hang.
                     items = ItemCollector.SampleLeaves(doc, SampleCap, CollectTick);
                 }
-                if (items.Count == 0) { SetStatus("No geometry elements to scan."); return; }
+                if (items.Count == 0) { SetStatus("No geometry elements to scan."); return false; }
 
                 int cap = fromSelection ? Math.Max(items.Count, 50) : SampleCap;
                 _catParams = PropertyHarvester.ScanCategoryParams(items, cap);
@@ -313,26 +384,44 @@ namespace BIMCamel.UI
                 var cats = _catParams.Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase).ToList();
                 var allParams = _catParams.Values.SelectMany(v => v).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList();
 
-                // psets checklist
-                _cats.Clear(); foreach (var c in cats) _cats.Add(new CheckItem(c, true));
+                // Psets checklist — unticks survive a rescan by name. Rebuilding
+                // all-ticked meant every scan quietly reverted the user's pset
+                // filter: the same proposal-beats-decision bug as the roles.
+                var unticked = new HashSet<string>(_cats.Where(c => !c.Checked).Select(c => c.Name), StringComparer.OrdinalIgnoreCase);
+                _cats.Clear(); foreach (var c in cats) _cats.Add(new CheckItem(c, !unticked.Contains(c)));
 
                 // grid catalogs (categories + the property-name suggestion list)
                 ParamRow.SharedCategories.Clear(); ParamRow.SharedCategories.Add(AnyCat); foreach (var c in cats) ParamRow.SharedCategories.Add(c);
                 foreach (var row in _paramRows) row.Refresh();
 
+                // Capture the user's role choices BEFORE touching _roleCats:
+                // clearing that ItemsSource cascades SelectionChanged →
+                // PopulateParamCombo(keepText:false), which blanks par.Text — so
+                // reading "is this role blank?" AFTER the clear would see every
+                // role as blank and overwrite the very decisions the fill-blank
+                // guard exists to protect.
+                var priorType = (_catType.Text, _parType.Text);
+                var priorLevel = (_catLevel.Text, _parLevel.Text);
+                var priorMat = (_catMat.Text, _parMat.Text);
+                var priorCls = (_catCls.Text, _parCls.Text);
+
                 // role category combos
                 _roleCats.Clear(); _roleCats.Add(AnyCat); foreach (var c in cats) _roleCats.Add(c);
 
-                // auto-fill roles from a guess
+                // Auto-fill roles from a guess — but only the BLANK ones. The old
+                // behaviour overwrote whatever the user had chosen, which made
+                // re-scanning destructive; a proposal must never beat a decision.
+                _lastRolesFilled = _lastRolesKept = 0;
                 var g = PropertyHarvester.GuessRoles(_catParams);
-                ApplyRole(_catType, _parType, g.Type);
-                ApplyRole(_catLevel, _parLevel, g.Level);
-                ApplyRole(_catMat, _parMat, g.Material);
-                ApplyRole(_catCls, _parCls, g.Classification);
+                FillRole(_catType, _parType, priorType.Item1, priorType.Item2, g.Type);
+                FillRole(_catLevel, _parLevel, priorLevel.Item1, priorLevel.Item2, g.Level);
+                FillRole(_catMat, _parMat, priorMat.Item1, priorMat.Item2, g.Material);
+                FillRole(_catCls, _parCls, priorCls.Item1, priorCls.Item2, g.Classification);
 
-                SetStatus($"Scanned {cats.Count} categories / {allParams.Count} properties{(fromSelection ? " (selection)" : " (sampled)")} — roles auto-filled.");
+                SetStatus($"Scanned {cats.Count} categories / {allParams.Count} properties{(fromSelection ? " (selection)" : " (sampled)")} — {_lastRolesFilled} role(s) filled, {_lastRolesKept} kept.");
+                return true;
             }
-            catch (Exception ex) { SetStatus("Scan failed: " + ex.Message); }
+            catch (Exception ex) { SetStatus("Scan failed: " + ex.Message); return false; }
             finally { EndBusy(); }
         }
 
@@ -347,11 +436,26 @@ namespace BIMCamel.UI
             if (keepText) par.Text = prev;
         }
 
-        private void ApplyRole(ComboBox cat, ComboBox par, PropRef guess)
+        /// <summary>A role counts as "set" when its property was non-blank BEFORE
+        /// the scan mutated the combo sources; a set role is the user's decision
+        /// and survives every rescan. Prior values are passed in rather than read
+        /// from the combos because the _roleCats rebuild may already have blanked
+        /// them (see the capture above).</summary>
+        private void FillRole(ComboBox cat, ComboBox par, string priorCat, string priorPar, PropRef guess)
         {
+            if (!string.IsNullOrWhiteSpace(priorPar))
+            {
+                // Restore the choice on top of the refreshed suggestion lists.
+                cat.Text = priorCat ?? "";
+                PopulateParamCombo(par, cat.Text, keepText: false);
+                par.Text = priorPar;
+                _lastRolesKept++;
+                return;
+            }
             cat.Text = string.IsNullOrEmpty(guess.Category) ? "" : guess.Category;
             PopulateParamCombo(par, cat.Text, keepText: false);
             par.Text = guess.Name ?? "";
+            if (!string.IsNullOrWhiteSpace(par.Text)) _lastRolesFilled++;
         }
 
         private PropertyRoles BuildRoles() => new PropertyRoles
@@ -386,14 +490,51 @@ namespace BIMCamel.UI
             return rules;
         }
 
-        // ── set → class mapping ─────────────────────────────────────────────────
-        private void RefreshMapSets()
+        // ── sets (one refresh for every surface that shows them) ────────────────
+        /// <summary>
+        /// Re-reads the document's saved/search sets and updates the three places
+        /// they appear: the saved-set combo, the batch checklist and the mapping
+        /// dropdowns. Cheap (a document read, no tree walk), so it runs on load,
+        /// on scope change, when the Mapping tab opens, and at the start of Smart
+        /// setup — which is why no tab needs a Refresh button any more.
+        /// Batch ticks and the combo selection survive by name.
+        /// </summary>
+        private void RefreshSets()
         {
             var doc = NavApp.ActiveDocument;
-            _mapSets = doc != null ? ItemCollector.GetSelectionSets(doc) : new List<SelectionSet>();
-            MapRow.SharedSets.Clear();
-            foreach (var s in _mapSets) MapRow.SharedSets.Add(s.DisplayName ?? "(set)");
-            SetStatus(_mapSets.Count == 0 ? "No saved sets — create some in Navisworks first." : $"{_mapSets.Count} sets available for mapping.");
+            _sets = doc != null ? ItemCollector.GetSelectionSets(doc) : new List<SelectionSet>();
+
+            // saved-set combo, keeping the current pick if it still exists
+            string? prevPick = CmbSavedSet.SelectedItem as string;
+            CmbSavedSet.Items.Clear();
+            if (_sets.Count == 0) CmbSavedSet.Items.Add("(no saved sets in document)");
+            else foreach (var s in _sets) CmbSavedSet.Items.Add(s.DisplayName ?? "(set)");
+            int keep = prevPick == null ? -1 : CmbSavedSet.Items.IndexOf(prevPick);
+            CmbSavedSet.SelectedIndex = keep >= 0 ? keep : 0;
+
+            // batch checklist, keeping ticks by name
+            var ticked = new HashSet<string>(_batchItems.Where(b => b.Checked).Select(b => b.Name), StringComparer.Ordinal);
+            _batchItems.Clear();
+            foreach (var s in _sets)
+            {
+                string n = s.DisplayName ?? "(set)";
+                _batchItems.Add(new CheckItem(n, ticked.Contains(n)));
+            }
+
+            // Mapping dropdown catalog — synced IN PLACE, never Clear()ed. The
+            // grid's set column is a TwoWay SelectedItem binding; emptying the
+            // list even momentarily makes WPF push null into row.Set, i.e. a
+            // refresh would silently wipe loaded mapping rules. Names referenced
+            // by existing rules stay listed even when the document no longer has
+            // that set (matching how profile load has always behaved).
+            var wanted = new List<string>();
+            foreach (var s in _sets) wanted.Add(s.DisplayName ?? "(set)");
+            foreach (var r in _mapRows)
+                if (!string.IsNullOrWhiteSpace(r.Set) && !wanted.Contains(r.Set)) wanted.Add(r.Set);
+            for (int i = MapRow.SharedSets.Count - 1; i >= 0; i--)
+                if (!wanted.Contains(MapRow.SharedSets[i])) MapRow.SharedSets.RemoveAt(i);
+            foreach (var n in wanted)
+                if (!MapRow.SharedSets.Contains(n)) MapRow.SharedSets.Add(n);
         }
 
         /// <summary>
@@ -412,7 +553,7 @@ namespace BIMCamel.UI
                 var code = (row.Classification ?? "").Trim();
                 bool hasClass = cls.Length > 0 && TypeMapping.Catalog.ContainsKey(cls);
                 if (!hasClass && code.Length == 0) continue;
-                var set = _mapSets.FirstOrDefault(s => string.Equals(s.DisplayName, setName, StringComparison.Ordinal));
+                var set = _sets.FirstOrDefault(s => string.Equals(s.DisplayName, setName, StringComparison.Ordinal));
                 if (set == null) continue;
                 rules.Add(new ItemCollector.SetRule(set, hasClass ? TypeMapping.Encode(cls, row.Predefined) : "", code));
             }
@@ -460,8 +601,13 @@ namespace BIMCamel.UI
                 if (items.Count == 0) { SetStatus("No geometry elements in scope."); return; }
 
                 var maps = new ItemCollector.SetMaps();
-                if (setRules.Count > 0) { SetStatus("Resolving mapping sets…"); PumpUi(Dispatcher); maps = ItemCollector.BuildSetMaps(doc, setRules); }
+                // One ItemKey memo shared between rule resolution and the
+                // per-element lookups in the extractor — the same items get
+                // their key computed once instead of twice.
+                var keyCache = setRules.Count > 0 ? new Dictionary<ModelItem, string>() : null;
+                if (setRules.Count > 0) { SetStatus("Resolving mapping sets…"); PumpUi(Dispatcher); maps = ItemCollector.BuildSetMaps(doc, setRules, CollectTick, keyCache); }
                 var opts = BuildExtractOptions(maps);
+                opts.KeyCache = keyCache;
 
                 SetStatus("Computing model extents…"); PumpUi(Dispatcher);
                 var sm = ItemCollector.ScopeMinCorner(items, n => CollectTick(n));
@@ -493,8 +639,8 @@ namespace BIMCamel.UI
             CoordOptions coords, SpatialNames names, List<ItemCollector.SetRule> setRules, double weldTolMetres, int coordDecimals, long splitLimit)
         {
             var chosen = new List<SelectionSet>();
-            for (int i = 0; i < _batchItems.Count && i < _batchSets.Count; i++)
-                if (_batchItems[i].Checked) chosen.Add(_batchSets[i]);
+            for (int i = 0; i < _batchItems.Count && i < _sets.Count; i++)
+                if (_batchItems[i].Checked) chosen.Add(_sets[i]);
             if (chosen.Count == 0) { SetStatus("Tick at least one set to export (batch scope)."); return; }
 
             using var fbd = new WF.FolderBrowserDialog { Description = "Choose an output folder — one IFC per set" };
@@ -502,8 +648,10 @@ namespace BIMCamel.UI
             string folder = fbd.SelectedPath;
 
             var maps = new ItemCollector.SetMaps();
-            if (setRules.Count > 0) { SetStatus("Resolving mapping sets…"); PumpUi(Dispatcher); maps = ItemCollector.BuildSetMaps(doc, setRules); }
+            var keyCache = setRules.Count > 0 ? new Dictionary<ModelItem, string>() : null;
+            if (setRules.Count > 0) { SetStatus("Resolving mapping sets…"); PumpUi(Dispatcher); maps = ItemCollector.BuildSetMaps(doc, setRules, CollectTick, keyCache); }
             var opts = BuildExtractOptions(maps);
+            opts.KeyCache = keyCache;
 
             var scanSw = Stopwatch.StartNew();
             BeginBusyMarquee("Preparing batch…");
@@ -611,6 +759,10 @@ namespace BIMCamel.UI
 
         private List<ModelItem>? ResolveScope(Document doc, Action<int>? onProgress = null)
         {
+            // Reset here, not only inside the visible-only walks: scopes that
+            // include hidden items never touch the counter, and the pre-flight
+            // panel reads it right after this call.
+            ItemCollector.HiddenSkipped = 0;
             switch (ScopeIndex())
             {
                 case 1:
@@ -622,8 +774,25 @@ namespace BIMCamel.UI
                     catch (Exception sx) { SetStatus(sx.Message); WF.MessageBox.Show(sx.Message, "BIMCamel", WF.MessageBoxButtons.OK, WF.MessageBoxIcon.Information); return null; }
                 case 3:
                     int si = CmbSavedSet.SelectedIndex;
-                    if (_savedSets.Count == 0 || si < 0 || si >= _savedSets.Count) { SetStatus("Pick a saved set (Scope = Saved set)."); return null; }
-                    return ItemCollector.GetItemsFromSet(doc, _savedSets[si], onProgress);
+                    if (_sets.Count == 0 || si < 0 || si >= _sets.Count) { SetStatus("Pick a saved set (Scope = Saved set)."); return null; }
+                    return ItemCollector.GetItemsFromSet(doc, _sets[si], onProgress);
+                case 4:
+                {
+                    // The union of the ticked batch sets. Export never reaches
+                    // this (RunBatchExport iterates per set), but PREVIEW does —
+                    // and it used to fall through to whole-model, so the numbers
+                    // said "Multiple sets (batch)" while measuring everything.
+                    var chosen = new List<SelectionSet>();
+                    for (int i = 0; i < _batchItems.Count && i < _sets.Count; i++)
+                        if (_batchItems[i].Checked) chosen.Add(_sets[i]);
+                    if (chosen.Count == 0) { SetStatus("Tick at least one set (batch scope)."); return null; }
+                    var union = new List<ModelItem>();
+                    var seenItems = new HashSet<ModelItem>();   // value-equal across walks
+                    foreach (var set in chosen)
+                        foreach (var it in ItemCollector.GetItemsFromSet(doc, set, onProgress))
+                            if (seenItems.Add(it)) union.Add(it);
+                    return union;
+                }
                 default:
                     return ItemCollector.GetVisibleLeafItemsWithGeometry(doc, onProgress);
             }
@@ -650,6 +819,10 @@ namespace BIMCamel.UI
         private void BeginBusy(int max)
         {
             BtnExport.IsEnabled = false; Tabs.IsEnabled = false;
+            // Title-bar buttons sit outside Tabs; the UI pumps messages during
+            // export, so they must be locked too or a profile load could mutate
+            // settings mid-export.
+            BtnSaveProfile.IsEnabled = BtnLoadProfile.IsEnabled = false;
             Progress.Visibility = Visibility.Visible; Progress.IsIndeterminate = false;
             Progress.Minimum = 0; Progress.Maximum = Math.Max(1, max); Progress.Value = 0;
             _tickClock.Restart(); _lastTickMs = 0; Mouse.OverrideCursor = Cursors.Wait;
@@ -673,6 +846,7 @@ namespace BIMCamel.UI
         private void BeginBusyMarquee(string status)
         {
             BtnExport.IsEnabled = false; Tabs.IsEnabled = false;
+            BtnSaveProfile.IsEnabled = BtnLoadProfile.IsEnabled = false;
             Progress.Visibility = Visibility.Visible; Progress.IsIndeterminate = true;
             _tickClock.Restart(); _lastTickMs = 0;
             Mouse.OverrideCursor = Cursors.Wait; SetStatus(status); PumpUi(Dispatcher);
@@ -682,10 +856,17 @@ namespace BIMCamel.UI
             Progress.IsIndeterminate = false; Progress.Minimum = 0; Progress.Maximum = Math.Max(1, max); Progress.Value = 0;
             _tickClock.Restart(); _lastTickMs = 0;
         }
+        // True while Smart setup chains several self-bracketing steps: their
+        // interim EndBusy calls become no-ops so the UI stays locked for the
+        // whole run, and only the chain's own finally really releases it.
+        private bool _busyChain;
+
         private void EndBusy()
         {
+            if (_busyChain) return;
             Mouse.OverrideCursor = null; Progress.Visibility = Visibility.Collapsed; Progress.IsIndeterminate = false;
             BtnExport.IsEnabled = true; Tabs.IsEnabled = true;
+            BtnSaveProfile.IsEnabled = BtnLoadProfile.IsEnabled = true;
         }
 
         // Flush the WPF dispatcher (layout/render) then pump the host Win32 loop, so the hosted UI
@@ -702,18 +883,19 @@ namespace BIMCamel.UI
         /// ("Walls" → Wall, "Doors" → Door…). Only fills rows that have no class yet, and never
         /// silently replaces a decision the user already made — the result is a proposal to
         /// review, which is why it reports how many rows still need attention.
+        /// Runs from Smart setup; returns its counts for the summary.
         /// </summary>
-        private void AutoMapSets()
+        private (int added, int filled, int unmatched) AutoMapSets()
         {
-            if (_mapSets.Count == 0) RefreshMapSets();
-            if (_mapSets.Count == 0) { SetStatus("No saved sets — create some in Navisworks first."); return; }
+            if (_sets.Count == 0) RefreshSets();
+            if (_sets.Count == 0) { SetStatus("No saved sets — create some in Navisworks first."); return (0, 0, 0); }
 
             // Index existing rows by set so a second run tops up rather than duplicating.
             var existing = new Dictionary<string, MapRow>(StringComparer.Ordinal);
             foreach (var r in _mapRows) if (!string.IsNullOrWhiteSpace(r.Set) && !existing.ContainsKey(r.Set)) existing[r.Set] = r;
 
             int filled = 0, added = 0, unmatched = 0;
-            foreach (var set in _mapSets)
+            foreach (var set in _sets)
             {
                 string name = set.DisplayName ?? "";
                 if (name.Length == 0) continue;
@@ -732,6 +914,7 @@ namespace BIMCamel.UI
             }
 
             SetStatus($"Auto-map: {added} rule(s) added, {filled} filled in, {unmatched} set(s) had no obvious class — review before exporting.");
+            return (added, filled, unmatched);
         }
 
         /// <summary>
@@ -740,26 +923,30 @@ namespace BIMCamel.UI
         /// much of the semantics is actually present. Everything here already existed — it was
         /// just never run until after the files were on disk.
         /// </summary>
-        private void PreviewMapping()
+        private string? PreviewMapping()
         {
             var doc = NavApp.ActiveDocument;
-            if (doc == null || doc.Models.Count == 0) { TxtPreview.Text = "Open a model first."; return; }
+            if (doc == null || doc.Models.Count == 0) { TxtPreview.Text = "Open a model first."; return null; }
             try
             {
                 BeginBusyMarquee("Previewing mapping…");
                 var schema = CmbSchema.SelectedIndex == 1 ? IfcSchema.Ifc2x3 : IfcSchema.Ifc4;
                 var items = ResolveScope(doc, CollectTick);
-                if (items == null) { TxtPreview.Text = "Pick a scope first."; return; }
+                if (items == null) { TxtPreview.Text = "Pick a scope first."; return null; }
 
                 var rules = BuildSetRules();
                 SetStatus("Resolving mapping sets…"); PumpUi(Dispatcher);
-                var maps = rules.Count > 0 ? ItemCollector.BuildSetMaps(doc, rules) : new ItemCollector.SetMaps();
+                var keyCache = rules.Count > 0 ? new Dictionary<ModelItem, string>() : null;
+                var maps = rules.Count > 0 ? ItemCollector.BuildSetMaps(doc, rules, CollectTick, keyCache) : new ItemCollector.SetMaps();
 
-                int mapped = 0, unmapped = 0, degraded = 0, classified = 0;
+                int mapped = 0, unmapped = 0, degraded = 0, classified = 0, walked = 0;
                 var byClass = new Dictionary<string, int>(StringComparer.Ordinal);
                 foreach (var it in items)
                 {
-                    string key = ItemCollector.ItemKey(it);
+                    // ItemKey is an O(tree-depth) COM walk for GUID-less items;
+                    // tick so the UI pumps through large scopes.
+                    if ((++walked & 511) == 0) CollectTick(walked);
+                    string key = ItemCollector.ItemKey(it, keyCache);
                     if (maps.Classification.ContainsKey(key)) classified++;
                     if (maps.Class.TryGetValue(key, out var ck))
                     {
@@ -771,6 +958,15 @@ namespace BIMCamel.UI
                     }
                     else unmapped++;
                 }
+
+                var facts = new PreflightFacts
+                {
+                    When = DateTime.Now, ScopeLabel = ScopeLabel(), Fingerprint = PreflightFingerprint(),
+                    Items = items.Count, Mapped = mapped, Unmapped = unmapped, Degraded = degraded,
+                    Classified = classified, Rules = rules.Count,
+                    ByClass = new Dictionary<string, int>(byClass, StringComparer.Ordinal),
+                    HiddenExcluded = ItemCollector.HiddenSkipped,
+                };
 
                 var sb = new StringBuilder();
                 sb.AppendLine($"Scope       : {ScopeLabel()}   {items.Count:N0} items");
@@ -798,16 +994,21 @@ namespace BIMCamel.UI
 
                 sb.AppendLine();
                 sb.AppendLine($"Classified  : {classified:N0} by set rule" + (classified == 0 ? "  (add codes in the Classification column)" : ""));
-                sb.Append(RoleCoverage(items));
-                sb.Append(GeometryEstimate(items));
+                sb.Append(RoleCoverage(items, facts));
+                sb.Append(GeometryEstimate(items, facts, CollectTick));
 
                 TxtPreview.Text = sb.ToString().Replace("\n", Environment.NewLine);
                 SetStatus($"Preview: {mapped:N0} mapped, {proxy:N0} proxy of {items.Count:N0} items.");
+                _preflight = facts;
+                RenderPreflight();
+                double pct = items.Count > 0 ? 100.0 * mapped / items.Count : 0;
+                return $"Preview        : {mapped:N0} of {items.Count:N0} elements map ({pct:0.#}%), {proxy:N0} proxy — details on the Mapping tab";
             }
             catch (Exception ex)
             {
                 TxtPreview.Text = "Preview failed: " + ex.Message;
                 SetStatus("Preview failed: " + ex.Message);
+                return null;
             }
             finally { EndBusy(); }
         }
@@ -817,13 +1018,17 @@ namespace BIMCamel.UI
         /// reading every property on a 500k-element model just to preview would cost as much as
         /// the export itself.
         /// </summary>
-        private string RoleCoverage(List<ModelItem> items)
+        private string RoleCoverage(List<ModelItem> items, PreflightFacts? facts = null)
         {
             var roles = BuildRoles();
             if (!roles.Any || items.Count == 0) return "";
             const int MaxSample = 500;
             int step = items.Count > MaxSample ? items.Count / MaxSample : 1;
             int n = 0, type = 0, level = 0, mat = 0, cls = 0;
+            // Distinct level VALUES, not just presence: a wrong Level role often
+            // still "has a value" on every element — one bogus storey. The count
+            // of distinct storeys is the number that exposes it instantly.
+            var levels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < items.Count; i += step)
             {
                 try
@@ -831,11 +1036,19 @@ namespace BIMCamel.UI
                     var rv = PropertyHarvester.ReadRoles(items[i], roles);
                     n++;
                     if (!string.IsNullOrWhiteSpace(rv.Type)) type++;
-                    if (!string.IsNullOrWhiteSpace(rv.Level)) level++;
+                    if (!string.IsNullOrWhiteSpace(rv.Level)) { level++; levels.Add(rv.Level.Trim()); }
                     if (!string.IsNullOrWhiteSpace(rv.Material)) mat++;
                     if (!string.IsNullOrWhiteSpace(rv.Classification)) cls++;
                 }
                 catch { }
+            }
+            if (facts != null && n > 0)
+            {
+                facts.RoleSample = n; facts.SamplePartial = step > 1;
+                facts.TypePct = 100 * type / n; facts.LevelPct = 100 * level / n;
+                facts.MatPct = 100 * mat / n; facts.ClsPct = 100 * cls / n;
+                facts.DistinctLevels = levels.Count;
+                facts.RolesConfigured = true;
             }
             if (n == 0) return "";
             string Pct(int v) => $"{100.0 * v / n:0}%";
@@ -854,11 +1067,12 @@ namespace BIMCamel.UI
         /// they do NOT walk the triangles, which is the part that dominates a real export — so the
         /// estimate is nearly free even on a very large model.
         /// </summary>
-        private static string GeometryEstimate(List<ModelItem> items)
+        private static string GeometryEstimate(List<ModelItem> items, PreflightFacts? facts = null, Action<int>? tick = null)
         {
-            long prims = 0, frags = 0; int counted = 0;
+            long prims = 0, frags = 0; int counted = 0, seen = 0;
             foreach (var it in items)
             {
+                if ((++seen & 1023) == 0) tick?.Invoke(seen);
                 try
                 {
                     var g = it.Geometry;
@@ -867,11 +1081,215 @@ namespace BIMCamel.UI
                 }
                 catch { }
             }
+            if (facts != null) { facts.Prims = prims; facts.Frags = frags; }
             if (counted == 0) return "";
             var sb = new StringBuilder();
             sb.AppendLine();
             sb.AppendLine($"Geometry     : {prims:N0} primitives across {frags:N0} fragments ({counted:N0} items)");
             return sb.ToString();
+        }
+
+        // ── pre-flight panel ──────────────────────────────────────────────────────
+        /// <summary>
+        /// What the last mapping preview learned, kept for the pre-flight rows.
+        /// Fingerprint records the settings the numbers were computed under, so
+        /// the panel can say "settings changed since" instead of quietly showing
+        /// counts that no longer describe the export the button would run.
+        /// </summary>
+        private sealed class PreflightFacts
+        {
+            public DateTime When;
+            public string ScopeLabel = "";
+            public string Fingerprint = "";
+            public int Items, Mapped, Unmapped, Degraded, Classified, Rules;
+            public bool RolesConfigured;
+            public int RoleSample, TypePct, LevelPct, MatPct, ClsPct, DistinctLevels;
+            public bool SamplePartial;
+            public long Prims, Frags;
+            public int HiddenExcluded;
+            /// <summary>Per-friendly-class rule-match counts, so the 2x3
+            /// degradation can be RE-derived against the schema selected NOW —
+            /// baking it at preview time made the row lie after a schema flip.</summary>
+            public Dictionary<string, int>? ByClass;
+        }
+        private PreflightFacts? _preflight;
+
+        /// <summary>Everything the preview numbers depend on. Changing any of it
+        /// makes the stored facts a description of a different export.</summary>
+        private string PreflightFingerprint() =>
+            ScopeIndex() + "|" + CmbSavedSet.SelectedIndex + "|" +
+            string.Join(",", _batchItems.Where(b => b.Checked).Select(b => b.Name)) + "|" +
+            GridToText() + "|" + RolesToText();
+
+        private void RenderPreflight()
+        {
+            PreflightHost.Children.Clear();
+            var doc = NavApp.ActiveDocument;
+            bool schema2x3 = CmbSchema.SelectedIndex == 1;
+            var f = _preflight;
+            bool stale = f != null && f.Fingerprint != PreflightFingerprint();
+
+            LblPreflightWhen.Text = f == null
+                ? "Checks that need a scan fill in after ✨ Smart setup (above) or 🔍 Preview (Mapping tab)."
+                : $"Scanned {f.When:HH:mm} · {f.ScopeLabel}" + (stale ? "  —  ⚠ settings changed since; re-run Smart setup or Preview" : "");
+
+            Brush ok = (Brush)FindResource("Ok"), warn = (Brush)FindResource("AmberTx"),
+                  info = (Brush)FindResource("Muted"), dim = (Brush)FindResource("Faint");
+            string tail = stale ? "  (before the change)" : "";
+
+            // ── scan-dependent rows ─────────────────────────────────────────
+            int degradedLive = 0;
+            if (f == null)
+            {
+                PreflightRow(dim, "Mapping · storeys · roles · geometry — pending a scan");
+            }
+            else
+            {
+                // A green tick that can be stale is worse than no panel: stale
+                // scan rows drop to neutral so only CURRENT facts show green.
+                Brush okNow = stale ? info : ok;
+
+                string hidden = f.HiddenExcluded > 0 ? $" · {f.HiddenExcluded:N0} hidden subtree(s) excluded" : "";
+                PreflightRow(okNow, $"Scope — {f.Items:N0} elements collected{hidden}{tail}");
+
+                // Re-derive the IFC2x3 degradation against the schema selected
+                // NOW — the preview-time value describes a different export the
+                // moment the schema combo changes.
+                if (schema2x3 && f.ByClass != null)
+                    foreach (var kv in f.ByClass)
+                        if (TypeMapping.Catalog.TryGetValue(kv.Key, out var c) && c.Ifc2x3.Length == 0) degradedLive += kv.Value;
+                int proxyLive = f.Unmapped + degradedLive;
+                double unmappedPct = f.Items > 0 ? 100.0 * f.Unmapped / f.Items : 0;
+
+                if (f.Rules == 0)
+                    // Zero rules is a deliberate geometry-only hand-off, not a
+                    // defect — neutral, never amber.
+                    PreflightRow(info, "Mapping — no rules: every element exports as IfcBuildingElementProxy (fine for a geometry hand-off)", "→ Mapping");
+                else if (unmappedPct > 20)
+                    PreflightRow(warn, $"Mapping — {f.Mapped:N0} matched a rule · {f.Unmapped:N0} did not ({unmappedPct:0.#}%) and export as proxy{tail}", "→ Mapping");
+                else
+                    PreflightRow(okNow, $"Mapping — {f.Mapped:N0} matched a rule · {proxyLive:N0} will export as proxy{tail}");
+
+                if (f.RolesConfigured && f.RoleSample > 0)
+                {
+                    string samp = f.SamplePartial ? $"sample {f.RoleSample} of {f.Items:N0}" : $"all {f.RoleSample}";
+                    string storeys = f.SamplePartial ? $"≥ {f.DistinctLevels}" : f.DistinctLevels.ToString();
+                    if (f.LevelPct < 60 || f.DistinctLevels <= 1)
+                        PreflightRow(warn, $"Storeys — ≈{f.LevelPct}% of elements have a level · {storeys} distinct store{(f.DistinctLevels == 1 ? "y — check the Level role" : "ys")} ({samp}){tail}", "→ Data (Level role)");
+                    else if (f.LevelPct < 90)
+                        PreflightRow(info, $"Storeys — ≈{f.LevelPct}% have a level · {storeys} distinct storeys ({samp}){tail}");
+                    else
+                        PreflightRow(okNow, $"Storeys — ≈{f.LevelPct}% have a level · {storeys} distinct storeys ({samp}){tail}");
+                    PreflightRow(info, $"Roles — Type ≈{f.TypePct}% · Material ≈{f.MatPct}% · Classification ≈{f.ClsPct}% ({samp}){tail}");
+                }
+                else
+                {
+                    PreflightRow(info, "Storeys & roles — no roles set: single fallback storey, no types/materials from properties", "→ Data");
+                }
+
+                if (schema2x3 && degradedLive > 0)
+                    PreflightRow(warn, $"Schema — IFC2x3: {degradedLive:N0} rule-matched element(s) use classes IFC2x3 cannot represent → they fall to proxy. Export IFC4 to keep them.");
+
+                PreflightRow(info, $"Geometry — {f.Prims:N0} primitives · instancing {(ChkInstancing.IsChecked == true ? "on" : "off")}{tail}");
+            }
+
+            // ── instant rows (always live, no scan needed) ──────────────────
+            // Severity rule: unset is NORMAL (grey) — a local-grid project has
+            // no CRS and that is not a defect. Amber is reserved for
+            // CONTRADICTIONS: data that will silently not be written.
+            var coords = BuildCoords();
+            if (ChkGeoref.IsChecked != true && coords.HasGeorefData)
+                PreflightRow(warn, "Georeferencing — CRS/survey point filled in, but writing is OFF: nothing will be written", "→ Coordinates");
+            else if (ChkGeoref.IsChecked != true)
+                PreflightRow(info, "Georeferencing — off (placement still carries the world position)");
+            else if (schema2x3 && coords.HasGeorefData)
+                PreflightRow(warn, "Georeferencing — configured, but IfcMapConversion does not exist in IFC2x3: it will not be written. Export IFC4 to keep it.", "→ Coordinates");
+            else if (!coords.HasGeorefData)
+                PreflightRow(info, "Georeferencing — on, but no CRS or survey point set: nothing to write (fine on a local grid)", "→ Coordinates");
+            else
+                PreflightRow(ok, $"Georeferencing — IfcMapConversion · {(string.IsNullOrWhiteSpace(coords.CrsName) ? "local CRS" : coords.CrsName)}");
+
+            // Cheap contradictions a coordinator would want caught before, not
+            // after, a 40-minute export:
+            if (ChkProps.IsChecked == true && _cats.Count > 0 && _cats.All(c => !c.Checked))
+                PreflightRow(warn, "Properties — export is ON but every property set is unticked: no properties will be written", "→ Data");
+            if (ScopeIndex() == 4)
+            {
+                var ticked = new List<string>();
+                for (int i = 0; i < _batchItems.Count && i < _sets.Count; i++)
+                    if (_batchItems[i].Checked) ticked.Add(Sanitize(_batchItems[i].Name));
+                if (ticked.Count == 0)
+                    PreflightRow(warn, "Batch — no sets ticked: nothing would export");
+                else if (ticked.Distinct(StringComparer.OrdinalIgnoreCase).Count() < ticked.Count)
+                    PreflightRow(warn, "Batch — two ticked sets sanitise to the same file name: one IFC would overwrite the other. Rename a set in Navisworks.");
+            }
+            var dupNames = new HashSet<string>(
+                _sets.GroupBy(x => x.DisplayName ?? "").Where(g => g.Key.Length > 0 && g.Count() > 1).Select(g => g.Key),
+                StringComparer.Ordinal);
+            if (dupNames.Count > 0 && _mapRows.Any(r => r.Set != null && dupNames.Contains(r.Set)))
+                PreflightRow(warn, "Mapping — a rule references a set NAME that exists more than once in this document; rules bind to the first. Rename the duplicate in Navisworks.", "→ Mapping");
+
+            if (doc != null && doc.Models.Count > 0)
+            {
+                try
+                {
+                    (double _, string unitName) = ResolveUnits(doc);
+                    var models = ModelSurvey.Survey(doc);
+                    bool sameOrigin = true, sameUnits = true;
+                    for (int i = 1; i < models.Count; i++)
+                    {
+                        if (Math.Abs(models[i].Ox - models[0].Ox) > 1e-6 ||
+                            Math.Abs(models[i].Oy - models[0].Oy) > 1e-6 ||
+                            Math.Abs(models[i].Oz - models[0].Oz) > 1e-6) sameOrigin = false;
+                        if (!string.Equals(models[i].Units, models[0].Units, StringComparison.Ordinal)) sameUnits = false;
+                    }
+                    if (models.Count > 1 && !sameUnits)
+                        // One unitScale is applied to EVERY model at export
+                        // (ResolveUnits) — mixed declared units means at least
+                        // one discipline exports at the wrong size.
+                        PreflightRow(warn, $"Federation — {models.Count} models with MIXED declared units; one scale ({unitName}) is applied to all", "→ Coordinates (origins report)");
+                    else if (models.Count > 1 && !sameOrigin)
+                        // Different origins are how correct federation positions
+                        // disciplines — informational, not a warning.
+                        PreflightRow(info, $"Federation — {models.Count} models, differing origins (normal) · units {unitName}", "→ Coordinates (origins report)");
+                    else
+                        PreflightRow(ok, models.Count > 1
+                            ? $"Federation — {models.Count} models agree on origin and units · {unitName}"
+                            : $"Units — {unitName}");
+                }
+                catch { PreflightRow(info, "Federation — could not read model metadata"); }
+            }
+            else
+            {
+                PreflightRow(dim, "No model open");
+            }
+
+            // Exactly one Schema row: the degraded warning above replaces it
+            // only when it actually fired — judged by the LIVE derivation, the
+            // same one the warning itself uses.
+            if (!(schema2x3 && degradedLive > 0))
+                PreflightRow(info, schema2x3
+                    ? "Schema — IFC2x3 (no georeferencing entity; some classes unavailable — IFC4 recommended unless the receiver requires 2x3)"
+                    : "Schema — IFC4");
+        }
+
+        /// <summary>One ✓/⚠ row: coloured dot, wrapping text, optional go-fix-it pointer.</summary>
+        private void PreflightRow(Brush tone, string text, string? jump = null)
+        {
+            var grid = new Grid { Margin = new Thickness(0, 2, 0, 2) };
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition());
+            var dot = new TextBlock { Text = "●", FontSize = 9, Foreground = tone, Margin = new Thickness(0, 3, 7, 0), VerticalAlignment = VerticalAlignment.Top };
+            var body = new TextBlock { FontSize = 11.5, TextWrapping = TextWrapping.Wrap, Foreground = (Brush)FindResource("Text"), LineHeight = 15 };
+            body.Inlines.Add(text);
+            if (jump != null)
+            {
+                body.Inlines.Add("  ");
+                body.Inlines.Add(new System.Windows.Documents.Run(jump) { Foreground = (Brush)FindResource("Accent") });
+            }
+            Grid.SetColumn(dot, 0); Grid.SetColumn(body, 1);
+            grid.Children.Add(dot); grid.Children.Add(body);
+            PreflightHost.Children.Add(grid);
         }
 
         // ── base point preview ────────────────────────────────────────────────────
@@ -1169,25 +1587,6 @@ namespace BIMCamel.UI
                     TargetName = f.Length > 3 ? f[3].Trim() : ""
                 });
             }
-        }
-
-        // ── sets ─────────────────────────────────────────────────────────────────
-        private void PopulateBatchSets()
-        {
-            var doc = NavApp.ActiveDocument;
-            _batchSets = doc != null ? ItemCollector.GetSelectionSets(doc) : new List<SelectionSet>();
-            _batchItems.Clear();
-            foreach (var s in _batchSets) _batchItems.Add(new CheckItem(s.DisplayName ?? "(set)", false));
-            SetStatus(_batchSets.Count == 0 ? "No saved/search sets — create some in Navisworks first." : $"{_batchSets.Count} sets available — tick the ones to export.");
-        }
-        private void PopulateSets()
-        {
-            var doc = NavApp.ActiveDocument;
-            _savedSets = doc != null ? ItemCollector.GetSelectionSets(doc) : new List<SelectionSet>();
-            CmbSavedSet.Items.Clear();
-            if (_savedSets.Count == 0) CmbSavedSet.Items.Add("(no saved sets in document)");
-            else foreach (var s in _savedSets) CmbSavedSet.Items.Add(s.DisplayName ?? "(set)");
-            CmbSavedSet.SelectedIndex = 0;
         }
 
         // ── small helpers ──────────────────────────────────────────────────────────

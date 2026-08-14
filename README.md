@@ -30,7 +30,7 @@ export — BIMCamel fills that gap without the slowness and setup friction of th
 - **Property sets** — category-qualified, typed values, with content **dedup** (identical psets
   shared) and optional parameter renaming/relocation to standard Psets.
 - **Object → IFC class mapping** — assign Navisworks sets to IFC classes (with optional
-  PredefinedType); **auto-map** proposes classes from set names; unmapped elements stay
+  PredefinedType); **Smart setup** proposes classes from set names; unmapped elements stay
   `IfcBuildingElementProxy` — and the report tells you **how many**, which is the number that
   matters. A Navisworks search set is already an IF/THEN rule, so the same grid also assigns
   **classification codes**: build "Category = Walls AND Name contains External" in Find Items,
