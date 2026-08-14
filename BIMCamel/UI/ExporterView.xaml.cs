@@ -273,7 +273,7 @@ namespace BIMCamel.UI
         // ── button handlers ───────────────────────────────────────────────────────
         private void OnBatchAll(object s, RoutedEventArgs e) { foreach (var c in _batchItems) c.Checked = true; }
         private void OnBatchNone(object s, RoutedEventArgs e) { foreach (var c in _batchItems) c.Checked = false; }
-        private void OnScanSelection(object s, RoutedEventArgs e) => ScanModel(true);
+        private void OnScanSelection(object s, RoutedEventArgs e) { _cancelRequested = false; ScanSelection(); }
         private void OnCatsAll(object s, RoutedEventArgs e) { foreach (var c in _cats) c.Checked = true; }
         private void OnCatsNone(object s, RoutedEventArgs e) { foreach (var c in _cats) c.Checked = false; }
         private void OnParamAdd(object s, RoutedEventArgs e) => _paramRows.Add(new ParamRow { SourceCategory = AnyCat });
@@ -281,7 +281,13 @@ namespace BIMCamel.UI
         private void OnMapAdd(object s, RoutedEventArgs e) => _mapRows.Add(new MapRow());
         private void OnMapRemove(object s, RoutedEventArgs e) { if (GridMap.SelectedItem is MapRow r) _mapRows.Remove(r); }
         private void OnMapClear(object s, RoutedEventArgs e) => _mapRows.Clear();
-        private void OnPreviewMapping(object s, RoutedEventArgs e) => PreviewMapping();
+        private void OnPreviewMapping(object s, RoutedEventArgs e)
+        {
+            _cancelRequested = false;
+            try { PreviewMapping(); }
+            catch (OperationCanceledException) { SetStatus("Preview stopped."); }
+            finally { EndBusy(); }
+        }
         private void OnFederationReport(object s, RoutedEventArgs e)
         {
             var doc = NavApp.ActiveDocument;
@@ -301,6 +307,12 @@ namespace BIMCamel.UI
         /// Nothing the user typed is ever overwritten: roles fill only when blank,
         /// auto-map only fills empty rules, and the pset ticks reset only when the
         /// scan discovers a different pset list (same as any rescan).
+        ///
+        /// It reads the EXPORT SCOPE, once. The first version sampled the whole
+        /// document for properties and then let the preview walk the scope
+        /// separately: two traversals, the first of them describing elements the
+        /// export was never going to touch — so picking "Current selection" and
+        /// running Smart setup still cost a full-model walk.
         /// </summary>
         private void OnSmartSetup(object sender, RoutedEventArgs e)
         {
@@ -312,15 +324,24 @@ namespace BIMCamel.UI
             // during the previous step straight into a half-configured pane
             // (including a second Smart setup, or Export). _busyChain makes the
             // interim releases no-ops; only the finally below really releases.
+            _cancelRequested = false;
             _busyChain = true;
-            BeginBusyMarquee("Smart setup — scanning…");
+            BeginBusyMarquee("Smart setup — collecting scope…", cancelable: true);
             try
             {
                 var sb = new StringBuilder();
                 RefreshSets();
                 sb.AppendLine($"Sets found     : {_sets.Count}");
 
-                if (!ScanModel(false)) { TxtSmartSummary.Text = "No geometry elements found to scan."; return; }
+                // Resolved ONCE, then handed to both the property scan and the
+                // preview. This is the whole cost of Smart setup on a large
+                // model, so doing it twice was doubling the wait.
+                var items = ResolveScope(doc, CollectTick);
+                if (items == null) { TxtSmartSummary.Text = "Smart setup needs a usable scope — see the message below the progress bar."; return; }
+                if (items.Count == 0) { TxtSmartSummary.Text = "No geometry elements in this scope."; SetStatus("No geometry elements in scope."); return; }
+                sb.AppendLine($"Scope          : {ScopeLabel()} — {items.Count:N0} element(s)");
+
+                if (!ScanFrom(items, "scope")) { TxtSmartSummary.Text = "Property scan found nothing to read."; return; }
                 sb.AppendLine($"Property sets  : {_cats.Count} discovered (Data tab)");
                 sb.AppendLine($"Semantic roles : {_lastRolesFilled} filled, {_lastRolesKept} kept as you set them");
 
@@ -330,12 +351,20 @@ namespace BIMCamel.UI
                 // A failed preview must not read as success: say so in the
                 // summary, and keep whatever error the step left in the status
                 // line instead of overwriting it with "complete".
-                var digest = PreviewMapping();
+                var digest = PreviewMapping(items);
                 sb.AppendLine(digest ?? "Preview        : did not run — open the Mapping tab for the reason");
 
                 sb.Append("Review the ✨ AUTO sections on Data and Mapping, then Export.");
                 TxtSmartSummary.Text = sb.ToString().Replace("\n", Environment.NewLine);
                 if (digest != null) SetStatus("Smart setup complete — review, then Export IFC.");
+            }
+            catch (OperationCanceledException)
+            {
+                // Partial work is kept on purpose: the roles and rules it managed
+                // to fill are still proposals the user can accept, and throwing
+                // them away would make Stop cost more than waiting.
+                TxtSmartSummary.Text = "Smart setup stopped. Anything it had already filled in is kept — run it again to finish.";
+                SetStatus("Smart setup stopped.");
             }
             catch (Exception ex)
             {
@@ -350,7 +379,16 @@ namespace BIMCamel.UI
         // How the last scan's role auto-fill landed, for the Smart-setup summary.
         private int _lastRolesFilled, _lastRolesKept;
 
-        private bool ScanModel(bool fromSelection)
+        /// <summary>The property scan never looks past this many items, so anything
+        /// bigger is sampled rather than read in full.</summary>
+        private const int SampleCap = 1000;
+
+        /// <summary>
+        /// "Scan selection instead" — deliberately independent of the export scope,
+        /// for the case where the elements carrying the properties you care about
+        /// are not the ones you are exporting.
+        /// </summary>
+        private bool ScanSelection()
         {
             var doc = NavApp.ActiveDocument;
             if (doc == null || doc.Models.Count == 0) { SetStatus("Open a model first."); return false; }
@@ -358,71 +396,88 @@ namespace BIMCamel.UI
             // The busy indicator has to come up BEFORE the tree walk, not after it. Collecting is
             // the slow part, and starting the marquee afterwards meant the UI sat frozen for the
             // whole walk with no sign anything was happening.
-            BeginBusyMarquee("Scanning properties…");
+            BeginBusyMarquee("Scanning properties…", cancelable: true);
             try
             {
-                const int SampleCap = 1000;   // ScanCategoryParams stops here anyway
-                List<ModelItem> items;
-                if (fromSelection)
-                {
-                    var sel = doc.CurrentSelection.SelectedItems;
-                    if (sel == null || sel.Count == 0) { SetStatus("Select elements in Navisworks, then Scan selection."); return false; }
-                    items = ItemCollector.ResolveLeaves(sel, CollectTick);
-                }
-                else
-                {
-                    // Bounded sample rather than a full tree walk. The scan never looks past
-                    // SampleCap items, so walking a 500k-node federation to feed it was pure
-                    // cost — and it is what made this button look like a hang.
-                    items = ItemCollector.SampleLeaves(doc, SampleCap, CollectTick);
-                }
+                var sel = doc.CurrentSelection.SelectedItems;
+                if (sel == null || sel.Count == 0) { SetStatus("Select elements in Navisworks, then Scan selection."); return false; }
+                var items = ItemCollector.ResolveLeaves(sel, CollectTick);
                 if (items.Count == 0) { SetStatus("No geometry elements to scan."); return false; }
-
-                int cap = fromSelection ? Math.Max(items.Count, 50) : SampleCap;
-                _catParams = PropertyHarvester.ScanCategoryParams(items, cap);
-
-                var cats = _catParams.Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase).ToList();
-                var allParams = _catParams.Values.SelectMany(v => v).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList();
-
-                // Psets checklist — unticks survive a rescan by name. Rebuilding
-                // all-ticked meant every scan quietly reverted the user's pset
-                // filter: the same proposal-beats-decision bug as the roles.
-                var unticked = new HashSet<string>(_cats.Where(c => !c.Checked).Select(c => c.Name), StringComparer.OrdinalIgnoreCase);
-                _cats.Clear(); foreach (var c in cats) _cats.Add(new CheckItem(c, !unticked.Contains(c)));
-
-                // grid catalogs (categories + the property-name suggestion list)
-                ParamRow.SharedCategories.Clear(); ParamRow.SharedCategories.Add(AnyCat); foreach (var c in cats) ParamRow.SharedCategories.Add(c);
-                foreach (var row in _paramRows) row.Refresh();
-
-                // Capture the user's role choices BEFORE touching _roleCats:
-                // clearing that ItemsSource cascades SelectionChanged →
-                // PopulateParamCombo(keepText:false), which blanks par.Text — so
-                // reading "is this role blank?" AFTER the clear would see every
-                // role as blank and overwrite the very decisions the fill-blank
-                // guard exists to protect.
-                var priorType = (_catType.Text, _parType.Text);
-                var priorLevel = (_catLevel.Text, _parLevel.Text);
-                var priorMat = (_catMat.Text, _parMat.Text);
-                var priorCls = (_catCls.Text, _parCls.Text);
-
-                // role category combos
-                _roleCats.Clear(); _roleCats.Add(AnyCat); foreach (var c in cats) _roleCats.Add(c);
-
-                // Auto-fill roles from a guess — but only the BLANK ones. The old
-                // behaviour overwrote whatever the user had chosen, which made
-                // re-scanning destructive; a proposal must never beat a decision.
-                _lastRolesFilled = _lastRolesKept = 0;
-                var g = PropertyHarvester.GuessRoles(_catParams);
-                FillRole(_catType, _parType, priorType.Item1, priorType.Item2, g.Type);
-                FillRole(_catLevel, _parLevel, priorLevel.Item1, priorLevel.Item2, g.Level);
-                FillRole(_catMat, _parMat, priorMat.Item1, priorMat.Item2, g.Material);
-                FillRole(_catCls, _parCls, priorCls.Item1, priorCls.Item2, g.Classification);
-
-                SetStatus($"Scanned {cats.Count} categories / {allParams.Count} properties{(fromSelection ? " (selection)" : " (sampled)")} — {_lastRolesFilled} role(s) filled, {_lastRolesKept} kept.");
-                return true;
+                return ScanFrom(items, "selected");
             }
+            catch (OperationCanceledException) { SetStatus("Scan stopped."); return false; }
             catch (Exception ex) { SetStatus("Scan failed: " + ex.Message); return false; }
             finally { EndBusy(); }
+        }
+
+        /// <summary>
+        /// The scan proper, over an already-resolved list — so the caller decides
+        /// what "the model" means (the export scope for Smart setup, the current
+        /// selection for the manual button) and the list is walked only once.
+        /// Above <see cref="SampleCap"/> it samples with an even stride rather than
+        /// taking the first N: the first N of a federation is one discipline, and
+        /// the roles this proposes are only as good as the spread of properties it saw.
+        /// </summary>
+        private bool ScanFrom(List<ModelItem> items, string sourceLabel)
+        {
+            SetStatus("Reading properties…"); PumpUi(Dispatcher);
+            ThrowIfCancelled();
+            var sample = Spread(items, SampleCap);
+            _catParams = PropertyHarvester.ScanCategoryParams(sample, SampleCap);
+
+            var cats = _catParams.Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase).ToList();
+            var allParams = _catParams.Values.SelectMany(v => v).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList();
+
+            // Psets checklist — unticks survive a rescan by name. Rebuilding
+            // all-ticked meant every scan quietly reverted the user's pset
+            // filter: the same proposal-beats-decision bug as the roles.
+            var unticked = new HashSet<string>(_cats.Where(c => !c.Checked).Select(c => c.Name), StringComparer.OrdinalIgnoreCase);
+            _cats.Clear(); foreach (var c in cats) _cats.Add(new CheckItem(c, !unticked.Contains(c)));
+
+            // grid catalogs (categories + the property-name suggestion list)
+            ParamRow.SharedCategories.Clear(); ParamRow.SharedCategories.Add(AnyCat); foreach (var c in cats) ParamRow.SharedCategories.Add(c);
+            foreach (var row in _paramRows) row.Refresh();
+
+            // Capture the user's role choices BEFORE touching _roleCats:
+            // clearing that ItemsSource cascades SelectionChanged →
+            // PopulateParamCombo(keepText:false), which blanks par.Text — so
+            // reading "is this role blank?" AFTER the clear would see every
+            // role as blank and overwrite the very decisions the fill-blank
+            // guard exists to protect.
+            var priorType = (_catType.Text, _parType.Text);
+            var priorLevel = (_catLevel.Text, _parLevel.Text);
+            var priorMat = (_catMat.Text, _parMat.Text);
+            var priorCls = (_catCls.Text, _parCls.Text);
+
+            // role category combos
+            _roleCats.Clear(); _roleCats.Add(AnyCat); foreach (var c in cats) _roleCats.Add(c);
+
+            // Auto-fill roles from a guess — but only the BLANK ones. The old
+            // behaviour overwrote whatever the user had chosen, which made
+            // re-scanning destructive; a proposal must never beat a decision.
+            _lastRolesFilled = _lastRolesKept = 0;
+            var g = PropertyHarvester.GuessRoles(_catParams);
+            FillRole(_catType, _parType, priorType.Item1, priorType.Item2, g.Type);
+            FillRole(_catLevel, _parLevel, priorLevel.Item1, priorLevel.Item2, g.Level);
+            FillRole(_catMat, _parMat, priorMat.Item1, priorMat.Item2, g.Material);
+            FillRole(_catCls, _parCls, priorCls.Item1, priorCls.Item2, g.Classification);
+
+            string read = sample.Count < items.Count
+                ? $"a sample of {sample.Count:N0} of {items.Count:N0} {sourceLabel} elements"
+                : $"all {items.Count:N0} {sourceLabel} elements";
+            SetStatus($"Scanned {cats.Count} categories / {allParams.Count} properties from {read} — {_lastRolesFilled} role(s) filled, {_lastRolesKept} kept.");
+            return true;
+        }
+
+        /// <summary>At most <paramref name="cap"/> items, taken with an even stride
+        /// so the sample spans the whole list instead of its first slice.</summary>
+        private static List<ModelItem> Spread(List<ModelItem> src, int cap)
+        {
+            if (cap <= 0 || src.Count <= cap) return src;
+            var picked = new List<ModelItem>(cap);
+            double step = (double)src.Count / cap;      // > 1 here, so no index repeats
+            for (int i = 0; i < cap; i++) picked.Add(src[(int)(i * step)]);
+            return picked;
         }
 
         private void PopulateParamCombo(ComboBox par, string categoryText, bool keepText)
@@ -563,6 +618,7 @@ namespace BIMCamel.UI
         // ── export action ──────────────────────────────────────────────────────
         private void OnExport(object sender, RoutedEventArgs e)
         {
+            _cancelRequested = false;
             try
             {
                 var doc = NavApp.ActiveDocument;
@@ -625,6 +681,12 @@ namespace BIMCamel.UI
 
                 sw.Stop(); heapTimer.Dispose();
                 FinishReport(summary, schemaName, ScopeLabel(), unitName, items.Count, scanSw.ElapsedMilliseconds, sw.ElapsedMilliseconds, setRules.Count, baseHeap);
+            }
+            catch (OperationCanceledException)
+            {
+                // Only reachable from the collect phase — BeginBusy withdraws Stop
+                // before the first byte is written — so "no file" is a fact, not a hope.
+                SetStatus("Export stopped while collecting — no file was written.");
             }
             catch (Exception ex)
             {
@@ -771,6 +833,9 @@ namespace BIMCamel.UI
                     return ItemCollector.ResolveLeaves(sel, onProgress);
                 case 2:
                     try { return ItemCollector.GetItemsInSectionBox(doc, onProgress); }
+                    // Stop is not a "no section box" problem: let it unwind rather
+                    // than popping a message box that blames the user's setup.
+                    catch (OperationCanceledException) { throw; }
                     catch (Exception sx) { SetStatus(sx.Message); WF.MessageBox.Show(sx.Message, "BIMCamel", WF.MessageBoxButtons.OK, WF.MessageBoxIcon.Information); return null; }
                 case 3:
                     int si = CmbSavedSet.SelectedIndex;
@@ -825,6 +890,9 @@ namespace BIMCamel.UI
             BtnSaveProfile.IsEnabled = BtnLoadProfile.IsEnabled = false;
             Progress.Visibility = Visibility.Visible; Progress.IsIndeterminate = false;
             Progress.Minimum = 0; Progress.Maximum = Math.Max(1, max); Progress.Value = 0;
+            // Writing starts here. Withdraw Stop and drop any pending request, so a
+            // click that landed during the read phase cannot surface mid-file.
+            _cancelRequested = false; ShowCancel(false);
             _tickClock.Restart(); _lastTickMs = 0; Mouse.OverrideCursor = Cursors.Wait;
         }
         private void Tick(int done, int max, string verb)
@@ -838,16 +906,58 @@ namespace BIMCamel.UI
         }
         private void CollectTick(int visited)
         {
+            // Before the throttle, not after: the click that set the flag arrived
+            // during a pump, and making the user wait out the rest of the interval
+            // is the difference between "Stop" and "Stop, eventually".
+            ThrowIfCancelled();
             long ms = _tickClock.ElapsedMilliseconds;
             if (ms - _lastTickMs < 120) return;
             _lastTickMs = ms;
-            LblStatus.Text = $"Scanning model… {visited:N0} items"; PumpUi(Dispatcher);
+            LblStatus.Text = $"Scanning… {visited:N0} items"; PumpUi(Dispatcher);
         }
-        private void BeginBusyMarquee(string status)
+
+        // ── stopping a scan ───────────────────────────────────────────────────────
+        // Everything long here runs on the UI thread, because the Navisworks API is
+        // STA — the walks stay responsive only by pumping the message loop from
+        // their progress ticks. That pump is also what makes Stop possible at all:
+        // the click is dispatched from inside the walk and sets this flag, and the
+        // next tick throws to unwind. No background thread, no torn COM state.
+        private bool _cancelRequested;
+
+        private void OnCancelWork(object sender, RoutedEventArgs e)
+        {
+            _cancelRequested = true;
+            // The Btn template has no disabled visual, so greying it out alone
+            // would read as "the click did nothing" — the label carries the
+            // acknowledgement instead. Stopping lands on the next tick, which
+            // on a slow set resolution can be a second or two away.
+            BtnCancel.IsEnabled = false;
+            BtnCancel.Content = "Stopping…";
+            SetStatus("Stopping…");
+        }
+
+        private void ThrowIfCancelled()
+        {
+            if (_cancelRequested) throw new OperationCanceledException();
+        }
+
+        /// <summary>Stop is offered while we are READING the model and never while
+        /// writing: a half-written IFC is worse than a slow one, so the write phase
+        /// (<see cref="BeginBusy"/>) takes the button away again.</summary>
+        private void ShowCancel(bool on)
+        {
+            BtnCancel.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+            // Restore the label too, or a run that followed a stopped one would
+            // offer a button permanently reading "Stopping…".
+            if (on && !_cancelRequested) { BtnCancel.IsEnabled = true; BtnCancel.Content = "Stop"; }
+        }
+
+        private void BeginBusyMarquee(string status, bool cancelable = false)
         {
             BtnExport.IsEnabled = false; Tabs.IsEnabled = false;
             BtnSaveProfile.IsEnabled = BtnLoadProfile.IsEnabled = false;
             Progress.Visibility = Visibility.Visible; Progress.IsIndeterminate = true;
+            ShowCancel(cancelable);
             _tickClock.Restart(); _lastTickMs = 0;
             Mouse.OverrideCursor = Cursors.Wait; SetStatus(status); PumpUi(Dispatcher);
         }
@@ -865,6 +975,7 @@ namespace BIMCamel.UI
         {
             if (_busyChain) return;
             Mouse.OverrideCursor = null; Progress.Visibility = Visibility.Collapsed; Progress.IsIndeterminate = false;
+            ShowCancel(false); _cancelRequested = false;
             BtnExport.IsEnabled = true; Tabs.IsEnabled = true;
             BtnSaveProfile.IsEnabled = BtnLoadProfile.IsEnabled = true;
         }
@@ -923,15 +1034,18 @@ namespace BIMCamel.UI
         /// much of the semantics is actually present. Everything here already existed — it was
         /// just never run until after the files were on disk.
         /// </summary>
-        private string? PreviewMapping()
+        /// <param name="scope">Already-resolved scope items, when the caller has
+        /// them (Smart setup does). Re-walking the scope here was the single most
+        /// expensive duplicate in that chain.</param>
+        private string? PreviewMapping(List<ModelItem>? scope = null)
         {
             var doc = NavApp.ActiveDocument;
             if (doc == null || doc.Models.Count == 0) { TxtPreview.Text = "Open a model first."; return null; }
             try
             {
-                BeginBusyMarquee("Previewing mapping…");
+                BeginBusyMarquee("Previewing mapping…", cancelable: true);
                 var schema = CmbSchema.SelectedIndex == 1 ? IfcSchema.Ifc2x3 : IfcSchema.Ifc4;
-                var items = ResolveScope(doc, CollectTick);
+                var items = scope ?? ResolveScope(doc, CollectTick);
                 if (items == null) { TxtPreview.Text = "Pick a scope first."; return null; }
 
                 var rules = BuildSetRules();
@@ -1004,6 +1118,15 @@ namespace BIMCamel.UI
                 double pct = items.Count > 0 ? 100.0 * mapped / items.Count : 0;
                 return $"Preview        : {mapped:N0} of {items.Count:N0} elements map ({pct:0.#}%), {proxy:N0} proxy — details on the Mapping tab";
             }
+            catch (OperationCanceledException)
+            {
+                // Rethrown so a stopped preview inside Smart setup stops the CHAIN
+                // instead of reporting itself as a step that merely "did not run".
+                // _preflight is untouched — the panel keeps the previous, correctly
+                // fingerprinted facts rather than inventing partial ones.
+                TxtPreview.Text = "Preview stopped before it finished.";
+                throw;
+            }
             catch (Exception ex)
             {
                 TxtPreview.Text = "Preview failed: " + ex.Message;
@@ -1069,8 +1192,15 @@ namespace BIMCamel.UI
         /// </summary>
         private static string GeometryEstimate(List<ModelItem> items, PreflightFacts? facts = null, Action<int>? tick = null)
         {
+            // "Nearly free" was true per item and false in aggregate: item.Geometry
+            // is still a COM property read, and half a million of them is a visible
+            // stall at the end of every preview. Above the cap we read a strided
+            // sample and scale — the number was always billed as an estimate, and
+            // the label now says which kind it is.
+            const int MaxSample = 20000;
+            var sample = Spread(items, MaxSample);
             long prims = 0, frags = 0; int counted = 0, seen = 0;
-            foreach (var it in items)
+            foreach (var it in sample)
             {
                 if ((++seen & 1023) == 0) tick?.Invoke(seen);
                 try
@@ -1081,11 +1211,19 @@ namespace BIMCamel.UI
                 }
                 catch { }
             }
-            if (facts != null) { facts.Prims = prims; facts.Frags = frags; }
+            bool sampled = sample.Count < items.Count;
+            if (sampled && counted > 0)
+            {
+                double scale = (double)items.Count / sample.Count;
+                prims = (long)(prims * scale); frags = (long)(frags * scale);
+            }
+            if (facts != null) { facts.Prims = prims; facts.Frags = frags; facts.GeomSampled = sampled; }
             if (counted == 0) return "";
             var sb = new StringBuilder();
             sb.AppendLine();
-            sb.AppendLine($"Geometry     : {prims:N0} primitives across {frags:N0} fragments ({counted:N0} items)");
+            sb.AppendLine(sampled
+                ? $"Geometry     : ~{prims:N0} primitives across ~{frags:N0} fragments (scaled from a {sample.Count:N0}-item sample)"
+                : $"Geometry     : {prims:N0} primitives across {frags:N0} fragments ({counted:N0} items)");
             return sb.ToString();
         }
 
@@ -1106,6 +1244,9 @@ namespace BIMCamel.UI
             public int RoleSample, TypePct, LevelPct, MatPct, ClsPct, DistinctLevels;
             public bool SamplePartial;
             public long Prims, Frags;
+            /// <summary>Prims/Frags were scaled from a sample, so the pre-flight row
+            /// has to hedge them rather than print an estimate as a count.</summary>
+            public bool GeomSampled;
             public int HiddenExcluded;
             /// <summary>Per-friendly-class rule-match counts, so the 2x3
             /// degradation can be RE-derived against the schema selected NOW —
@@ -1190,7 +1331,7 @@ namespace BIMCamel.UI
                 if (schema2x3 && degradedLive > 0)
                     PreflightRow(warn, $"Schema — IFC2x3: {degradedLive:N0} rule-matched element(s) use classes IFC2x3 cannot represent → they fall to proxy. Export IFC4 to keep them.");
 
-                PreflightRow(info, $"Geometry — {f.Prims:N0} primitives · instancing {(ChkInstancing.IsChecked == true ? "on" : "off")}{tail}");
+                PreflightRow(info, $"Geometry — {(f.GeomSampled ? "≈" : "")}{f.Prims:N0} primitives · instancing {(ChkInstancing.IsChecked == true ? "on" : "off")}{tail}");
             }
 
             // ── instant rows (always live, no scan needed) ──────────────────

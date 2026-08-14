@@ -117,8 +117,10 @@ size splitting, instancing, post-export validation, size & time breakdown),
 - **What to export:** properties, materials/colours, base quantities
   (volume / area / length / width / height as `Qto_*BaseQuantities`).
 - **Property sets to include:** the pset checklist, filled by Smart setup's
-  model sample — or by **⚡ Scan selection instead**, the manual
-  alternative that reads only the elements you selected in Navisworks.
+  scan of your export scope — or by **⚡ Scan selection instead**, the
+  manual alternative that reads only the elements selected in Navisworks
+  whatever the scope is set to (useful when the elements carrying the
+  properties you care about are not the ones you are exporting).
   Nothing scanned = every pset exports. Your unticks survive rescans.
 - **Semantic roles:** which source property carries **Type**
   (→ `IfcElementType` + ObjectType), **Level** (→ `IfcBuildingStorey`),
@@ -160,14 +162,19 @@ One button on the Export tab runs every auto-detect in dependency order:
 
 1. **Find sets** — reloads saved/search sets (they also reload whenever
    you open the Mapping tab).
-2. **Scan** a bounded, discipline-spread sample of the model (~1,000
-   elements — never a full walk) to discover property sets.
-3. **Fill blank roles** — proposes Type / Level / Material /
+2. **Collect your scope** — whatever Scope is set to on the Export tab.
+   Set the scope *first*: with **Current selection**, Smart setup reads
+   only your selection, not the model.
+3. **Scan** the scope for property sets, reading at most ~1,000 elements.
+   Above that it samples with an even stride across the scope, so a
+   federation contributes every discipline rather than 1,000 elements from
+   whichever model loaded first.
+4. **Fill blank roles** — proposes Type / Level / Material /
    Classification sources from the scan.
-4. **Propose mapping rules** — matches set names against ~90 known
+5. **Propose mapping rules** — matches set names against ~90 known
    category keywords ("External Walls" → IfcWall).
-5. **Preview** — resolves everything against your scope and fills the
-   Mapping console + the Pre-flight panel.
+6. **Preview** — resolves everything against the scope collected in step 2
+   and fills the Mapping console + the Pre-flight panel.
 
 Then it prints exactly what it did: sets found, psets discovered, roles
 filled vs kept, rules added, and the preview digest.
@@ -178,9 +185,16 @@ chosen are left alone, pset unticks survive. One nuance, stated on the
 button too: a role or rule you *deliberately blanked* is indistinguishable
 from one never set, so re-running proposes it again.
 
-Cost: roughly what collecting the scope costs (the preview step walks the
-scope; geometry is never read). The pane stays responsive and shows
-progress throughout.
+Cost: one collection of your scope, shared by the scan and the preview —
+so narrowing the scope narrows the wait. Geometry is never read.
+
+**Stopping it.** A **Stop** button sits next to the progress bar while any
+scan is running. It takes effect at the next progress tick, keeps whatever
+roles and rules were already filled (they are proposals you can still
+accept), and leaves the Pre-flight panel showing its previous, correctly
+labelled numbers rather than half-computed ones. Stop is offered while the
+exporter is *reading* the model and deliberately withdrawn once an export
+starts *writing*, so it can never leave you a truncated IFC.
 
 ## 6. The Pre-flight panel
 
@@ -350,9 +364,11 @@ What actually costs time, in order:
 3. **Property harvest** — proportional to psets exported. Unticking noisy
    psets on the Data tab cuts it directly (excluded psets are never read).
 
-What the exporter does for you: scans are bounded samples, never full
-walks; each mapping set resolves once no matter how many rules reference
-it; item keys are computed once per run; **instancing** (on by default)
+What the exporter does for you: property scans read a bounded sample, not
+every element; Smart setup collects your scope **once** and shares it
+between the scan and the preview instead of walking twice; each mapping
+set resolves once no matter how many rules reference it; item keys are
+computed once per run; **instancing** (on by default)
 stores repeated geometry once — on repetitive models that is both a much
 smaller file and a faster export. **Geometry quality** trades weld
 tolerance and coordinate precision ("Small file" / "Balanced" / "High

@@ -496,9 +496,9 @@
                     <Border Style="{StaticResource BadgeAuto}"><TextBlock Text="✨ AUTO" FontSize="9.5" FontWeight="SemiBold" Foreground="#0070C0"/></Border>
                   </StackPanel>
                   <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,9"
-                             Text="One scan prepares the whole export: finds your saved sets, samples the model for property sets, fills the semantic roles (Data tab), proposes set→class rules (Mapping tab), and previews the result. Anything you already set by hand is left alone."/>
+                             Text="One scan prepares the whole export: finds your saved sets, samples YOUR EXPORT SCOPE for property sets, fills the semantic roles (Data tab), proposes set→class rules (Mapping tab), and previews the result. Set the scope above first — with Current selection it reads only your selection, not the model. Anything you already set by hand is left alone."/>
                   <Button Style="{StaticResource Btn}" Content="✨ Smart setup — scan &amp; auto-fill" Click="OnSmartSetup" HorizontalAlignment="Left"
-                          ToolTip="Runs every auto-detect in sequence. Takes roughly as long as collecting the scope (geometry is not read). Re-running only fills blanks — it never overwrites your entries. One nuance: a role or rule you deliberately blanked counts as blank, so it will be proposed again."/>
+                          ToolTip="Runs every auto-detect in sequence over the scope selected above. Takes roughly as long as collecting that scope once (geometry is not read); use Stop by the progress bar to interrupt it. Re-running only fills blanks — it never overwrites your entries. One nuance: a role or rule you deliberately blanked counts as blank, so it will be proposed again."/>
                   <TextBlock x:Name="TxtSmartSummary" Style="{StaticResource Hint}" FontFamily="Consolas" Text=""/>
                 </StackPanel>
               </Border>
@@ -652,7 +652,7 @@
                          setup runs. Scan selection stays because it is genuinely
                          different — it reads the elements YOU picked, not a
                          model-wide sample. -->
-                    <Button Style="{StaticResource Btn}" Content="⚡ Scan selection instead" Click="OnScanSelection" ToolTip="Manual alternative to Smart setup's model-wide sample: scan only the elements currently selected in Navisworks. Useful when specific elements carry the property sets you care about."/>
+                    <Button Style="{StaticResource Btn}" Content="⚡ Scan selection instead" Click="OnScanSelection" ToolTip="Manual alternative: scan only the elements currently selected in Navisworks, whatever the export scope is set to. Useful when specific elements carry the property sets you care about but you are exporting something wider."/>
                     <Button Style="{StaticResource Btn}" Content="All" Click="OnCatsAll" ToolTip="Tick every property set."/>
                     <Button Style="{StaticResource Btn}" Content="None" Click="OnCatsNone" ToolTip="Untick every property set."/>
                   </WrapPanel>
@@ -923,7 +923,16 @@
             <TextBlock x:Name="LblStatus" Text="Ready." FontSize="11" Foreground="{DynamicResource Muted}" HorizontalAlignment="Left"/>
             <TextBlock x:Name="LblModel" Text="" FontSize="11" Foreground="{DynamicResource Ok}" FontWeight="SemiBold" HorizontalAlignment="Right"/>
           </Grid>
-          <ProgressBar x:Name="Progress" Margin="0,0,0,10" Visibility="Collapsed"/>
+          <!-- Stop lives OUT here rather than on a tab, because BeginBusy sets
+               Tabs.IsEnabled=false — a cancel button inside the tabs would be
+               greyed out during exactly the operation it exists to stop. -->
+          <Grid Margin="0,0,0,10">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <ProgressBar x:Name="Progress" Grid.Column="0" VerticalAlignment="Center" Visibility="Collapsed"/>
+            <Button x:Name="BtnCancel" Grid.Column="1" Style="{StaticResource Btn}" Margin="8,0,0,0" Padding="12,3"
+                    Content="Stop" Click="OnCancelWork" Visibility="Collapsed"
+                    ToolTip="Stop the scan. Nothing has been written to disk — settings already filled in are kept, and you can run it again."/>
+          </Grid>
           <Button x:Name="BtnExport" Style="{StaticResource PrimaryBtn}" Click="OnExport" ToolTip="Export to IFC with the current settings (you'll choose where to save).">
             <StackPanel Orientation="Horizontal">
               <Viewbox Width="17" Height="17" Margin="0,0,8,0">
