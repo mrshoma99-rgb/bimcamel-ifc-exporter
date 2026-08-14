@@ -101,7 +101,7 @@ namespace BIMCamel.Geometry
         /// <summary>Reads one item's instanced meshes + semantics; null when it contributes nothing.</summary>
         private static InstancedElement? BuildElement(ModelItem item, double unitScale, ExtractOptions o, bool hasClass, bool hasCode, bool hasGroup, bool hasRoles)
         {
-                string key = hasClass || hasCode || hasGroup ? Collect.ItemCollector.ItemKey(item) : "";
+                string key = hasClass || hasCode || hasGroup ? Collect.ItemCollector.ItemKey(item, o.KeyCache) : "";
                 var el = new InstancedElement
                 {
                     Name = item.DisplayName ?? "",

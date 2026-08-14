@@ -449,7 +449,7 @@
       <!-- Tabs + content -->
       <TabControl Grid.Row="1" x:Name="Tabs" Background="Transparent" BorderThickness="0">
         <!-- ===== EXPORT ===== -->
-        <TabItem>
+        <TabItem x:Name="TabExport">
           <TabItem.Header>
             <StackPanel ToolTip="Core export settings: schema, units, scope and output">
               <Viewbox Width="18" Height="18" HorizontalAlignment="Center">
@@ -581,6 +581,23 @@
                   <CheckBox x:Name="ChkInstancing" Content="Optimize repeated geometry (instancing)" ToolTip="Reuse identical geometry across elements to shrink the file and speed up export."/>
                   <CheckBox x:Name="ChkValidate" Content="Validate output after export" ToolTip="Check the written IFC for structural damage and for the mistakes this exporter can make — bad PredefinedType values, wrong attribute counts, dangling references."/>
                   <CheckBox x:Name="ChkProfile" Content="Size &amp; time breakdown in report (slower)" ToolTip="Break down where the file size and the export time went, in the report below. Adds a little overhead."/>
+                </StackPanel>
+              </Border>
+
+              <!-- The trust surface: everything worth knowing about the output
+                   BEFORE the Export button is pressed, as ✓/⚠ rows. Cheap facts
+                   (schema, units, georef, per-model origins) render live; facts
+                   that need a scan fill in after Smart setup or Preview, and are
+                   marked stale when settings change under them. Informational
+                   only — it never blocks the quick one-click export. -->
+              <Border Style="{StaticResource CardStyle}">
+                <StackPanel>
+                  <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <TextBlock Style="{StaticResource H3}" Text="PRE-FLIGHT"/>
+                  </StackPanel>
+                  <TextBlock x:Name="LblPreflightWhen" Style="{StaticResource Hint}" Margin="0,0,0,7"
+                             Text="Checks that need a scan fill in after ✨ Smart setup (above) or 🔍 Preview (Mapping tab)."/>
+                  <StackPanel x:Name="PreflightHost"/>
                 </StackPanel>
               </Border>
 

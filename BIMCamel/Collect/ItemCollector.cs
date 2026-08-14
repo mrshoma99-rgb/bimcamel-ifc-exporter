@@ -17,6 +17,12 @@ namespace BIMCamel.Collect
     /// </summary>
     public static class ItemCollector
     {
+        /// <summary>Hidden subtree roots skipped by the last visible-only walk.
+        /// UI-thread only, like everything here; reset by the walk entry points.
+        /// The pre-flight panel shows it so "I hid a discipline for viewing"
+        /// does not silently become "I shipped a deliverable without it".</summary>
+        public static int HiddenSkipped;
+
         public static List<ModelItem> GetAllLeafItemsWithGeometry(Document doc, Action<int>? onProgress = null)
         {
             var result = new List<ModelItem>();
@@ -28,6 +34,7 @@ namespace BIMCamel.Collect
 
         public static List<ModelItem> GetVisibleLeafItemsWithGeometry(Document doc, Action<int>? onProgress = null)
         {
+            HiddenSkipped = 0;
             var result = new List<ModelItem>();
             int visited = 0;
             if (doc != null)
@@ -59,6 +66,7 @@ namespace BIMCamel.Collect
                     "(Viewpoint → Enable Sectioning, Box mode — axis-aligned section planes " +
                     "work too), or pick a different scope.");
 
+            HiddenSkipped = 0;
             var leaves = new List<ModelItem>();
             int visited = 0;
             CollectLeaves(doc.Models.RootItems, leaves, includeHidden: false, onProgress, ref visited);
@@ -122,6 +130,23 @@ namespace BIMCamel.Collect
             catch { return "P:" + (item.DisplayName ?? ""); }
         }
 
+        /// <summary>
+        /// Memoised <see cref="ItemKey"/>. The GUID-less fallback is an
+        /// O(tree-depth) COM walk per call, and one operation computes keys for
+        /// the same items repeatedly: set members during rule resolution, then
+        /// every scope item again during preview or export. ModelItem hashes by
+        /// value across separate traversals (the SampleLeaves dedup set already
+        /// relies on this, shipped and verified), so a per-operation dictionary
+        /// collapses those repeats. Null cache = plain computation; a miss is
+        /// only ever a lost optimisation, never a wrong key.
+        /// </summary>
+        public static string ItemKey(ModelItem item, Dictionary<ModelItem, string>? cache)
+        {
+            if (cache == null) return ItemKey(item);
+            if (cache.TryGetValue(item, out var k)) return k;
+            return cache[item] = ItemKey(item);
+        }
+
         /// <summary>One mapping-grid row resolved to its set: what class and classification it assigns.</summary>
         public readonly struct SetRule
         {
@@ -148,13 +173,20 @@ namespace BIMCamel.Collect
         /// consume the class slot, so a broad "all walls → IfcWall" rule and a narrow "external
         /// walls → Uniclass code" rule compose instead of competing.
         /// </summary>
-        public static SetMaps BuildSetMaps(Document doc, IEnumerable<SetRule> rules, Action<int>? onProgress = null)
+        public static SetMaps BuildSetMaps(Document doc, IEnumerable<SetRule> rules, Action<int>? onProgress = null,
+            Dictionary<ModelItem, string>? keyCache = null)
         {
             // onProgress matters here: search-set rules each run a model-wide
             // FindAll, so a long rule list is a long stretch of work — without
             // ticks the UI cannot pump and Navisworks appears frozen.
             var maps = new SetMaps();
             int visited = 0;
+            // Two rules on the same set — a broad class rule composing with a
+            // narrow classification rule is the documented pattern — used to
+            // resolve that set once per rule, and for a search set each
+            // resolution is a model-wide FindAll. Resolve each distinct set
+            // once; rule order (earlier wins) is unchanged.
+            var resolved = new Dictionary<SelectionSet, List<ModelItem>>();
             foreach (var rule in rules)
             {
                 if (rule.Set == null) continue;
@@ -162,9 +194,11 @@ namespace BIMCamel.Collect
                 bool wantsCode = rule.Classification.Length > 0;
                 if (!wantsClass && !wantsCode) continue;
                 string setName = rule.Set.DisplayName ?? "";
-                foreach (var leaf in GetItemsFromSet(doc, rule.Set))
+                if (!resolved.TryGetValue(rule.Set, out var leaves))
+                    resolved[rule.Set] = leaves = GetItemsFromSet(doc, rule.Set);
+                foreach (var leaf in leaves)
                 {
-                    var k = ItemKey(leaf);
+                    var k = ItemKey(leaf, keyCache);
                     if (wantsClass && !maps.Class.ContainsKey(k)) maps.Class[k] = rule.ClassKey;
                     if (wantsCode && !maps.Classification.ContainsKey(k)) maps.Classification[k] = rule.Classification;
                     if (setName.Length > 0 && !maps.Group.ContainsKey(k)) maps.Group[k] = setName;
@@ -232,7 +266,7 @@ namespace BIMCamel.Collect
             visited++;
             if ((visited & 0x3FF) == 0) onProgress?.Invoke(visited);
 
-            if (!includeHidden && item.IsHidden) return false;
+            if (!includeHidden && item.IsHidden) { HiddenSkipped++; return false; }
 
             bool any = false, hadChildren = false;
             foreach (var child in item.Children)
