@@ -207,6 +207,27 @@ namespace CamelWorks.Core.Tests
             Assert.Equal("kept in memory", store.Section(ProjectStore.SetsSection)["anything"].AsString());
         }
 
+        [Theory]
+        [InlineData(@"C:\Jobs\Riverside\Federated.nwf", @"C:\Jobs\Riverside", "Federated")]
+        [InlineData("/mnt/jobs/riverside/federated.nwf", "/mnt/jobs/riverside", "federated")]
+        [InlineData(@"\\server\jobs\Federated.nwd", @"\\server\jobs", "Federated")]
+        public void Windows_paths_are_split_the_same_way_on_every_platform(string path, string folder, string stem)
+        {
+            // The reason this test exists: System.IO.Path treats a backslash as an ordinary
+            // character on Linux, where these tests run — so every Windows path in every other
+            // test here would take a route through the code that the product never takes.
+            Assert.Equal(folder, PathText.Directory(path));
+            Assert.Equal(stem, PathText.Stem(path));
+        }
+
+        [Fact]
+        public void Joining_keeps_the_separator_the_folder_already_uses()
+        {
+            Assert.Equal(@"C:\Jobs\.camelworks", PathText.Join(@"C:\Jobs", ".camelworks"));
+            Assert.Equal("/mnt/jobs/.camelworks", PathText.Join("/mnt/jobs", ".camelworks"));
+            Assert.Equal(@"C:\Jobs\x", PathText.Join(@"C:\Jobs\", "x"));
+        }
+
         [Fact]
         public void The_sidecar_goes_beside_the_document()
         {

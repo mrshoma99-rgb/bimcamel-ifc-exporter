@@ -99,18 +99,73 @@ namespace CamelWorks.Core.Project
     /// </summary>
     public static class Disciplines
     {
-        private static readonly (string Discipline, string[] Tokens)[] Table =
+        // Strength, then length, decides. A whole discipline word beats an abbreviation beats a
+        // letter — which is why "Site_HVAC_Riser" is mechanical and not civil, even though "Site"
+        // comes first and both words are four letters long.
+        private const int Word = 3;
+        private const int Abbreviation = 2;
+        private const int Weak = 1;
+
+        private static readonly (string Discipline, (string Token, int Strength)[] Tokens)[] Table =
         {
-            ("Architecture", new[] { "ARCHITECTURAL", "ARCHITECTURE", "ARCH", "ARC", "AR", "A" }),
-            ("Structure",    new[] { "STRUCTURAL", "STRUCTURE", "STRUCT", "STR", "ST", "S" }),
-            ("Mechanical",   new[] { "MECHANICAL", "MECH", "HVAC", "MEC", "ME", "M" }),
-            ("Electrical",   new[] { "ELECTRICAL", "ELEC", "ELE", "EL", "E" }),
-            ("Plumbing",     new[] { "PLUMBING", "PLUMB", "SANITARY", "DRAINAGE", "PLB", "PL", "SAN", "P" }),
-            ("Fire",         new[] { "FIREFIGHTING", "SPRINKLER", "FIRE", "FP", "FF" }),
-            ("Civil",        new[] { "INFRASTRUCTURE", "CIVIL", "SITE", "CIV", "CI", "C" }),
-            ("Process",      new[] { "PROCESS", "PIPING", "PIPE", "PIP", "PI" }),
-            ("Landscape",    new[] { "LANDSCAPE", "LAND", "LAN" }),
-            ("Survey",       new[] { "TOPOGRAPHY", "SURVEY", "POINTCLOUD", "SCAN", "TOPO" }),
+            ("Architecture", new[]
+            {
+                ("ARCHITECTURAL", Word), ("ARCHITECTURE", Word),
+                ("ARCH", Abbreviation), ("ARC", Abbreviation),
+                ("AR", Weak), ("A", Weak),
+            }),
+            ("Structure", new[]
+            {
+                ("STRUCTURAL", Word), ("STRUCTURE", Word),
+                ("STRUCT", Abbreviation), ("STR", Abbreviation),
+                ("ST", Weak), ("S", Weak),
+            }),
+            ("Mechanical", new[]
+            {
+                ("MECHANICAL", Word), ("HVAC", Word),
+                ("MECH", Abbreviation), ("MEC", Abbreviation),
+                ("ME", Weak), ("M", Weak),
+            }),
+            ("Electrical", new[]
+            {
+                ("ELECTRICAL", Word),
+                ("ELEC", Abbreviation), ("ELE", Abbreviation),
+                ("EL", Weak), ("E", Weak),
+            }),
+            ("Plumbing", new[]
+            {
+                ("PLUMBING", Word), ("SANITARY", Word), ("DRAINAGE", Word),
+                ("PLUMB", Abbreviation), ("PLB", Abbreviation), ("SAN", Abbreviation),
+                ("PL", Weak), ("P", Weak),
+            }),
+            ("Fire", new[]
+            {
+                ("FIREFIGHTING", Word), ("SPRINKLER", Word), ("FIRE", Word),
+                ("FP", Abbreviation), ("FF", Abbreviation),
+            }),
+            ("Civil", new[]
+            {
+                ("INFRASTRUCTURE", Word), ("CIVIL", Word),
+                ("CIV", Abbreviation),
+                ("SITE", Weak), ("CI", Weak), ("C", Weak),
+            }),
+            ("Process", new[]
+            {
+                ("PROCESS", Word), ("PIPING", Word),
+                ("PIPE", Abbreviation), ("PIP", Abbreviation),
+                ("PI", Weak),
+            }),
+            ("Landscape", new[]
+            {
+                ("LANDSCAPE", Word),
+                ("LAN", Abbreviation),
+                ("LAND", Weak),
+            }),
+            ("Survey", new[]
+            {
+                ("TOPOGRAPHY", Word), ("POINTCLOUD", Word), ("SURVEY", Word),
+                ("SCAN", Abbreviation), ("TOPO", Abbreviation),
+            }),
         };
 
         /// <summary>Every discipline this product knows, in the order they read in a matrix.</summary>
@@ -131,7 +186,7 @@ namespace CamelWorks.Core.Project
 
             var stem = name!;
 
-            var slash = stem.LastIndexOfAny(new[] { '/', '\\' });
+            var slash = stem.LastIndexOfAny(Separators);
             if (slash >= 0) stem = stem.Substring(slash + 1);
 
             var dot = stem.LastIndexOf('.');
@@ -141,7 +196,7 @@ namespace CamelWorks.Core.Project
                                     StringSplitOptions.RemoveEmptyEntries);
 
             string? best = null;
-            var bestLength = 0;
+            var bestScore = 0;
 
             for (var i = 0; i < tokens.Length; i++)
             {
@@ -149,35 +204,43 @@ namespace CamelWorks.Core.Project
 
                 foreach (var (discipline, candidates) in Table)
                 {
-                    foreach (var candidate in candidates)
+                    foreach (var (candidate, strength) in candidates)
                     {
+                        // A single letter only counts as the first token, which is the convention
+                        // every single-letter naming scheme actually uses — otherwise "Tower A"
+                        // would be architecture and "Building E" electrical.
                         if (candidate.Length == 1 && i != 0) continue;
                         if (!string.Equals(token, candidate, StringComparison.Ordinal)) continue;
-                        if (candidate.Length <= bestLength) continue;
+
+                        var score = strength * 100 + candidate.Length;
+                        if (score <= bestScore) continue;
 
                         best = discipline;
-                        bestLength = candidate.Length;
+                        bestScore = score;
                     }
                 }
             }
 
             if (best != null) return best;
 
-            // Nothing tokenised cleanly. Fall back to the longest word found anywhere in the name,
-            // which catches "TowerAArchitecturalModel" and the like.
+            // Nothing tokenised cleanly. Fall back to the longest real word found anywhere in the
+            // name, which catches "TowerAArchitecturalModel" and the like. Abbreviations are not
+            // looked for this way: "ARC" appears inside "SEARCH".
             var upper = stem.ToUpperInvariant();
 
             foreach (var (discipline, candidates) in Table)
-                foreach (var candidate in candidates)
-                    if (candidate.Length >= 4 && upper.IndexOf(candidate, StringComparison.Ordinal) >= 0
-                        && candidate.Length > bestLength)
+                foreach (var (candidate, strength) in candidates)
+                    if (strength == Word && candidate.Length > bestScore
+                        && upper.IndexOf(candidate, StringComparison.Ordinal) >= 0)
                     {
                         best = discipline;
-                        bestLength = candidate.Length;
+                        bestScore = candidate.Length;
                     }
 
             return best;
         }
+
+        private static readonly char[] Separators = { '/', '\\' };
     }
 
     /// <summary>

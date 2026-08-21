@@ -151,13 +151,13 @@ namespace CamelWorks.Core.Project
 
                 if (directory != null && stem != null)
                 {
-                    var folder = System.IO.Path.Combine(directory, SidecarFolder);
-                    return (System.IO.Path.Combine(folder, stem + Extension), "beside the document, in " + SidecarFolder);
+                    var folder = PathText.Join(directory, SidecarFolder);
+                    return (PathText.Join(folder, stem + Extension), "beside the document, in " + SidecarFolder);
                 }
             }
 
             if (!string.IsNullOrWhiteSpace(userDirectory))
-                return (System.IO.Path.Combine(userDirectory!, UnsavedName),
+                return (PathText.Join(userDirectory!, UnsavedName),
                         "in your own CamelWorks folder, because this document has never been saved");
 
             return (null, "in memory only — nothing will be kept when Navisworks closes");
@@ -234,35 +234,69 @@ namespace CamelWorks.Core.Project
             _ => string.Empty,
         };
 
-        private static string? SafeDirectoryName(string path)
-        {
-            try
-            {
-                var directory = System.IO.Path.GetDirectoryName(path);
-                return string.IsNullOrEmpty(directory) ? null : directory;
-            }
-            catch (ArgumentException)
-            {
-                return null;
-            }
-        }
+        private static string? SafeDirectoryName(string path) => PathText.Directory(path);
 
-        private static string? SafeStem(string path)
-        {
-            try
-            {
-                var stem = System.IO.Path.GetFileNameWithoutExtension(path);
-                return string.IsNullOrEmpty(stem) ? null : stem;
-            }
-            catch (ArgumentException)
-            {
-                return null;
-            }
-        }
+        private static string? SafeStem(string path) => PathText.Stem(path);
 
         /// <inheritdoc />
         public override string ToString() =>
             (Path ?? "(memory)") + " — " + Outcome.ToString().ToLowerInvariant()
             + ", schema " + _document.SchemaVersion.ToString(CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Path arithmetic that behaves the same wherever it runs.
+    ///
+    /// <c>System.IO.Path</c> does not: on Linux a backslash is an ordinary character, so
+    /// <c>GetDirectoryName(@"C:\Jobs\Site.nwf")</c> returns nothing at all. CamelWorks.Core is
+    /// netstandard2.0 precisely so it can be tested on a Linux CI job, which means every Windows
+    /// path in a test would take a different route through the code than the same path takes in
+    /// the product — and the CI would go green on logic that had never been exercised.
+    ///
+    /// So this treats both separators as separators, everywhere.
+    /// </summary>
+    internal static class PathText
+    {
+        private static readonly char[] Separators = { '/', '\\' };
+
+        /// <summary>The folder part, or null when there is none.</summary>
+        internal static string? Directory(string? path)
+        {
+            if (string.IsNullOrEmpty(path)) return null;
+
+            var at = path!.LastIndexOfAny(Separators);
+
+            if (at < 0) return null;
+            return at == 0 ? path.Substring(0, 1) : path.Substring(0, at);
+        }
+
+        /// <summary>The file name without its folder or extension, or null.</summary>
+        internal static string? Stem(string? path)
+        {
+            if (string.IsNullOrEmpty(path)) return null;
+
+            var name = path!;
+
+            var at = name.LastIndexOfAny(Separators);
+            if (at >= 0) name = name.Substring(at + 1);
+
+            var dot = name.LastIndexOf('.');
+            if (dot > 0) name = name.Substring(0, dot);
+
+            return name.Length == 0 ? null : name;
+        }
+
+        /// <summary>Join a folder and a name, keeping whichever separator the folder already uses.</summary>
+        internal static string Join(string folder, string name)
+        {
+            if (string.IsNullOrEmpty(folder)) return name;
+
+            var last = folder[folder.Length - 1];
+            if (last == '/' || last == '\\') return folder + name;
+
+            // A Windows product, so a path with no separator in it yet gets a backslash.
+            var separator = folder.IndexOf('/') >= 0 && folder.IndexOf('\\') < 0 ? '/' : '\\';
+            return folder + separator + name;
+        }
     }
 }
