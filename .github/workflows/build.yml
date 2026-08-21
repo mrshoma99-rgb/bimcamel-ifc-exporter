@@ -68,3 +68,12 @@ jobs:
 
       - name: Test CamelWorks.Core
         run: dotnet test CamelWorks/CamelWorks.Core.Tests/CamelWorks.Core.Tests.csproj -c Release --logger "console;verbosity=normal"
+
+      # Unit tests cannot prove a BCF file is valid. It can be well-formed, round-trip through our
+      # own reader, pass every assertion, and still be rejected by the receiving tool for a missing
+      # element. The test run writes the real output; xmllint checks it against the published
+      # buildingSMART XSDs. This is what caught BCF 3.0's required AspectRatio.
+      - name: Validate written BCF against the published schemas
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq libxml2-utils
+          CamelWorks/schemas/bcf/validate.sh
