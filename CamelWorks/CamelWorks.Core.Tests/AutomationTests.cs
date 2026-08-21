@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using CamelWorks.Core.Automation;
 using CamelWorks.Core.Testing;
@@ -225,6 +226,97 @@ namespace CamelWorks.Core.Tests
 
             Assert.Equal(1, run.Ran);
             Assert.False(run.Steps.First(s => s.NodeId == "pick").Ran);
+        }
+    }
+
+    public class NodeCatalogueTests
+    {
+        // The two that cannot run unconfigured, and why: both write a file, and there is no
+        // defensible default path. Every other node in the catalogue has to run on the settings it
+        // is born with, or the canvas is not zero-setup.
+        private static readonly string[] NeedAPath = { "report.write", "csv.write" };
+
+        private static Graph WithInputs(NodeKind kind)
+        {
+            var graph = new Graph();
+            var node = new GraphNode("subject", kind.Id);
+            graph.Nodes.Add(node);
+
+            foreach (var port in kind.Inputs)
+            {
+                var producer = port.Type == PortType.Keys ? "input.everything" : "clash.board";
+                var source = new GraphNode(graph.NextId(producer), producer);
+
+                graph.Nodes.Add(source);
+                graph.Connect(new GraphWire(source.Id, "out", node.Id, port.Id));
+            }
+
+            return graph;
+        }
+
+        [Fact]
+        public void Every_node_in_the_catalogue_can_actually_be_run()
+        {
+            // The three-lists problem again: a kind exists in the catalogue, the runner has a case
+            // for it, and nothing connects those. A kind with no case is a node you can drop on the
+            // canvas that says "this build does not know how to run" when you press Run.
+            var unrunnable = new List<string>();
+
+            foreach (var kind in NodeCatalogue.All)
+            {
+                var graph = WithInputs(kind);
+
+                if (NeedAPath.Contains(kind.Id)) graph.Find("subject")!.Settings["path"] = @"C:\out\x";
+
+                var run = GraphRunner.Run(graph, new FakeGraphHost(6));
+                var step = run.Steps.First(s => s.NodeId == "subject");
+
+                if (!step.Ran) unrunnable.Add(kind.Id + ": " + step.Outcome);
+            }
+
+            Assert.Equal(Array.Empty<string>(), unrunnable.ToArray());
+        }
+
+        [Fact]
+        public void Only_the_two_file_writers_need_configuring_before_they_run()
+        {
+            var needConfiguring = NodeCatalogue.All
+                .Where(kind => !GraphRunner.Run(WithInputs(kind), new FakeGraphHost(6))
+                                           .Steps.First(s => s.NodeId == "subject").Ran)
+                .Select(kind => kind.Id)
+                .ToArray();
+
+            Assert.Equal(NeedAPath, needConfiguring);
+        }
+
+        [Fact]
+        public void Every_port_and_setting_id_is_unique_within_its_node()
+        {
+            foreach (var kind in NodeCatalogue.All)
+            {
+                var ports = kind.Inputs.Concat(kind.Outputs).Select(p => p.Id).ToList();
+                Assert.Equal(ports.Count, ports.Distinct().Count());
+
+                var settings = kind.Settings.Select(s => s.Id).ToList();
+                Assert.Equal(settings.Count, settings.Distinct().Count());
+            }
+        }
+
+        [Fact]
+        public void Every_kind_id_is_unique()
+        {
+            var ids = NodeCatalogue.All.Select(k => k.Id).ToList();
+            Assert.Equal(ids.Count, ids.Distinct().Count());
+        }
+
+        [Fact]
+        public void A_choice_setting_defaults_to_one_of_its_own_choices()
+        {
+            // A default outside the list leaves the dropdown blank on a freshly dropped node, and
+            // the node then runs on a value nobody can see.
+            foreach (var kind in NodeCatalogue.All)
+                foreach (var setting in kind.Settings.Where(s => s.Kind == SettingKind.Choice))
+                    Assert.Contains(setting.Default, setting.Choices);
         }
     }
 }
