@@ -8,20 +8,6 @@ using CamelWorks.Core.Identity;
 namespace CamelWorks.Core.Testing
 {
     /// <summary>
-    /// Thrown when code touches a model item it resolved in an earlier generation.
-    ///
-    /// This is the fake being deliberately harsher than the host. Navisworks does not reliably
-    /// throw on a stale handle — it may return nonsense, or crash later somewhere unrelated, which
-    /// is precisely why the bug is hard to find in the field. Making it loud and immediate here is
-    /// the whole reason the generation counter is testable at all.
-    /// </summary>
-    public sealed class StaleItemException : InvalidOperationException
-    {
-        /// <summary>Create the exception.</summary>
-        public StaleItemException(string message) : base(message) { }
-    }
-
-    /// <summary>
     /// An in-memory <see cref="IModelDocument"/> for tests, with an ordered effect log.
     ///
     /// The log is the point. Asserting final state proves a service reached the right answer;

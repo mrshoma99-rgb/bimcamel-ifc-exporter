@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      A SEPARATE ASSEMBLY, and that is the entire reason it exists.
+
+      Autodesk.Navisworks.Clash.dll ships only with Navisworks MANAGE. Simulate does not have it.
+      A type from a missing assembly is not a problem until the JIT touches the method that uses
+      it — at which point it is a FileNotFoundException in the middle of whatever the user was
+      doing, with a message naming a DLL they have never heard of.
+
+      Keeping every clash type behind this assembly boundary means a Simulate user simply never
+      loads it: the ribbon shows the clash tools greyed out with a reason, and nothing anywhere
+      else in the product can accidentally take a hard dependency on Manage. That is what makes
+      the host matrix eight configurations rather than four.
+
+      Nothing here may be referenced from CamelWorks.Nav, only the other way round.
+    -->
+    <TargetFramework>net48</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>10.0</LangVersion>
+    <AssemblyName>CamelWorks.Nav.Clash</AssemblyName>
+    <RootNamespace>CamelWorks.Nav.Clash</RootNamespace>
+    <PlatformTarget>x64</PlatformTarget>
+    <OutputType>Library</OutputType>
+    <Product>CamelWorks</Product>
+    <Company>BIMCamel</Company>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!-- Per-year build, exactly as BIMCamel.csproj does it: a plug-in must be compiled against the
+         API of the release it runs in. See that file for why the Speckle matched-set packages are
+         the ones that work. -->
+    <NavisworksYear Condition="'$(NavisworksYear)' == ''">2024</NavisworksYear>
+    <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2024'">2024.0.0</NavisPkgVersion>
+    <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2025'">2025.0.0</NavisPkgVersion>
+    <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2026'">2026.0.1</NavisPkgVersion>
+    <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2027'">2027.0.0</NavisPkgVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CamelWorks.Core\CamelWorks.Core.csproj" />
+    <ProjectReference Include="..\CamelWorks.Nav\CamelWorks.Nav.csproj" />
+  </ItemGroup>
+
+  <!-- Reference-only: the user's own licensed Navisworks supplies these at run time and they are
+       never copied into the bundle. -->
+  <ItemGroup>
+    <PackageReference Include="Speckle.Navisworks.API" Version="$(NavisPkgVersion)">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

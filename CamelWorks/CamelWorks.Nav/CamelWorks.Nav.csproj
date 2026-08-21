@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      net48 because this assembly touches the Navisworks API, which is net48. CamelWorks.Core is
+      netstandard2.0 and loads in here unchanged — that is the whole point of the seam.
+
+      Everything Navisworks-specific lives in this project and CamelWorks.Nav.Clash. Nothing else
+      in the product may reference Autodesk.Navisworks.*, and an architecture test in
+      CamelWorks.Core.Tests asserts it.
+    -->
+    <TargetFramework>net48</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>10.0</LangVersion>
+    <AssemblyName>CamelWorks.Nav</AssemblyName>
+    <RootNamespace>CamelWorks.Nav</RootNamespace>
+    <PlatformTarget>x64</PlatformTarget>
+    <OutputType>Library</OutputType>
+    <Product>CamelWorks</Product>
+    <Company>BIMCamel</Company>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!-- Per-year build, exactly as BIMCamel.csproj does it: a plug-in must be compiled against the
+         API of the release it runs in. See that file for why the Speckle matched-set packages are
+         the ones that work. -->
+    <NavisworksYear Condition="'$(NavisworksYear)' == ''">2024</NavisworksYear>
+    <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2024'">2024.0.0</NavisPkgVersion>
+    <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2025'">2025.0.0</NavisPkgVersion>
+    <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2026'">2026.0.1</NavisPkgVersion>
+    <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2027'">2027.0.0</NavisPkgVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CamelWorks.Core\CamelWorks.Core.csproj" />
+  </ItemGroup>
+
+  <!-- Reference-only: the user's own licensed Navisworks supplies these at run time and they are
+       never copied into the bundle. -->
+  <ItemGroup>
+    <PackageReference Include="Speckle.Navisworks.API" Version="$(NavisPkgVersion)">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

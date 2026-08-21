@@ -4,6 +4,29 @@ using CamelWorks.Core.Identity;
 namespace CamelWorks.Core.Abstractions
 {
     /// <summary>
+    /// Thrown when code touches a model item it resolved in an earlier generation.
+    ///
+    /// Part of the seam contract, not a testing convenience: the host does NOT reliably throw on a
+    /// stale handle — it may return nonsense, or crash later somewhere unrelated, which is exactly
+    /// why that bug is so hard to find in the field. Both the real adapter and the fake raise this
+    /// instead, so the failure is loud, immediate, and the same on both sides of the seam.
+    ///
+    /// The way back is always to re-resolve by key. That is what keys are for.
+    /// </summary>
+    public sealed class StaleItemException : System.InvalidOperationException
+    {
+        /// <summary>Create the exception.</summary>
+        public StaleItemException(string message) : base(message) { }
+
+        /// <summary>Create the exception.</summary>
+        public StaleItemException() : base("this element was resolved before the document changed") { }
+
+        /// <summary>Create the exception.</summary>
+        public StaleItemException(string message, System.Exception innerException)
+            : base(message, innerException) { }
+    }
+
+    /// <summary>
     /// One element, behind the seam.
     ///
     /// Deliberately narrow. Everything a service needs to identify, describe, place and measure an

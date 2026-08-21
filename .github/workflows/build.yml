@@ -28,6 +28,16 @@ jobs:
       - name: Build plug-in (Release, Navisworks ${{ matrix.year }})
         run: dotnet build BIMCamel/BIMCamel.csproj -c Release -p:NavisworksYear=${{ matrix.year }}
 
+      # The host adapters compile per year for the same reason the plug-in does: they are written
+      # against that year's API. CamelWorks.Nav.Clash is built separately and deliberately — it is
+      # the only thing that touches Autodesk.Navisworks.Clash.dll, which ships with Manage and not
+      # with Simulate.
+      - name: Build CamelWorks.Nav (Release, Navisworks ${{ matrix.year }})
+        run: dotnet build CamelWorks/CamelWorks.Nav/CamelWorks.Nav.csproj -c Release -p:NavisworksYear=${{ matrix.year }}
+
+      - name: Build CamelWorks.Nav.Clash (Release, Navisworks ${{ matrix.year }})
+        run: dotnet build CamelWorks/CamelWorks.Nav.Clash/CamelWorks.Nav.Clash.csproj -c Release -p:NavisworksYear=${{ matrix.year }}
+
   installer:
     name: Windows (installer)
     runs-on: windows-latest
