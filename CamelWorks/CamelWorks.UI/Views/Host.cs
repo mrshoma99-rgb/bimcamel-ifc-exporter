@@ -73,7 +73,7 @@ namespace CamelWorks.UI.Views
         /// leaving it to each rule is how a millimetre model ends up grouping everything within
         /// five millimetres and reporting one group per clash.
         /// </summary>
-        public double MetresPerUnit => Metres(Document.Units);
+        public double MetresPerUnit => NavUnits.MetresPerUnit(Document.Units);
 
         /// <summary>The saved document path, or null when it has never been saved.</summary>
         public string? SavedPath =>
@@ -89,26 +89,6 @@ namespace CamelWorks.UI.Views
         public void Record(string kind, string summary, string? detail = null) =>
             Store.Record(kind, NowTicks, summary, detail);
 
-        /// <summary>Metres per unit for a host unit.</summary>
-        /// <param name="units">The document's unit.</param>
-        public static double Metres(Units units)
-        {
-            switch (units)
-            {
-                case Units.Meters: return 1;
-                case Units.Centimeters: return 0.01;
-                case Units.Millimeters: return 0.001;
-                case Units.Kilometers: return 1000;
-                case Units.Micrometers: return 0.000001;
-                case Units.Feet: return 0.3048;
-                case Units.Inches: return 0.0254;
-                case Units.Yards: return 0.9144;
-                case Units.Miles: return 1609.344;
-                case Units.Mils: return 0.0000254;
-                case Units.Microinches: return 0.0000000254;
-                default: return 1;
-            }
-        }
 
         /// <inheritdoc />
         public override string ToString() => Profile.ProjectName + " — " + Model.Models.Count + " models";

@@ -92,13 +92,14 @@ namespace CamelWorks.UI.Shell
                 new[] { "configure", "settings", "options", "preferences" },
                 new[] { "where do I set this up", "do I have to configure it first" }),
 
-            Dialog("ID_CW_FixLinks", "Fix Broken Links",
-                "Repoint broken NWF paths, rename models, find missing sources.",
+            Pane("ID_CW_FixLinks", "Fix Broken Links", "Project/Models",
+                "Find the sources a loaded model can no longer see, and what changed since the "
+                + "federation was saved.",
                 new[] { "missing model", "relink", "repath", "broken reference" },
                 new[] { "model did not load", "file not found", "the NWF points at the wrong folder" }),
 
-            Menu("ID_CW_ProjectProfile", "Project Profile",
-                "Save, load, or start from a template pack.",
+            Pane("ID_CW_ProjectProfile", "Project Profile", "Project/Setup",
+                "What this project's settings are, where each came from, and an override on each line.",
                 new[] { "template", "profile", "preset" },
                 new[] { "set this up the same way on the next job" }),
 
@@ -110,8 +111,8 @@ namespace CamelWorks.UI.Shell
                 new[] { "too many clashes", "thousands of results", "the same clash forty times",
                         "one pipe through forty joists", "where do I even start" }),
 
-            Act("ID_CW_Review", "Review",
-                "Review mode over the board's current filter and scope.",
+            Pane("ID_CW_Review", "Review", "Coordinate/Triage",
+                "The board, on the group you were last looking at.",
                 new[] { "walk the clashes", "go through results", "sign off" },
                 new[] { "I need to go through these one at a time" }),
 
@@ -152,8 +153,8 @@ namespace CamelWorks.UI.Shell
                 new[] { "properties", "parameters", "attributes", "edit data" },
                 new[] { "I need to see every property at once", "bulk edit properties" }),
 
-            Menu("ID_CW_Excel", "Excel",
-                "Properties out, properties back in with a preview diff, or import a sheet keyed to elements.",
+            Pane("ID_CW_Excel", "Excel", "Data/Data",
+                "Read the properties, write them back, or take them out as a spreadsheet.",
                 new[] { "spreadsheet", "xlsx", "csv", "round trip" },
                 new[] { "get this into Excel", "the QS sent a spreadsheet back" }),
 
@@ -186,8 +187,9 @@ namespace CamelWorks.UI.Shell
                 new[] { "views", "saved viewpoints", "renumber", "rename" },
                 new[] { "two hundred viewpoints named Viewpoint", "renaming these one at a time" }),
 
-            Menu("ID_CW_SectionBox", "Section Box",
-                "Box the selection, a clash or a group; clear it; or toggle it without losing it.",
+            Act("ID_CW_SectionBox", "Section Box",
+                "Boxes whatever is selected. With nothing selected it switches sectioning off and "
+                + "back on without losing the box.",
                 new[] { "section", "clip", "cut", "crop" },
                 new[] { "I cannot see inside", "turning sectioning off loses my box" }),
 
@@ -207,12 +209,13 @@ namespace CamelWorks.UI.Shell
                 new[] { "ifc", "openbim export", "ifc4", "ifc2x3" },
                 new[] { "they want IFC", "export to IFC" }),
 
-            Menu("ID_CW_Export", "Export",
-                "glTF, GLB, CSV or XLSX.",
+            Pane("ID_CW_Export", "Export", "Project/Export",
+                "IFC from the exporter's own panel; spreadsheets and CSV from the screen that "
+                + "produced the numbers.",
                 new[] { "gltf", "glb", "csv", "xlsx", "web viewer" },
                 new[] { "put this on the web", "send them the geometry" }),
 
-            Menu("ID_CW_Help", "Help",
+            Dialog("ID_CW_Help", "Help",
                 "Guide, limitations, shortcuts, Find a Tool, sample project, diagnostics, updates, about.",
                 new[] { "documentation", "support", "diagnostics", "about", "version" },
                 new[] { "how do I do this", "something is broken", "what version am I on" }),

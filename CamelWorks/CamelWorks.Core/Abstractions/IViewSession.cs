@@ -55,6 +55,15 @@ namespace CamelWorks.Core.Abstractions
 
         /// <summary>Turn sectioning off without discarding the box, so it can be toggled back.</summary>
         void SetSectionBoxEnabled(bool enabled);
+
+        /// <summary>
+        /// Whether sectioning is on right now.
+        ///
+        /// Part of the contract rather than a convenience: <see cref="SetSectionBoxEnabled"/>
+        /// promises the box survives being switched off, and a caller cannot offer a toggle at all
+        /// without being able to ask which way it currently is.
+        /// </summary>
+        bool IsSectionBoxEnabled { get; }
     }
 
     /// <summary>Which override layer a <see cref="IViewSession"/> write targets.</summary>

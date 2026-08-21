@@ -147,7 +147,9 @@ namespace CamelWorks.Nav
         /// <inheritdoc />
         public void SetSectionBox(CamelWorks.Core.Abstractions.BoundingBox box, double marginMetres)
         {
-            var margin = Math.Max(0, marginMetres);
+            // The seam states margins in metres; the box arrives in model units. Without the
+            // conversion a half-metre margin around a millimetre model is half a millimetre.
+            var margin = Math.Max(0, marginMetres) * NavUnits.UnitsPerMetre(_document.Document.Units);
 
             _sectionBox = Json(
                 box.MinX - margin, box.MinY - margin, box.MinZ - margin,
@@ -173,6 +175,21 @@ namespace CamelWorks.Nav
             }
 
             if (_sectionBox != null) Host.ActiveView.SetClippingPlanes(_sectionBox);
+        }
+
+        /// <inheritdoc />
+        public bool IsSectionBoxEnabled
+        {
+            get
+            {
+                // Read from the host rather than remembered here: the user can switch sectioning
+                // off with the host's own button, and a toggle that trusted its own memory would
+                // then do the opposite of what the button says.
+                var current = Host.ActiveView.GetClippingPlanes();
+
+                return !string.IsNullOrWhiteSpace(current)
+                       && current.IndexOf("\"Enabled\":true", StringComparison.OrdinalIgnoreCase) >= 0;
+            }
         }
 
         // The host's clipping API is JSON in and JSON out, not an object model — GetClippingPlanes

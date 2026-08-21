@@ -384,6 +384,11 @@ namespace CamelWorks.Core.Tests
 
     public class PersistenceTests
     {
+        // A scope is a hash of the model's path, not a name somebody types. Building one by hand
+        // produces a key whose wire form will not parse back, which is exactly the bug this
+        // constant exists to stop a test from re-introducing.
+        private static readonly string Scope = ElementKey.ScopeOf(@"C:\Jobs\Riverside\AR.nwc");
+
         [Fact]
         public void A_set_expression_survives_a_round_trip()
         {
@@ -436,8 +441,8 @@ namespace CamelWorks.Core.Tests
             var selection = new AppearanceLayer("l2", "Spot check",
                 LayerTarget.Elements(new[]
                 {
-                    ElementKey.FromTreePath("model", null, "a", "b"),
-                    ElementKey.FromTreePath("model", null, "c"),
+                    ElementKey.FromTreePath(Scope, @"C:\Jobs\Riverside\AR.nwc", "a", "b"),
+                    ElementKey.FromTreePath(Scope, @"C:\Jobs\Riverside\AR.nwc", "c"),
                 }))
             {
                 Colour = new Colour(0x33, 0x66, 0x99),
@@ -454,6 +459,26 @@ namespace CamelWorks.Core.Tests
             Assert.Equal(2, back[1].Target.Keys.Count);
             Assert.Equal(new Colour(0x33, 0x66, 0x99), back[1].Colour);
             Assert.Equal(0.4, back[1].Transparency);
+        }
+
+        [Fact]
+        public void A_key_that_will_not_parse_back_is_reported_rather_than_silently_dropped()
+        {
+            // Reading a layer whose keys are unreadable must not leave a row saying "2 elements"
+            // over a layer that covers none.
+            var damaged = JsonValue.Array(new[]
+            {
+                JsonValue.Object()
+                    .Set("id", JsonValue.String("l1"))
+                    .Set("name", JsonValue.String("Spot check"))
+                    .Set("targetText", JsonValue.String("2 elements"))
+                    .Set("keys", JsonValue.Array(new[] { JsonValue.String("nonsense"), JsonValue.String("also") })),
+            });
+
+            var back = LayerStackJson.Read(damaged)[0];
+
+            Assert.Empty(back.Target.Keys);
+            Assert.Contains("could not be read", back.Target.Description);
         }
 
         [Fact]

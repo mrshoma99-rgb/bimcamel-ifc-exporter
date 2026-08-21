@@ -203,11 +203,11 @@ namespace CamelWorks.Core.Automation
 
                 try
                 {
-                    var produced = Evaluate(node, definition, inputs, host, out var outcome);
+                    var ran = Evaluate(node, definition, inputs, host, out var produced, out var outcome);
 
                     if (produced != null) outputs[node.Id] = produced;
 
-                    steps.Add(new GraphStep(node.Id, definition.Title, true, outcome));
+                    steps.Add(new GraphStep(node.Id, definition.Title, ran, outcome));
                 }
                 catch (Exception e)
                 {
@@ -236,21 +236,34 @@ namespace CamelWorks.Core.Automation
             return true;
         }
 
-        private static Value? Evaluate(GraphNode node, NodeKind definition, IDictionary<string, Value> inputs,
-                                       IGraphHost host, out string outcome)
+        /// <summary>
+        /// Run one node.
+        ///
+        /// Returns whether it did its job, which is not the same as whether it produced a value: a
+        /// report node produces nothing and has still worked, and a colour node given "puce"
+        /// produces nothing and has not. Conflating the two is how a run reports three of three
+        /// nodes ran while one of them refused.
+        /// </summary>
+        private static bool Evaluate(GraphNode node, NodeKind definition, IDictionary<string, Value> inputs,
+                                     IGraphHost host, out Value? produced, out string outcome)
         {
+            produced = null;
+
             IReadOnlyList<ElementKey> In(string port) => inputs[port].Keys ?? Array.Empty<ElementKey>();
 
             switch (node.Kind)
             {
                 case "input.everything":
-                    return Keys(host.Everything(), out outcome);
+                    produced = Keys(host.Everything(), out outcome);
+                    return true;
 
                 case "input.selection":
-                    return Keys(host.Selection(), out outcome);
+                    produced = Keys(host.Selection(), out outcome);
+                    return true;
 
                 case "input.set":
-                    return Keys(host.Set(node.Setting("name")), out outcome);
+                    produced = Keys(host.Set(node.Setting("name")), out outcome);
+                    return true;
 
                 case "filter.where":
                 {
@@ -259,25 +272,29 @@ namespace CamelWorks.Core.Automation
                     if (condition == null)
                     {
                         outcome = "the comparison and the value do not go together";
-                        return null;
+                        return false;
                     }
 
-                    return Keys(host.Where(In("in"), condition), out outcome);
+                    produced = Keys(host.Where(In("in"), condition), out outcome);
+                    return true;
                 }
 
                 case "set.union":
-                    return Keys(In("a").Concat(In("b")).Distinct().ToList(), out outcome);
+                    produced = Keys(In("a").Concat(In("b")).Distinct().ToList(), out outcome);
+                    return true;
 
                 case "set.intersect":
                 {
                     var other = new HashSet<ElementKey>(In("b"));
-                    return Keys(In("a").Where(other.Contains).ToList(), out outcome);
+                    produced = Keys(In("a").Where(other.Contains).ToList(), out outcome);
+                    return true;
                 }
 
                 case "set.subtract":
                 {
                     var other = new HashSet<ElementKey>(In("b"));
-                    return Keys(In("a").Where(k => !other.Contains(k)).ToList(), out outcome);
+                    produced = Keys(In("a").Where(k => !other.Contains(k)).ToList(), out outcome);
+                    return true;
                 }
 
                 case "view.colour":
@@ -285,44 +302,51 @@ namespace CamelWorks.Core.Automation
                     if (!Colour.TryParse(node.Setting("colour"), out var colour))
                     {
                         outcome = "\"" + node.Setting("colour") + "\" is not a colour like #cc3333";
-                        return null;
+                        return false;
                     }
 
                     host.Colour(In("in"), colour);
-                    return Keys(In("in"), out outcome, "coloured");
+                    produced = Keys(In("in"), out outcome, "coloured");
+                    return true;
                 }
 
                 case "view.transparency":
                     host.Transparency(In("in"), Math.Min(1, Math.Max(0, node.Number("value", 0.7))));
-                    return Keys(In("in"), out outcome, "made transparent");
+                    produced = Keys(In("in"), out outcome, "made transparent");
+                    return true;
 
                 case "view.visibility":
                     host.Visible(In("in"), node.Setting("state") == "show");
-                    return Keys(In("in"), out outcome, node.Setting("state") == "show" ? "shown" : "hidden");
+                    produced = Keys(In("in"), out outcome, node.Setting("state") == "show" ? "shown" : "hidden");
+                    return true;
 
                 case "view.select":
                     host.Select(In("in"));
-                    return Keys(In("in"), out outcome, "selected");
+                    produced = Keys(In("in"), out outcome, "selected");
+                    return true;
 
                 case "data.write":
                 {
                     var written = host.Write(In("in"), node.Setting("name"), node.Setting("value"));
                     outcome = written.ToString("N0", CultureInfo.InvariantCulture) + " written";
-                    return new Value { Keys = In("in") };
+                    produced = new Value { Keys = In("in") };
+                    return true;
                 }
 
                 case "data.takeoff":
                 {
                     var table = host.Takeoff(In("in"), node.Setting("measure"), node.Setting("group"));
                     outcome = table.Rows.Count.ToString("N0", CultureInfo.InvariantCulture) + " rows";
-                    return new Value { Table = table };
+                    produced = new Value { Table = table };
+                    return true;
                 }
 
                 case "clash.board":
                 {
                     var table = host.ClashBoard();
                     outcome = table.Rows.Count.ToString("N0", CultureInfo.InvariantCulture) + " rows";
-                    return new Value { Table = table };
+                    produced = new Value { Table = table };
+                    return true;
                 }
 
                 case "report.write":
@@ -332,12 +356,12 @@ namespace CamelWorks.Core.Automation
                     if (path.Trim().Length == 0)
                     {
                         outcome = "no file to write to";
-                        return null;
+                        return false;
                     }
 
                     host.Report(path, node.Setting("format"), node.Setting("title"), inputs["in"].Table!);
                     outcome = "wrote " + path;
-                    return null;
+                    return true;
                 }
 
                 case "csv.write":
@@ -347,17 +371,17 @@ namespace CamelWorks.Core.Automation
                     if (path.Trim().Length == 0)
                     {
                         outcome = "no file to write to";
-                        return null;
+                        return false;
                     }
 
                     host.Csv(path, inputs["in"].Table!);
                     outcome = "wrote " + path;
-                    return null;
+                    return true;
                 }
 
                 default:
                     outcome = "this build does not know how to run " + definition.Title;
-                    return null;
+                    return false;
             }
         }
 

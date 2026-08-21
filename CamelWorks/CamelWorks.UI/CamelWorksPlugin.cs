@@ -93,9 +93,16 @@ namespace CamelWorks.UI
                         OpenPane(command.Route);
                         break;
 
-                    case CommandKind.Menu:
-                    case CommandKind.Dialog:
                     case CommandKind.Act:
+                        var said = Actions.Run(command.Id);
+                        if (said != null) Warn(said);
+                        break;
+
+                    case CommandKind.Dialog:
+                        HelpWindow.Show();
+                        break;
+
+                    case CommandKind.Menu:
                         NotYetWired(command);
                         break;
                 }
@@ -168,9 +175,9 @@ namespace CamelWorks.UI
 
         private void NotYetWired(RibbonCommand command)
         {
-            // Stated plainly. A button that does nothing at all reads as a broken product; a button
-            // that says what it will do and that it is not connected yet reads as an unfinished one,
-            // which is the truth.
+            // No command reaches this today. It stays because a button added to the ribbon and the
+            // catalogue but not to the switch above would otherwise do nothing at all, which reads
+            // as a broken product rather than an unfinished one.
             Warn(command.Title + " is not connected in this build yet.\n\n" + command.Tooltip);
         }
 

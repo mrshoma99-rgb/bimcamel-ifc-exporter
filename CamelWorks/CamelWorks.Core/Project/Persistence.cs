@@ -270,10 +270,19 @@ namespace CamelWorks.Core.Project
             }
             else
             {
+                var saved = json["keys"].Items;
                 var keys = new List<ElementKey>();
 
-                foreach (var item in json["keys"].Items)
+                foreach (var item in saved)
                     if (ElementKey.TryParse(item.AsString(), out var key)) keys.Add(key);
+
+                // A layer whose keys did not survive is a layer covering nothing, and the saved
+                // description would still claim "2 elements" — which is worse than an empty layer,
+                // because it looks like the layer is working.
+                if (keys.Count < saved.Count)
+                    description = keys.Count.ToString(CultureInfo.InvariantCulture) + " of "
+                                  + saved.Count.ToString(CultureInfo.InvariantCulture)
+                                  + " elements — the rest could not be read";
 
                 target = LayerTarget.Elements(keys, description);
             }

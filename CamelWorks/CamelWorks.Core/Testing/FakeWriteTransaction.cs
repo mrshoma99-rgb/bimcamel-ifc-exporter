@@ -157,6 +157,9 @@ namespace CamelWorks.Core.Testing
         public bool SectionBoxEnabled { get; private set; }
 
         /// <inheritdoc />
+        public bool IsSectionBoxEnabled => SectionBoxEnabled;
+
+        /// <inheritdoc />
         public void SetColour(IReadOnlyList<ElementKey> keys, Colour colour)
         {
             foreach (var k in keys) { _colour[k] = colour; _authored.Add(k); }
