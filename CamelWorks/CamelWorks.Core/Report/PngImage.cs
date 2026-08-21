@@ -223,7 +223,7 @@ namespace CamelWorks.Core.Report
                 case 3:   // Average
                     for (var i = 0; i < row.Length; i++)
                     {
-                        var left = i >= step ? row[i - step] : 0;
+                        int left = i >= step ? row[i - step] : 0;
                         row[i] = (byte)(row[i] + ((left + previous[i]) / 2));
                     }
 
@@ -232,8 +232,10 @@ namespace CamelWorks.Core.Report
                 case 4:   // Paeth
                     for (var i = 0; i < row.Length; i++)
                     {
-                        var left = i >= step ? row[i - step] : 0;
-                        var upLeft = i >= step ? previous[i - step] : 0;
+                        // Typed as bytes rather than left to inference: a ternary of a byte and
+                        // the literal 0 has type int, which does not match Paeth's parameters.
+                        var left = i >= step ? row[i - step] : (byte)0;
+                        var upLeft = i >= step ? previous[i - step] : (byte)0;
                         row[i] = (byte)(row[i] + Paeth(left, previous[i], upLeft));
                     }
 
