@@ -102,7 +102,12 @@ namespace CamelWorks.UI.Views
             job.Say("Applying rules...");
 
             var options = rules.ToOptions(session.Profile.ClashProximity);
-            options.Decisions = snapshot?.Decisions ?? options.Decisions;
+
+            // Read from the file rather than from the snapshot. A hand assignment is a decision
+            // about a group, not about a run — reading it off the previous run would mean losing
+            // every assignment the first time somebody opens the board on a machine that has not
+            // run it before.
+            options.Decisions = Decisions(session);
 
             var board = ClashPipeline.Run(items, options);
 
@@ -160,14 +165,20 @@ namespace CamelWorks.UI.Views
                     entry["pinned"].AsString() == "yes", entry["test"].AsString()));
             }
 
+            return new ClashSnapshot(records, Decisions(session));
+        }
+
+        /// <summary>The assignments made by hand, which outrank the rules and survive a re-run.</summary>
+        private static IReadOnlyDictionary<string, GroupDecision> Decisions(Session session)
+        {
             var decisions = new Dictionary<string, GroupDecision>(StringComparer.Ordinal);
-            var saveDecisions = session.Store.Section(ProjectStore.ClashSection)["decisions"];
+            var saved = session.Store.Section(ProjectStore.ClashSection)["decisions"];
 
-            foreach (var name in saveDecisions.Keys)
-                decisions[name] = new GroupDecision(saveDecisions[name]["party"].AsString(),
-                                                    saveDecisions[name]["priority"].AsString());
+            foreach (var name in saved.Keys)
+                decisions[name] = new GroupDecision(saved[name]["party"].AsString(),
+                                                   saved[name]["priority"].AsString());
 
-            return new ClashSnapshot(records, decisions);
+            return decisions;
         }
 
         private static void Save(Session session, ClashPipelineResult board)
