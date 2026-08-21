@@ -85,5 +85,11 @@ jobs:
       # buildingSMART XSDs. This is what caught BCF 3.0's required AspectRatio.
       - name: Validate written BCF against the published schemas
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq libxml2-utils
+          sudo apt-get update -qq && sudo apt-get install -y -qq libxml2-utils qpdf
           CamelWorks/schemas/bcf/validate.sh
+
+      # Same reasoning for PDF. Assertions over the bytes prove the writer did what it meant to and
+      # prove nothing about whether a reader will accept the result; qpdf walks the object graph
+      # and the cross-reference table.
+      - name: Check written PDFs are structurally sound
+        run: CamelWorks/checks/validate-pdf.sh
