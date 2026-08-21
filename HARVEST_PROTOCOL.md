@@ -87,24 +87,43 @@ release-gate check.
 > publishing under an irrevocable open licence cannot be undone. Worth one look before the first
 > public push; not revisited here.
 
-### Migration trap — a marker that lives in customer files
+### No compatibility burden — the formats get designed properly
+
+CamelWorks has **no users yet**. Nothing harvested has to stay wire-compatible with anything, and that
+is worth spending deliberately rather than letting it pass unnoticed.
+
+Two things in `BetterSets` would otherwise have been permanent constraints:
 
 ```csharp
-// BetterSets/SetRecipe.cs:21
+// BetterSets/SetRecipe.cs:21   — written into the COMMENT of saved sets inside the user's NWF/NWD
 public const string Marker = "--- KVI Better Sets recipe (edited by the tool) ---";
 // BetterSets/BetterSetsStore.cs:61
 public const string RecipeAuthor = "KVI Better Sets";
 ```
 
-These are **written into the comment of saved sets inside the user's NWF/NWD** — they are a persisted
-data format, not UI text. Renaming them naively orphans every set anyone has already built.
+That marker is a persisted data format living in customer model files, and `%AppData%\KVI_Tools\`
+holds settings, run logs and `team_members.xml`. On a product with a userbase, renaming either means
+carrying a dual-read path and a first-run migration forever.
 
-**Rule:** CamelWorks **writes** the new marker and **reads both**, indefinitely. The reader is a
-two-line change; the alternative is silent data loss in the field.
+**There is no userbase, so there is no dual-read and no migration.** Both are deleted from the plan.
 
-The same applies to persisted paths — `%AppData%\KVI_Tools\...` (settings, run logs) and
-`%AppData%\KVI_Tools\team_members.xml`. CamelWorks writes to its own path and **migrates on first run
-if the old path exists**, rather than ignoring it.
+What to do with the freedom, rather than merely enjoying it:
+
+- **Design the recipe format for what CamelWorks needs**, not what fitted inside a set comment. A set
+  comment is a single unstructured string; the recipe was squeezed into it because that was the only
+  per-set storage Navisworks offers. CamelWorks has a sidecar store — so the recipe belongs there, with
+  the *human-readable* formula still written to the set comment for the reason it was there originally:
+  anyone opening the model can see what the set means without the tool. Keep that property, drop the
+  encoding hack.
+- **One namespace for persisted state.** Every harvested tool arrives with its own `%AppData%` folder
+  and file layout. They collapse into the single `.camelworks/` sidecar the plan already defines, with
+  one schema version across the product rather than one per tool.
+- **Version every format from the first commit.** The compatibility burden that does not exist today
+  starts existing on the day of first release, and a `schemaVersion` written from day one costs nothing
+  now and buys the migration path later.
+
+The same applies to anything else harvested: **change the data structures freely.** The instruction to
+redesign the UI (§3) extends to the formats underneath it.
 
 ---
 
@@ -148,5 +167,5 @@ Add to §8 Definition of done:
   `PackageContents.xml`, installer manifests, resource files and the About dialog.
 - The staged diff of every harvested file has passed the secret scan in §1.
 - No harvested file imports from `contract/`, `cloudflare/`, `BIMCamel.Api` or any auth/billing module.
-- Reading a set whose comment carries the **old** recipe marker still works, with a test that proves it.
-- First run migrates `%AppData%\KVI_Tools\` settings, logs and team members if present.
+- Every persisted format carries a `schemaVersion` from its first commit.
+- No harvested tool writes outside the single `.camelworks/` sidecar.

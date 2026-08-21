@@ -7,8 +7,14 @@ Navisworks Manage and Simulate 2024–2027.
 **Ships as one complete product.** No phasing, no MVP, no "coming in 1.1", no greyed-out buttons.
 The build order in §7 is an internal dependency order, not a release schedule.
 
-Companion document: [`CAMELWORKS_PLAN.md`](CAMELWORKS_PLAN.md) — the market research (24 pain points,
-competitor pricing, the free comparables) this plan answers.
+Companion documents:
+- [`CAMELWORKS_PLAN.md`](CAMELWORKS_PLAN.md) — the market research (24 pain points, competitor pricing,
+  the free comparables) this plan answers.
+- [`HARVEST_PROTOCOL.md`](HARVEST_PROTOCOL.md) — the gate for code harvested from the two private
+  repositories: security clearance, de-branding, redesign-don't-port, and the release checks.
+
+**No users yet.** Nothing here carries a backward-compatibility constraint; every persisted format is
+designed once, properly, and versioned from its first commit.
 
 ---
 
@@ -539,8 +545,11 @@ Stages 3–7 parallelise. 0, 0-P, 0-R, 0-D, 0-S*, 1 and GATE do not.
 - Every new Core service has a Dyncamelo node wrapper — enforced by the `ITool<>` parity test, not prose.
 - Green build: **5 assemblies × 4 years = 20 builds**, plus the installer, plus the Linux Core test job.
 - **8-row smoke matrix** — {2024, 2025, 2026, 2027} × {Manage, Simulate} — each with its tier-1 workflow.
-- Clean install, upgrade-from-BIMCamel, upgrade-from-Dyncamelo, upgrade-from-CamelWorks, and
-  upgrade-from-legacy-Inno all verified. Existing BIMCamel export profiles load unchanged.
+- Clean install, upgrade-from-BIMCamel, upgrade-from-Dyncamelo, upgrade-from-CamelWorks and
+  upgrade-from-legacy-Inno all verified — installer hygiene, so two bundles never co-exist.
+  **No data-format compatibility is required**: CamelWorks has no users, so export profiles, set
+  recipes and settings are redesigned rather than migrated (see `HARVEST_PROTOCOL.md` §2).
+- Every persisted format carries a `schemaVersion` from its first commit.
 - **Cold-start rubric:** a coordinator who has never seen CamelWorks reaches a grouped triage board and
   an exported PDF **within 10 minutes** of first launch; first launch of the sample reaches the carry-over
   banner and a Regressed-only board **in under two minutes**. Verified at 5-X *and* at Stage 9.
