@@ -101,19 +101,21 @@ namespace CamelWorks.UI
             return 0;
         }
 
-        /// <inheritdoc />
-        public override bool CanExecuteCommand(string commandId, out string reason)
+        /// <summary>
+        /// Whether a command is available right now.
+        ///
+        /// Every one of these needs a model, so with nothing open they are shown but disabled —
+        /// visible, so the tab does not look empty and the user can see what the product offers,
+        /// and disabled, because a button that looks available and then says "open a model first"
+        /// has wasted the click and taught nothing.
+        /// </summary>
+        /// <param name="commandId">The command being asked about.</param>
+        public override CommandState CanExecuteCommand(string commandId)
         {
-            reason = string.Empty;
-
             var document = Autodesk.Navisworks.Api.Application.ActiveDocument;
-            if (document != null && !document.IsClear) return true;
+            var ready = document != null && !document.IsClear;
 
-            // Disabled with a reason rather than enabled and then complaining. Every one of these
-            // commands needs a model, and a button that looks available and then says "open a
-            // model first" has wasted the click and taught nothing.
-            reason = "Open a model first — CamelWorks works on what is loaded.";
-            return false;
+            return new CommandState(ready);
         }
 
         private void OpenPane(string? route)
