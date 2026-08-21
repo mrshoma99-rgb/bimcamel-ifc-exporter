@@ -257,7 +257,164 @@ namespace CamelWorks.UI.Views
                        + "quietly dropped."),
                 run,
                 results,
-                detail));
+                detail,
+                HeadroomCard()));
+        }
+
+        // ===================================================================================
+        // Headroom
+        // ===================================================================================
+
+        /// <summary>
+        /// Clear height between a walkable surface and whatever is above it.
+        ///
+        /// It lives on the board because that is where it belongs: a duct 1.9 m over a corridor is
+        /// a coordination problem in exactly the way a clash is, and it is the one no clash test at
+        /// any tolerance will ever find — there is air between them.
+        /// </summary>
+        private static UIElement HeadroomCard()
+        {
+            var results = Ui.Stack();
+
+            var floors = "Floors and slabs";
+            var targets = "Everything else";
+            var minimum = Ui.Text("2.100", null, 80);
+
+            var floorPicker = Ui.Choice(new[] { "Floors and slabs", "Current selection", "Everything" },
+                                        floors, v => floors = v);
+
+            var targetPicker = Ui.Choice(new[] { "Everything else", "Current selection", "Everything" },
+                                         targets, v => targets = v);
+
+            var run = Ui.Runner("Check clear height", results, job =>
+            {
+                var session = Host.Current;
+                if (session == null) { results.Children.Add(Ui.Line(Host.NoModel)); return; }
+
+                if (!double.TryParse(minimum.Text, NumberStyles.Float, CultureInfo.InvariantCulture,
+                                     out var height) || height <= 0)
+                {
+                    results.Children.Add(Ui.Line("Type a height in metres, like 2.100.", 0.8));
+                    return;
+                }
+
+                var scale = session.MetresPerUnit;
+                var selected = new HashSet<ElementKey>(session.Model.SelectedKeys());
+
+                var surfaces = new List<HeadroomElement>();
+                var above = new List<HeadroomElement>();
+                var byId = new Dictionary<string, ElementKey>(StringComparer.Ordinal);
+                var read = 0;
+
+                foreach (var item in session.Model.Traverse(TraversalScope.WholeDocument))
+                {
+                    if (!job.Step(read++, "elements read")) return;
+                    if (!item.HasGeometry) continue;
+
+                    var bounds = item.Bounds;
+                    var id = item.Key.ToString();
+
+                    byId[id] = item.Key;
+
+                    var element = new HeadroomElement(id, item.DisplayName)
+                    {
+                        MinX = bounds.MinX * scale, MaxX = bounds.MaxX * scale,
+                        MinY = bounds.MinY * scale, MaxY = bounds.MaxY * scale,
+                        MinZ = bounds.MinZ * scale, MaxZ = bounds.MaxZ * scale,
+                    };
+
+                    var walkable = IsWalkable(item);
+                    var isSelected = selected.Contains(item.Key);
+
+                    if (floors == "Everything"
+                        || (floors == "Current selection" && isSelected)
+                        || (floors == "Floors and slabs" && walkable))
+                        surfaces.Add(element);
+
+                    if (targets == "Everything"
+                        || (targets == "Current selection" && isSelected)
+                        || (targets == "Everything else" && !walkable))
+                        above.Add(element);
+                }
+
+                job.Say("Measuring...");
+                var found = Headroom.Check(surfaces, above, height);
+
+                results.Children.Add(Ui.Line(found.ToString(), 1, true));
+
+                if (surfaces.Count == 0)
+                {
+                    results.Children.Add(Ui.Empty("No walkable surfaces found.",
+                        floors == "Floors and slabs"
+                            ? "Nothing loaded has a category that reads as a floor or a slab. Select the "
+                              + "surfaces you mean and run it against the current selection instead."
+                            : "Nothing is selected."));
+                    return;
+                }
+
+                if (found.Spans.Count == 0)
+                {
+                    results.Children.Add(Ui.Empty("Nothing is too low.",
+                        "Every surface has at least " + height.ToString("0.000", CultureInfo.InvariantCulture)
+                        + " m of clear height above it."));
+                    return;
+                }
+
+                var rows = found.Spans.Take(300).Select(span => new TableRow(span,
+                    span.Clear.ToString("0.000", CultureInfo.InvariantCulture),
+                    span.Obstruction.Name,
+                    span.Floor.Name,
+                    span.X.ToString("0.0", CultureInfo.InvariantCulture) + ", "
+                        + span.Y.ToString("0.0", CultureInfo.InvariantCulture))
+                {
+                    Tone = span.Clear < height * 0.8 ? Tone.Bad : Tone.Warn,
+                }).ToList();
+
+                results.Children.Add(Ui.Table(rows,
+                    ("Clear (m)", 90), ("Under", 190), ("Over", 190), ("At", 0))
+                    .OnPick(item =>
+                    {
+                        if (!(item is HeadroomSpan span)) return;
+
+                        var keys = new List<ElementKey>();
+                        if (byId.TryGetValue(span.Floor.Id, out var a)) keys.Add(a);
+                        if (byId.TryGetValue(span.Obstruction.Id, out var b)) keys.Add(b);
+
+                        if (keys.Count == 0) return;
+
+                        session.Model.Select(keys);
+                        session.View.ZoomTo(keys, 2.0);
+                    }));
+
+                session.Record(ActivityKind.Regroup, "checked clear height: " + found);
+            });
+
+            return Ui.Card("Headroom",
+                "The check a clash test cannot do: a duct 1.9 m above a corridor clashes with nothing.",
+                Ui.Field("Surfaces", floorPicker),
+                Ui.Field("Look above at", targetPicker),
+                Ui.Field("Minimum clear height (m)", minimum),
+                run,
+                results);
+        }
+
+        /// <summary>
+        /// Whether an element reads as something people walk on.
+        ///
+        /// A guess, and a stated one — the alternative is asking the user to build a set before
+        /// they can run the check at all, which is the setup tax this product exists to not charge.
+        /// </summary>
+        private static bool IsWalkable(IModelItem item)
+        {
+            var category = item.Category ?? string.Empty;
+            var type = item.TypeName ?? string.Empty;
+
+            foreach (var word in new[] { "floor", "slab", "stair", "landing", "ramp", "platform", "deck" })
+                if (category.IndexOf(word, StringComparison.OrdinalIgnoreCase) >= 0
+                    || type.IndexOf(word, StringComparison.OrdinalIgnoreCase) >= 0)
+                    return true;
+
+            return false;
         }
 
         private static UIElement Detail(Session session, ClashGroup group)
@@ -864,15 +1021,37 @@ namespace CamelWorks.UI.Views
                         return;
                     }
 
+                    // The conflict preview. A BCF file that arrives twice — because somebody
+                    // re-sent it, or because two people exported the same board — must not read as
+                    // a fresh set of issues, and the only thing that can tell them apart is the
+                    // topic GUID the schema requires.
+                    var known = Known(session);
+                    var fresh = read.Topics.Count(t => !known.Contains(t.Guid));
+
+                    results.Children.Add(Ui.Across(
+                        Ui.Pill(fresh + " new", fresh > 0 ? Tone.Good : Tone.Plain),
+                        Ui.Pill((read.Topics.Count - fresh) + " already seen")));
+
                     var rows = read.Topics.Select(t => new TableRow(t,
+                        known.Contains(t.Guid) ? "seen" : "new",
                         t.Title,
                         t.TopicStatus,
                         t.AssignedTo ?? "-",
                         t.CreationAuthor,
-                        Ui.Count(t.Comments.Count, "comment"))).ToList();
+                        Ui.Count(t.Comments.Count, "comment"))
+                    {
+                        Tone = known.Contains(t.Guid) ? Tone.Plain : Tone.Good,
+                    }).ToList();
 
                     results.Children.Add(Ui.Table(rows,
-                        ("Topic", 240), ("Status", 90), ("Assigned to", 120), ("Author", 130), ("", 0)));
+                        ("", 50), ("Topic", 220), ("Status", 80), ("Assigned to", 110),
+                        ("Author", 120), ("", 0)));
+
+                    Remember(session, read.Topics.Select(t => t.Guid));
+
+                    results.Children.Add(Ui.Note("CamelWorks has recorded which topics it has seen, so the "
+                        + "same file read again reports nothing new. It does not write them into the model: "
+                        + "somebody else's issue list is theirs until you decide what to do with it."));
                 }
 
                 session.Record(ActivityKind.Exchange, "read a BCF file", file);
@@ -886,6 +1065,28 @@ namespace CamelWorks.UI.Views
                 Ui.Field("File", path),
                 Ui.Across(export, import),
                 results));
+        }
+
+        /// <summary>Topic GUIDs this project has already been shown.</summary>
+        private static HashSet<string> Known(Session session)
+        {
+            var saved = session.Store.Section(ProjectStore.ClashSection)["bcfTopics"];
+
+            return new HashSet<string>(
+                saved.Items.Select(i => i.AsString() ?? string.Empty).Where(s => s.Length > 0),
+                StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static void Remember(Session session, IEnumerable<string> guids)
+        {
+            var known = Known(session);
+            foreach (var guid in guids) known.Add(guid);
+
+            session.Store.Section(ProjectStore.ClashSection)
+                   .Set("bcfTopics", JsonValue.Array(known.OrderBy(g => g, StringComparer.Ordinal)
+                                                          .Select(JsonValue.String)));
+
+            session.Store.Save();
         }
 
         private static IReadOnlyList<BcfTopic> Topics(Session session, ClashPipelineResult board)
