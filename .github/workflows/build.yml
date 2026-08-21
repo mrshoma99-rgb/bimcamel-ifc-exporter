@@ -38,6 +38,9 @@ jobs:
       - name: Build CamelWorks.Nav.Clash (Release, Navisworks ${{ matrix.year }})
         run: dotnet build CamelWorks/CamelWorks.Nav.Clash/CamelWorks.Nav.Clash.csproj -c Release -p:NavisworksYear=${{ matrix.year }}
 
+      - name: Build CamelWorks.UI (Release, Navisworks ${{ matrix.year }})
+        run: dotnet build CamelWorks/CamelWorks.UI/CamelWorks.UI.csproj -c Release -p:NavisworksYear=${{ matrix.year }}
+
   installer:
     name: Windows (installer)
     runs-on: windows-latest
@@ -93,3 +96,10 @@ jobs:
       # and the cross-reference table.
       - name: Check written PDFs are structurally sound
         run: CamelWorks/checks/validate-pdf.sh
+
+      # A ribbon command lives in three places — the markup that draws it, the attribute that
+      # registers it, and the catalogue that routes it — and nothing in the compiler connects them.
+      # A button in two of the three either does nothing, never appears, or cannot be found by
+      # search, and each looks like a different bug.
+      - name: Check the ribbon, the plug-in and the catalogue agree
+        run: python3 CamelWorks/checks/validate-ribbon.py

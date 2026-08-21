@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The CamelWorks ribbon tab: five panels, twenty-five buttons.
+
+  Hand-authored Navisworks markup, not WPF — the project file removes it from Page compilation and
+  deploys it to an en-US subfolder beside the DLL, which is where the host looks for it.
+
+  Every button is a real AdWindows item, so right-click -> Add to Quick Access Toolbar works on all
+  of them. That is the whole personalisation story on purpose: a second pinning system inside a
+  product whose first-run problem is surface area would make the surface area worse.
+
+  The dropdown buttons carry no split-button markup. A plain button whose handler opens a small menu
+  behaves identically for the user, and keeps this file to the one control type that is known to
+  register on all four supported Navisworks releases.
+-->
+<RibbonControl
+    x:Uid="CamelWorks"
+    xmlns="clr-namespace:Autodesk.Windows;assembly=AdWindows"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="clr-namespace:Autodesk.Navisworks.Gui.Roamer.AIRLook;assembly=navisworks.gui.roamer">
+
+  <RibbonTab Id="ID_Tab_CamelWorks" Title="CamelWorks" KeyTip="CW">
+
+    <!-- Panel 1 — Project. Health Check is first because it is the first button that pays off. -->
+    <RibbonPanel x:Uid="RibbonPanel_CW_Project">
+      <RibbonPanelSource x:Uid="RibbonPanelSource_CW_Project" Title="Project">
+        <local:NWRibbonButton x:Uid="CW_HealthCheck" Id="ID_CW_HealthCheck"
+                              Size="Large" ShowText="True" Orientation="Vertical" />
+        <local:NWRibbonButton x:Uid="CW_ProjectSetup" Id="ID_CW_ProjectSetup"
+                              Size="Standard" ShowText="True" Orientation="Horizontal" />
+        <local:NWRibbonButton x:Uid="CW_FixLinks" Id="ID_CW_FixLinks"
+                              Size="Standard" ShowText="True" Orientation="Horizontal" />
+        <local:NWRibbonButton x:Uid="CW_ProjectProfile" Id="ID_CW_ProjectProfile"
+                              Size="Standard" ShowText="True" Orientation="Horizontal" />
+      </RibbonPanelSource>
+    </RibbonPanel>
+
+    <!-- Panel 2 — Coordinate. Full on Manage; on Simulate the board is read-only from the store. -->
+    <RibbonPanel x:Uid="RibbonPanel_CW_Coordinate">
+      <RibbonPanelSource x:Uid="RibbonPanelSource_CW_Coordinate" Title="Coordinate">
+        <local:NWRibbonButton x:Uid="CW_Triage" Id="ID_CW_Triage"
+                              Size="Large" ShowText="True" Orientation="Vertical" />
+        <local:NWRibbonButton x:Uid="CW_Review" Id="ID_CW_Review"
+                              Size="Large" ShowText="True" Orientation="Vertical" />
+        <local:NWRibbonButton x:Uid="CW_ClashTests" Id="ID_CW_ClashTests"
+                              Size="Standard" ShowText="True" Orientation="Horizontal" />
+        <local:NWRibbonButton x:Uid="CW_ClashRules" Id="ID_CW_ClashRules"
+                              Size="Standard" ShowText="True" Orientation="Horizontal" />
+        <local:NWRibbonButton x:Uid="CW_Headroom" Id="ID_CW_Headroom"
+                              Size="Standard" ShowText="True" Orientation="Horizontal" />
+        <local:NWRibbonButton x:Uid="CW_ClashReport" Id="ID_CW_ClashReport"
+                              Size="Standard" ShowText="True" Orientation="Horizontal" />
+        <local:NWRibbonButton x:Uid="CW_Bcf" Id="ID_CW_Bcf"
+                              Size="Standard" ShowText="True" Orientation="Horizontal" />
+        <local:NWRibbonButton x:Uid="CW_Merge" Id="ID_CW_Merge"
+                              Size="Standard" ShowText="True" Orientation="Horizontal" />
+      </RibbonPanelSource>
+    </RibbonPanel>
+
+    <!-- Panel 3 — Data -->
+    <RibbonPanel x:Uid="RibbonPanel_CW_Data">
+      <RibbonPanelSource x:Uid="RibbonPanelSource_CW_Data" Title="Data">
+        <local:NWRibbonButton x:Uid="CW_DataManager" Id="ID_CW_DataManager"
+                              Size="Large" ShowText="True" Orientation="Vertical" />
+        <local:NWRibbonButton x:Uid="CW_Excel" Id="ID_CW_Excel"
+                              Size="Standard" ShowText="True" Orientation="Horizontal" />
+        <local:NWRibbonButton x:Uid="CW_Zones" Id="ID_CW_Zones"
+                              Size="Standard" ShowText="True" Orientation="Horizontal" />
+        <local:NWRibbonButton x:Uid="CW_Takeoff" Id="ID_CW_Takeoff"
+                              Size="Standard" ShowText="True" Orientation="Horizontal" />
+      </RibbonPanelSource>
+    </RibbonPanel>
+
+    <!-- Panel 4 — Sets & Views -->
+    <RibbonPanel x:Uid="RibbonPanel_CW_Sets">
+      <RibbonPanelSource x:Uid="RibbonPanelSource_CW_Sets" Title="Sets &amp; Views">
+        <local:NWRibbonButton x:Uid="CW_Sets" Id="ID_CW_Sets"
+                              Size="Large" ShowText="True" Orientation="Vertical" />
+        <local:NWRibbonButton x:Uid="CW_Appearance" Id="ID_CW_Appearance"
+                              Size="Large" ShowText="True" Orientation="Vertical" />
+        <local:NWRibbonButton x:Uid="CW_Viewpoints" Id="ID_CW_Viewpoints"
+                              Size="Standard" ShowText="True" Orientation="Horizontal" />
+        <local:NWRibbonButton x:Uid="CW_SectionBox" Id="ID_CW_SectionBox"
+                              Size="Standard" ShowText="True" Orientation="Horizontal" />
+      </RibbonPanelSource>
+    </RibbonPanel>
+
+    <!-- Panel 5 — Deliver & Automate -->
+    <RibbonPanel x:Uid="RibbonPanel_CW_Deliver">
+      <RibbonPanelSource x:Uid="RibbonPanelSource_CW_Deliver" Title="Deliver &amp; Automate">
+        <local:NWRibbonButton x:Uid="CW_Batch" Id="ID_CW_Batch"
+                              Size="Large" ShowText="True" Orientation="Vertical" />
+        <local:NWRibbonButton x:Uid="CW_Graph" Id="ID_CW_Graph"
+                              Size="Large" ShowText="True" Orientation="Vertical" />
+        <local:NWRibbonButton x:Uid="CW_ExportIfc" Id="ID_CW_ExportIfc"
+                              Size="Large" ShowText="True" Orientation="Vertical" />
+        <local:NWRibbonButton x:Uid="CW_Export" Id="ID_CW_Export"
+                              Size="Standard" ShowText="True" Orientation="Horizontal" />
+        <local:NWRibbonButton x:Uid="CW_Help" Id="ID_CW_Help"
+                              Size="Standard" ShowText="True" Orientation="Horizontal" />
+      </RibbonPanelSource>
+    </RibbonPanel>
+
+  </RibbonTab>
+
+</RibbonControl>

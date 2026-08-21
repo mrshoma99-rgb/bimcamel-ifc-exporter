@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <LangVersion>10.0</LangVersion>
+    <AssemblyName>CamelWorks.UI</AssemblyName>
+    <RootNamespace>CamelWorks.UI</RootNamespace>
+    <PlatformTarget>x64</PlatformTarget>
+    <OutputType>Library</OutputType>
+    <Product>CamelWorks</Product>
+    <Company>BIMCamel</Company>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <NavisworksYear Condition="'$(NavisworksYear)' == ''">2024</NavisworksYear>
+    <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2024'">2024.0.0</NavisPkgVersion>
+    <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2025'">2025.0.0</NavisPkgVersion>
+    <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2026'">2026.0.1</NavisPkgVersion>
+    <NavisPkgVersion Condition="'$(NavisPkgVersion)' == '' and '$(NavisworksYear)' == '2027'">2027.0.0</NavisPkgVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CamelWorks.Core\CamelWorks.Core.csproj" />
+    <ProjectReference Include="..\CamelWorks.Nav\CamelWorks.Nav.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Speckle.Navisworks.API" Version="$(NavisPkgVersion)">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!-- The ribbon layout is hand-authored Navisworks markup, not WPF. With UseWPF the SDK would
+       glob it in as a compiled Page and fail; it has to stay a plain content file that deploys to
+       an en-US subfolder beside the DLL. -->
+  <ItemGroup>
+    <Page Remove="CamelWorks.xaml" />
+    <None Remove="CamelWorks.xaml" />
+    <Content Include="CamelWorks.xaml">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>
