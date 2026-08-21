@@ -122,13 +122,19 @@ namespace CamelWorks.Nav.Clash
             return clash;
         }
 
-        // The tests live under TestsData.Value, and can be nested in folders. Flattened with the
-        // folder path kept, so a board can still show "Structural / L03 hard clash" rather than
-        // losing the only thing that distinguishes two tests with the same name.
+        // The tests hang off TestsData.Value.TestsRoot, and can be nested in folders. Flattened
+        // with the folder path kept, so a board can still show "Structural / L03 hard clash"
+        // rather than losing the only thing that distinguishes two tests with the same name.
+        //
+        // TestsRoot rather than a Tests collection: the reference assemblies for the four supported
+        // years do not all carry the latter, and reaching through the root works on every one.
         private static List<(ClashTest Test, string? Folder)> AllTests(DocumentClash clash)
         {
             var found = new List<(ClashTest, string?)>();
-            CollectTests(clash.TestsData.Value, null, found);
+
+            var root = clash.TestsData.Value.TestsRoot;
+            if (root != null) CollectTests(root.Children, null, found);
+
             return found;
         }
 
