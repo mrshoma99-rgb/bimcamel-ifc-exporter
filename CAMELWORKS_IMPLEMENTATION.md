@@ -10,8 +10,11 @@ The build order in §7 is an internal dependency order, not a release schedule.
 Companion documents:
 - [`CAMELWORKS_PLAN.md`](CAMELWORKS_PLAN.md) — the market research (24 pain points, competitor pricing,
   the free comparables) this plan answers.
+- [`CAMELWORKS_SCOPE_DECISION.md`](CAMELWORKS_SCOPE_DECISION.md) — the record of the seven-role scope
+  re-evaluation: 100 candidates, three-lens judgements, declines and the cost argument. Its outcome is
+  folded into **this** document, which wins on any disagreement.
 - [`HARVEST_PROTOCOL.md`](HARVEST_PROTOCOL.md) — the gate for code harvested from the two private
-  repositories: security clearance, de-branding, redesign-don't-port, and the release checks.
+  repositories: security clearance, de-branding, engines-not-viewer, and the release checks.
 
 **No users yet.** Nothing here carries a backward-compatibility constraint; every persisted format is
 designed once, properly, and versioned from its first commit.
@@ -204,7 +207,7 @@ Resolved on every re-run, so reading those back as truth would silently overwrit
 
 ---
 
-## 3. The ribbon — 5 panels, 26 buttons
+## 3. The ribbon — 5 panels, 25 buttons
 
 **Routing rule.** A button either acts immediately `[A]` or opens the pane on a named workspace/tab
 `[P:workspace/tab]`. **No ribbon button opens a modal that duplicates a pane screen.** True modals `[D]`
@@ -212,305 +215,142 @@ are reserved for terminal file operations that need a save path and nothing else
 what the user sees is **modeless with live preview**.
 
 Every button is a real AdWindows item, so **right-click → Add to Quick Access Toolbar** works on all of
-them — documented in the guide as the answer to "put my tool where I want it".
+them. That is the personalisation story — *Pin-to-ribbon and the 16 My Tools slots are cut* (§6): a
+second personalisation system inside a product whose first-run problem is surface.
+
+**Every button below does something on a raw model with nothing configured (§0).**
 
 ### Panel 1 — Project
 | Button | Type | Does |
 |---|---|---|
-| **Health Check** (large) | `[P:Project/Health]` | One scorecard: Models · Sets · Data. Runs on any model with nothing configured — this is the first button because it is the first thing that pays off |
-| Project Setup | `[P:Project/Setup]` | A checklist of what CamelWorks already derived — levels, zones, model pairs — with an override on each line. Skippable; most users never open it |
+| **Health Check** (large) | `[P:Project/Health]` | One scorecard: Models · Sets · Data. Runs its built-in rules on any model with nothing set up — first button because it is the first thing that pays off |
+| Project Setup | `[P:Project/Setup]` | A checklist of what CamelWorks already derived, with an override per line. Skippable |
 | Fix Broken Links | `[D]` | Repoint broken NWF paths, rename models, find missing sources |
-| Project Profile ▾ | `[A]` | Save · Load · New from template |
+| Project Profile ▾ | `[A]` | Save · Load · New from template pack (S3) |
 
-The three destructive commands — **Sync to model**, **Undo CamelWorks operation**, **Remove CamelWorks
-properties** — are *not* on the ribbon. They live only in Project ▸ Profile ▸ Model writes, each
-rendering an affected-element count before it runs, Remove behind a typed confirm.
+Sync to model, Undo CamelWorks operation and Remove CamelWorks properties are **not** on the ribbon —
+they live only in Project ▸ Profile ▸ Model writes, each showing an affected-element count first.
 
-### Panel 2 — Coordinate *(Manage only)*
+### Panel 2 — Coordinate *(Manage: full. Simulate: the board, read-only from the store — M3)*
 | Button | Type | Does |
 |---|---|---|
-| **Clash Triage** (large) | `[P:Coordinate/Triage]` | The board |
-| **Review** | `[A]` | Enter review mode on the board's current filter and scope |
-| Clash Tests | `[P:Coordinate/Tests]` | Matrix builder — and Run selected / Run all |
-| Clash Rules | `[P:Coordinate/Rules]` | The one pipeline: Suppress & Flag → Group → Assign |
-| Clash Report | `[P:Coordinate/Report]` | PDF / XLSX / HTML coordination report |
-| BCF ▾ | `[P:Coordinate/BCF]` | Export · Import · round-trip status |
+| **Clash Triage** (large) | `[P:Coordinate/Triage]` | The board. Opens populated; assignee is free text until a party registry exists |
+| **Review** | `[A]` | Review mode on the board's current filter and scope |
+| Clash Tests | `[P:Coordinate/Tests]` | Matrix builder + Run. One click = every model vs every other; S1 imports the project's own spreadsheet |
+| Clash Rules | `[P:Coordinate/Rules]` | Suppress & Flag → Group → Assign, one pipeline. A derived default stack runs before you touch it |
+| **Headroom** | `[P:Coordinate/Triage]` | F1 — floor set × target set as a BetterSets expression, emitting Findings onto the board |
+| Clash Report | `[P:Coordinate/Report]` | PDF / XLSX / HTML from a built-in template. Field pack (R3) is an output mode |
+| BCF ▾ | `[P:Coordinate/BCF]` | Export · Import — real BCF 2.1 and 3.0 (X1–X3) |
+| Merge | `[P:Coordinate/BCF]` | M1 — one conflict preview for inbound BCF **and** inbound reviewer files. Runs on Simulate |
 
 ### Panel 3 — Data
 | Button | Type | Does |
 |---|---|---|
-| **Data Manager** (large) | `[P:Data/Browse]` | Browse, edit, calculated columns |
-| Excel ▾ | `[P:Data/Browse]` `[P:Data/Edit]` | Properties out · Properties back in (preview diff) · Import and join an external sheet |
-| Assign Levels & Zones | `[P:Data/Zones]` | Write Level / Zone / Grid properties |
-| **Takeoff** | `[P:Data/Takeoff]` | Sum any numeric property by any other, straight to XLSX |
+| **Data Manager** (large) | `[P:Data/Data]` | Browse and edit in one tab (the two-tab split is cut). Calculated columns incl. ancestry (S5) |
+| Excel ▾ | `[P:Data/Data]` | Properties out · Properties back in (preview diff) · Import a sheet, keyed |
+| Assign Levels & Zones | `[P:Data/Zones]` | Derives silently — grids → Z-histogram bands → property — and states which source it used |
+| **Takeoff** | `[P:Data/Takeoff]` | Sums the numeric properties it finds, grouped by category. *Mesh fallback is cut* (§6) |
 
 ### Panel 4 — Sets & Views
 | Button | Type | Does |
 |---|---|---|
-| **Set Library** (large) | `[P:Sets/Library]` | Portable set library with variables |
-| Bulk Sets | `[P:Sets/Generate]` | One set per distinct value of a property |
-| Colour by Property | `[P:Sets/Colour]` | Distinct-value or gradient colouring, live |
-| Viewpoints | `[P:Sets/Viewpoints]` | Bulk rename/renumber/re-folder, batch render, contact sheet |
-| Section Box ▾ | `[A]` | Box selection (+ context margin) · Box clash · Box group · Clear |
-| Isolate ▾ | `[A]` | Isolate · Ghost others · Show all · Reset CamelWorks overrides |
-
-**Section Box and Isolate sit here, not in Coordinate.** Neither touches the clash DLL, both work
-identically on Simulate, and both are what a user reaches for from *any* selection.
+| **Sets** (large) | `[P:Sets/Sets]` | Set Builder — boolean AND/OR/NOT + set references, DNF-compiled to native search sets. Works on the live model with an empty library |
+| **Appearance** | `[P:Sets/Appearance]` | The layers system. **Absorbs the old Colour tab, Isolate ▾, reset-overrides and copy-overrides-between-viewpoints** |
+| Viewpoints | `[P:Sets/Viewpoints]` | Bulk rename/renumber/re-folder, batch render, copy overrides. *Contact sheet is cut* |
+| Section Box ▾ | `[A]` | Box selection (+ margin) · Box clash · Box group · Clear · **non-destructive toggle** (V2). Documented `SetClippingPlanes`, all four years |
 
 ### Panel 5 — Deliver & Automate
 | Button | Type | Does |
 |---|---|---|
-| **Batch** (large) | `[P:Batch/Jobs]` | The Friday federation job runner |
+| **Batch** (large) | `[P:Batch/Jobs]` | Jobs and their run history in one tab. "Job from this document" in one click. V3 adds an out-of-session Convert/Federate step |
 | **Graph Editor** (large) | `[P:Automate]` | The Dyncamelo canvas |
-| **Export IFC** | `[P:Project/Export]` | The BIMCamel exporter — full pane, not a dropdown item |
-| Export ▾ | `[D]` | glTF/GLB · OBJ · CSV · XLSX — a save path and nothing else |
-| My Tools ▾ | `[A]` | 16 fixed ribbon slots, relabelled/rebound at runtime; a 17th pinned graph opens a picker |
-| Help ▾ | `[D]` | Guide · Limitations · Shortcuts · Find a Tool… · Sample project · Report a problem · Diagnostics ▸ Run self-test · Updates · About |
+| **Export IFC** | `[P:Project/Export]` | The exporter, full pane |
+| Export ▾ | `[D]` | glTF/GLB · CSV · XLSX. *OBJ is cut* |
+| Help ▾ | `[D]` | Guide · Limitations · Shortcuts · Find a Tool… · Sample project · **Diagnostics ▸ Run self-test / Copy support bundle** (D5) · Updates · About |
 
-**Find a Tool** is a filter over every command, matching on name, synonyms, and **symptom phrasing
-lifted from P1–P24 of the research** — "too many clashes" finds Clash Rules, "empty set" finds Health
-Check. It has a **permanently visible home**: a search field in the pane header on every workspace.
-Navisworks has no command search, and an index nobody can see is not an index. **F1** anywhere opens the
-matching guide page, shipped as local HTML in the bundle so it works offline.
+**Find a Tool** is a filter over every command, matching name, synonyms and **symptom phrasing from
+P1–P24**, with a permanently visible search field in the pane header. **F1** opens the matching guide
+page from local HTML in the bundle.
 
 ---
 
-## 4. The panes — 2 panes, 6 switcher entries, 19 tabs
-
-Navisworks already ships ten dock panes. The coordinator's screen is full before CamelWorks loads. So
-**two** panes:
+## 4. The panes — 2 panes, 6 switcher entries, 16 tabs
 
 - **CamelWorks** — Home + five workspaces: Project · Coordinate · Data · Sets & Views · Batch
-- **CamelWorks Automate** — the Dyncamelo canvas, separate because it needs full width and is a
-  genuinely different mode
+- **CamelWorks Automate** — the Dyncamelo canvas, separate because it needs full width
 
-**Navigation is a horizontal segmented bar** across the pane's top row, tab strip beneath — the two-row
-arrangement Clash Detective, TimeLiner and Quantification already use. Below ~900 DIP it collapses to
-`Home` + a labelled dropdown, **never to unlabelled glyphs**. *(A 72 DIP labelled vertical rail needs
-340–390 DIP of vertical run for six entries, which does not fit a short wide dock.)*
+Navigation is a **horizontal segmented bar** with the tab strip beneath, collapsing below ~900 DIP to
+`Home` + a labelled dropdown, never to unlabelled glyphs. A `DockPanePlugin` first appears **floating**
+and the API exposes no initial dock edge, so CamelWorks declares board proportions and **never resizes,
+closes, undocks or re-tabs a pane it did not create**. Every workspace renders usably at both ~470×640
+and ~1600×340.
 
-**Dock policy — an API constraint, not a preference.** A `DockPanePlugin` first appears **floating**;
-`DockStyle` is ignored and dock placement lives in the user's Workspace, which a plug-in cannot write.
-CamelWorks declares `[DockPanePlugin(1280, 340, MinimumWidth = 470, MinimumHeight = 300)]` so it opens
-at board proportions, and **never resizes, closes, undocks or re-tabs a pane it did not create** —
-because it cannot. Every workspace renders usably at both **~470×640 and ~1600×340**: grid tabs collapse
-rows to two lines below 900 DIP; form tabs go single-column below 700 DIP. A team-wide fixed layout can
-only be distributed as a Navisworks Workspace file.
-
-### Home — no tabs
-Cards routing to the common jobs, plus **Open the sample project**. Reachable from any workspace.
+### Home — "This week" (S6)
+Not a card wall. The weekly cycle as the front door: one **Issue this week** action driving
+reconcile → regroup → report, plus a staleness readout (when tests last ran, when the board last
+changed, which models are newer than the last snapshot). Works with nothing configured.
 
 ### Project — 4 tabs
-- **Setup** — **a one-screen checklist, not a wizard, and never a gate.** It shows what CamelWorks has
-  already derived from the open model — levels and their source, zones, model pairs, the default rule
-  stack — each line with an override. Nothing here must be completed before anything else works; the
-  product behaves identically if this tab is never opened. Per-line propose → override → apply, nothing
-  overwritten.
-- **Health** — one scorecard, one exportable PDF.
-  *Models*: origin / rotation / units / bounding-box disagreement per model; a model whose transform
-  rotation changed since last snapshot; **duplicate appends**; "no grid system found"; "multiple grid
-  systems, only one active".
-  *Sets*: sets returning 0, and ±50% count drift.
-  *Data*: missing property · empty value · non-numeric in numeric field · duplicate name/GlobalId ·
-  naming regex · unit mismatch · orphan geometry · zero volume · **coordination-readiness gate**.
-- **Profile** — the `project.cwproj` editor, with who-changed-what-when on every section, plus the
-  **Model writes** section (Sync · Flush projection · Undo · Remove properties). Carries the line that
-  must appear in three places: ***"Ctrl+Z does not undo a CamelWorks operation."***
-- **Export** — **the BIMCamel IFC exporter, hosted unchanged**: scope, schema, Smart setup, both mapping
-  grids, georeferencing, size splitting, batch, profiles, Pre-flight. Existing export profiles load
-  unchanged. It is a re-host, not a rewrite.
+- **Setup** — the derived checklist. Never a gate.
+- **Health** — Models (origin/rotation/units/bbox disagreement, duplicate appends, changed transform
+  with **restore from snapshot** (F3), **model intake register** (F2)) · Sets (0-result and ±50% drift)
+  · Data (built-in QA rules, plus a client `.ids` as a rule source when one exists — X4).
+- **Profile** — `project.cwproj` editor, created lazily; Responsible Parties, priorities, code tables
+  (S4), Model writes. Nothing blocks on it.
+- **Export** — the IFC exporter hosted unchanged, plus classification identity (X5) and the IFC
+  **change list** (X6).
 
-**Responsible Parties** is a first-class profile section (`id, company, discipline, contact, email`).
-The Assignee column is a picker over it. It is what makes per-party reports and per-party BCF possible,
-and it closes P4's "one `Assigned To` string".
+### Coordinate — 5 tabs *(Manage full; Simulate store-hydrated — M3)*
+- **Tests** — matrix builder, Run, three reconcile triggers, diff-and-preview writes, the extended
+  write gate (G9), spreadsheet import (S1).
+- **Rules** — Suppress & Flag → Group → Assign under one Apply, with the permanent funnel readout.
+  **Cross-test duplicate collapse** (F4) on a proximity band, not exact key equality.
+- **Triage** — the board. Presets, Δ column, carry-over banner, hand grouping, manual issues, review
+  mode, **free-text search** (S7), **visible undo of the last N board writes** (S8), **Freeze** (F5)
+  serving sign-off and fabrication release with an on-demand Change Notice.
+- **Report** — built-in template; **setting-out coordinates** (R1), **typed resolution instruction**
+  (R2), **field pack mode** (R3), **model manifest** (R4), **per-party open/closed delta** (R5),
+  **key-plan image** (R6), **redline text** (R7), **deliverable identity** (R8/R9),
+  **penetration schedule template** (F6).
+- **BCF** — BCF 2.1 and 3.0 with the full accountability payload, deterministic topic GUIDs, a
+  viewpoint payload that actually shows the issue, plus **Merge** (M1) and the **XLSX response leg**
+  (M2).
 
-### Coordinate — 5 tabs *(Manage only)*
+### Data — 3 tabs
+- **Data** — browse and edit in one surface: bulk property add/edit/rename/delete, calculated columns
+  (concat, arithmetic, regex, unit convert, lookup, ancestry), keyed Excel import, preview diff before
+  write, merge-not-stomp writes (G8).
+- **Zones** — Levels/Zones/Grid with the documented fallback chain, stating its source and its misses.
+- **Takeoff** — property→quantity rules with the regex cleaner and unit conversion; pivot to XLSX.
 
-**Workspace scope control:** *All tests / test folder / single test*, scoping the board, the funnel, the
-carry-over banner, review mode's sequence and the report default together. Real matrices are named by
-zone, level, phase and pair ("L03 HVAC v Struct") — Discipline A/B does not recover that.
+### Sets & Views — 3 tabs
+- **Sets** — **Set Builder**: boolean expression tree (AND/OR/NOT, set references), DNF-compiled to
+  native search sets, live count, dry run. Bulk generation folded in: ordered property list → folders +
+  leaf recipes, depth cap 3, projected count, refusal ceiling. The human-readable formula is written to
+  the set's own comment so a colleague without CamelWorks can read it. Saved recipes are optional.
+- **Appearance** — the layers system: five scope kinds (elements · selection set · search set ·
+  property rule · category), ordered, **later-wins-per-property**, painted on the **permanent** layer
+  because `ResetPermanentMaterials` takes a collection while `ResetAllTemporaryMaterials` is
+  parameterless and global. **Foreign-state bottom row** shows what is hidden or overridden that
+  CamelWorks did not author, with Select / Adopt as a layer / Clear — stating it reports permanent
+  overrides only.
+- **Viewpoints** — bulk rename/renumber/re-folder, batch render, copy overrides, one viewpoint per
+  set/group.
 
-**Tests** — matrix builder **and Run**.
-- Run selected / Run all behind `Application.BeginProgress` with cancel. On completion: snapshot →
-  group carry-over → re-apply Rules → re-run clash carry-over.
-- **Reconcile, three triggers.** Navisworks fires no plug-in event for a run started from Clash
-  Detective's own button — the most frequent action in the weekly cycle. CamelWorks compares each scoped
-  test's `lastRun` against the newest snapshot on (1) workspace activation, (2) document change, and
-  (3) **a 10 s idle timer while Coordinate is visible**, suspended while a job is running. Trigger 3 is
-  not optional: the pane and Clash Detective are on screen together, so clicking Run there produces no
-  activation event and no document change.
-- Generation is a **diff and preview, never a blind write**: *create N · update N · unchanged N ·
-  orphaned N*, per-row checkboxes, and **never touches a test holding results without a per-test confirm
-  naming the result count about to be discarded** — `ClashTest.Create` replaces a same-named test, which
-  destroys its results, native statuses, native groups and anything a colleague did.
-- Generated tests bind to **saved search sets**, never a resolved `ModelItem[]`, so the matrix survives
-  a refresh. Clash Detective's own Rules tab is not writable through the API; the tab says so.
-
-**Rules** — one tab, three sections, execution order, one Apply. Permanent funnel readout, every number
-clickable:
-
-> `1,910 results → 412 suppressed by 6 rules → 214 groups → 198 assigned to 8 parties · 16 unassigned`
-
-This is the most trust-critical readout in the product — it is what a coordinator defends when a client
-asks why the board says 214 and the model says 1,910.
-
-1. **Suppress & Flag** *(before grouping)* — predicates: min overlap volume · min/max distance ·
-   crossing angle · orientation pair · same model · in set X · property match · previously dismissed.
-   Grouping turns 4,000 into 400; it does not stop 3,000 being things already decided not to be clashes,
-   and carry-over does not cover it because a fresh re-export produces *new* results arriving as New.
-   Suppressed results stay retrievable, and **every report carries "N results suppressed by M rules"
-   with the full rule list in an appendix** — an unauditable hide button is not something you hand a client.
-2. **Group** — drag-ordered stack: Level · Grid intersection · Model pair · Discipline · System ·
-   Proximity(radius) · Same-item · Any property. Chained rules build subgroup names (`{Level}-{GridX}-
-   {Discipline}`). Preview before apply. **Pinned groups are never re-derived** — that is what "keep
-   existing groups" means. **Group carry-over runs before the stack re-derives.**
-3. **Assign** *(after grouping)* — predicate → Responsible Party + default priority + due-date offset.
-   Applies **only to results with no assignee**, so a rule can never overwrite a human decision. Without
-   this the accountability model can only be filled by hand, group by group — which is Thursday, and the
-   repetitive work the product exists to delete.
-
-**Triage** — the board. **Columns are a saved layout with three presets:**
-
-| Preset | Columns |
-|---|---|
-| **Meeting** *(default)* | Δ · Group · Level/Grid · Status · Assignee · Due |
-| **Assign** | Meeting + Test · Discipline A/B · Priority · Age |
-| **Full** | everything, incl. Redlined · Report view · Match confidence |
-
-Six columns by default, readable across a room on a projector. **No screen in CamelWorks presents
-fifteen columns as a default.**
-
-- **Δ column**: New / Persisting / Resolved / **Regressed** (was Approved or Resolved, now Active), with
-  a one-click *Regressed only*.
-- **Carry-over banner**, permanently visible after every re-run: *"1,842 of 1,910 matched; 68 unmatched
-  (show list); 14 low confidence"* and *"196 groups carried, 12 split, 6 new"*. **The board never
-  silently reshuffles.**
-- **Bulk edit on multi-select**, including **Group selected · Move to group · Ungroup**. Rules get you
-  90%; the last 10% is always hands.
-- **Selection sync — two behaviours, not one toggle.** *Board → model* is always on and is not a toggle.
-  *Model → board* defaults on but renders a dismissible chip — *"showing 6 clashes involving ⟨item⟩ ·
-  Clear"*, `Esc` clears. Without the chip, every incidental Selection Tree click silently re-filters the
-  board and the coordinator loses their place mid-meeting.
-- **Manual issues — a first-class row kind.** A third to half of what comes out of Wednesday is not a
-  clash: *"no access to this valve"*, *"this riser has no builder's work opening"*. The store carries
-  `{issueId, kind:"manual", title, elementKeys[], viewpointId, status, assignee, due, priority,
-  comments[]}` and it is **treated as a group everywhere downstream** — board (Δ shows `—`), report and
-  per-party BCF. Three entry points: context menu, tab header button, `I` in review mode. Without it
-  those items go into a parallel spreadsheet — the "we still need the other tool" outcome — and BCF
-  import has **no target record** for the 8 new observations the design team raises in Revit.
-- **Review mode.** Entry: the **Review** button, a **double-click**, or `Ctrl+Enter` — **never bare
-  `Enter`**, which the grid's inline editing owns. The pane collapses to a thin **HUD** showing
-  *"12 / 214 · Group L3-C4-MEP · Status · Assignee"* plus the live key legend, so nothing is memorised,
-  with visible Exit/Prev/Next/Status/Assign/Comment/Save-viewpoint/New-issue controls.
-  **The unit is the group by default** — 40 pipe-through-slab hits are one issue, one decision, one
-  viewpoint, one line in the minutes.
-
-  One rule, stated once: *bare keys move, decide or annotate; anything that rebuilds a test or writes to
-  the model takes a modifier and a confirm.*
-
-  | Band | Keys |
-  |---|---|
-  | **Move** | `Space` / `Shift+Space` next / prev group (`N`/`P` aliases); `Shift+N` / `Shift+P` step results inside the group |
-  | **Decide** | `1` Reviewed · `2` Approved · `3` Resolved · `0` Active |
-  | **Annotate** | `A` assign · `D` due · `C` comment · `V` save viewpoint (stamps the group's report view) · `I` new manual issue |
-  | **Structural** | `Ctrl+G` merge into previous group, with a confirm naming the result count |
-
-**Report** — PDF / XLSX / HTML from a **built-in default template that needs no setup**; custom
-templates are optional. One image per **group**, not per clash. Images carry
-**auto-numbered callouts** projected at render time from each result's centre through the image camera,
-numbered to match the result table beneath. Nothing to author, nothing to anchor, nothing that can go
-stale, correct at every image size. Group comment history prints under the image. Output modes: single,
-or **one per responsible party** with a `{Party}` filename template. A pre-flight names any group whose
-results carry a native Navisworks redline CamelWorks cannot see.
-
-**BCF** — BCF 2.1 export/import. **The export unit is the group**; one topic per group, manual issues
-included. Import re-attaches by `ElementKey`, maps status and comments back, and **creates manual issues
-for topics with no matching clash** rather than dropping them.
-
-### Data — 4 tabs
-- **Browse** — flat table of the current scope, columns from any property category, filter/sort, export.
-- **Edit** — bulk add/edit/rename/delete custom tabs and properties; calculated columns (concat,
-  arithmetic, regex extract, unit convert, lookup). **Preview diff before write**, pre-edit snapshot into
-  the undo journal (COM `SetUserDefined` writes sit outside Navisworks' own undo).
-  **External data import** — pick a **CSV/XLSX**, or a **read-only ODBC/OLEDB source running exactly one
-  query**; choose the key column (default GUID), map columns, preview the diff, write as real properties,
-  and cache the result in the sidecar. **No credentials are stored** — trusted connection, or prompt once
-  per session. One cached query is the *opposite* of DataTools' per-object query storm that our own README
-  documents as the thing that ruins exports; refusing to ship it leaves users on the broken path.
-  **Status Stamp** is a named preset here: writes `Status` + `StatusDate` + `StatusBy`, with a saved
-  colour profile and a "% complete by zone" rollup.
-- **Zones** — three independent sources with a documented fallback chain, each usable alone:
-  **Level** = active grid system → else a user-editable elevation band table seeded from a Z-histogram →
-  else an existing property. **Zone** = zone volumes → else one set per zone → else an N×N metre grid.
-  **Grid** = grid system → else omitted. **The tab states which source it used and how many elements got
-  no value.** In real federations grids are frequently absent (most DWG/IFC-sourced NWCs) or there are
-  several buildings each with its own system; without the chain every downstream feature quietly
-  degrades to blank Level and the user never finds out why.
-- **Takeoff** — header states: *"independent of Navisworks Quantification, which has no public API."*
-  Property→quantity rules with a **regex cleaner for values containing letters** (directly fixing
-  Autodesk's own "export to Excel and strip the letters" advice) and unit conversion. **Per-rule mesh
-  fallback** where the property is missing, stamped with the method used and a **closed-shell flag**;
-  **any export refuses to include an unflagged estimate without an explicit override**, because
-  Navisworks tessellation is frequently an open shell and a takeoff on silently-wrong volumes is a
-  liability free positioning cannot absorb. The fallback walks the COM geometry path per item on the STA
-  thread — the slowest thing CamelWorks does — so it carries a measured ceiling and never runs on a
-  larger scope without a confirm naming the element count.
-
-### Sets & Views — 4 tabs
-- **Library** — saved recipes with variables (`Level = <param>`), `.cwset` import/export, **and export of
-  resolved GUID lists** — closing the hole where Navisworks' own set XML loses its contents. **An empty
-  library is a normal state**: Set Builder works fully against the live model with nothing saved, and
-  saving is an afterwards, not a before.
-- **Generate** — property → distinct values → one set each, folder naming template.
-- **Colour** — **modeless, live apply** as property/palette/stops change; editable legend; save/load
-  profile. A modal over a 3D view means the user cannot orbit or click an element to check its bucket.
-  Uses the **temporary** override layer plus `SaveWithOverrides`; the permanent layer only when the user
-  explicitly asks for document-wide colouring, and the pane states which is in effect.
-  *There is no API to draw an overlay into a viewpoint* — the saved viewpoint carries the colour
-  overrides plus a reference to the legend definition, and the legend is drawn as vector operators over
-  exported images by the report engine.
-- **Viewpoints** — bulk rename/renumber/re-folder, batch PNG render at fixed resolution, **contact sheet
-  PDF**, copy overrides between viewpoints, one viewpoint per set/group.
-
-### Batch — 2 tabs
-- **Jobs** — an ordered step list saved as `.cwjob`:
-  > Append files · Refresh · Save NWF · Save NWD · Run clash tests *(Manage)* · Apply rules *(Manage)* ·
-  > Group *(Manage)* · Export BCF *(Manage)* · Export report · Export IFC · Run graph
-
-  **Jobs run in the open Navisworks session.** There is no automation host. *A hidden
-  `NavisworksApplication` consumes a licence seat a free add-in cannot answer for a customer's IT; it
-  adds a host-bound assembly to every install cell; and "I scheduled it at 2 am and nothing happened,
-  there is no log" is the highest-volume support ticket this product can generate.* The tab and the
-  Limitations page both say: ***"CamelWorks jobs run in an open Navisworks session; schedule the
-  session, not the job."***
-  - **Evidence, not silence.** The run record is written at **start** with the full step list and
-    rewritten after every step, so a job that dies names the step it died on. `stepTimeout` (default
-    30 min) and `jobTimeout` (default 4 h) abort and record `timed-out`. Host modal dialogs are
-    suppressed for the duration and any unexpected dialog is a recorded step failure.
-  - **Failure policy.** Each step declares `onError: abort | continue | continue-and-flag`, default
-    `abort`. **Save NWF/NWD refuse to run** when an earlier Append/Refresh reported a missing or errored
-    model, unless explicitly overridden — in which case the filename is suffixed `_INCOMPLETE`.
-    Otherwise the Friday job that hit one locked NWC quietly ships a federation missing a discipline.
-  - **Atomic outputs.** Every file step writes `.tmp` then `File.Replace` with a `.bak` — the deliverable
-    here is the NWF itself.
-  - **"Full publish options" is struck.** There is no managed API for NWD publish options; `Export.NWD`
-    is `Document.SaveFile` and nothing more. Spike 0-S3 probes `Application.Options`; if it fails, the
-    guide names plainly which publish fields CamelWorks cannot set.
-- **Runs** — every run writes `<job>.run-<utc>.json` beside the job file; this tab lists and opens them.
+### Batch — 1 tab
+- **Jobs** — the job list **and its run history in the same tab**. Steps: Append · Refresh · Save NWF ·
+  Save NWD · Run tests · Apply rules · Group · Export BCF · Export report · Export IFC · Run graph ·
+  **Convert/Federate out of session** (V3, shelling Autodesk's own `FileToolsTaskRunner` with a
+  mandatory byte-identical-output failure check). Jobs run in the open session; run records are written
+  at start and rewritten per step.
 
 ### Automate pane
-The Dyncamelo canvas, unchanged, plus **Pin to ribbon** (generates a dialog from the graph's input nodes
-and binds it to a My Tools slot) and **Open as graph** targets.
+The Dyncamelo canvas plus **Open as graph** targets. *Pin-to-ribbon is cut.*
 
 ### Context menu
-One **CamelWorks ▸** submenu on the 3D view and Selection Tree, scoped to the selection:
-*Section box selection (+margin)* · *Isolate + ghost context* · *Colour by property…* · *Create set from
-selection* · *Assign level & zone* · *Properties to Excel…* · *Export selection to IFC…* · **New Issue**
-· *Show in Triage* *(Manage, when the selection clashes)*.
-
-A coordinator spends the day in the Selection Tree and the right-click menu. Not appearing there means
-every CamelWorks action costs a trip to the ribbon tab — and a user who never opens that tab never finds
-the tool that solves their problem.
+One **CamelWorks ▸** submenu: *Section box selection (+margin)* · *Isolate + ghost context* ·
+*Add as appearance layer…* · *Create set from selection* · *Assign level & zone* ·
+*Properties to Excel…* · *Export selection to IFC…* · **New Issue** · *Show in Triage*.
 
 ---
 
@@ -520,7 +360,7 @@ the tool that solves their problem.
 
 | Surface | Manage | Simulate |
 |---|---|---|
-| Panel 2 (6 buttons) · Coordinate workspace | full | **one** explanatory state naming Simulate, linking Limitations — not 11 tooltips |
+| Panel 2 · Coordinate workspace | full | **the board, hydrated from the store** (M3) — same workspace, columns driven by what the store holds rather than by the host. It refuses exactly two things: run/create a test, and project status back into Clash Detective |
 | Section Box ▾ / Isolate ▾ | full | **full** |
 | Project/Export (IFC) | full | **full** |
 | Report engine (Health PDF, contact sheet, Takeoff XLSX) | full | **full** — only the clash-scoped Coordination Report is Manage-only |
@@ -528,7 +368,7 @@ the tool that solves their problem.
 | Clash nodes (41) | full | registered as **explicitly-unavailable stubs**, so a `.dyc` says *"requires Manage"*, not *"unknown node"* |
 | Everything else | full | full |
 
-Simulate has its **own tier-1 smoke workflow** that exercises the report engine — the largest new
+**This is the competitive point, not a consolation.** Revizto, BIMcollab and Procore all sell issue tracking that never touches Clash Detective; leaving 4 of 8 supported hosts with no coordination story was the plan's worst competitive exposure. Simulate also has its **own tier-1 smoke workflow** exercising the report engine — the largest new
 subsystem, which would otherwise be untested inside a host on 4 of 8 rows.
 
 ---
@@ -551,7 +391,27 @@ cost land on a user or on us?*
 | **glTF / GLB and OBJ export** | The cut said "0 nodes". But `BIMCamel/Ifc/MeshWriters.cs` already defines an **`IMeshWriter` interface with two implementations**, and `InstancedExtractor` already yields `InstancedElement` = a shared `LocalMesh` (vertices, indices, material) plus per-instance translation and a 3×3 rotation — **which is exactly glTF's data model**: one mesh referenced by many nodes with TRS transforms. glTF is a *third `IMeshWriter`*, not a subsystem. And the expensive half is already paid for: `PrimitiveSink` documents that `GenerateSimplePrimitives` is the only geometry-read surface Navisworks exposes and is 82–92% of export wall-clock, so a second output format costs the serialiser only. ProtoTech charges per-seat *per format* for exactly this |
 | **External database source** (read-only ODBC/OLEDB, one query, cached, no stored credentials) | The support-surface concern — drivers, connection strings, credentials — was real, so the capability is **narrowed** rather than dropped: read-only, exactly one query, cached to the sidecar, trusted connection or prompt-per-session. This is iConstruct's paid Data Integrator, and the argument against it (our README documents DataTools' per-object SQL as ruinous) is an argument *for* doing it properly in one cached query, not for leaving users on the broken path |
 
-### Cut, on merit
+
+### Cut in the scope re-evaluation — surface, not capability
+
+These nine came out of the plan as it stood, to pay for the 63 additions in
+`CAMELWORKS_SCOPE_DECISION.md`. None of the seven roles proposed them; the architect named them so the
+total would fit two developers. Net surface went **down**: 26 buttons → 25, 19 tabs → 16, *with* the
+Appearance Manager, Set Builder and the Simulate board added.
+
+| Cut | Why |
+|---|---|
+| **Pin-to-ribbon and the 16 My Tools slots** | A second personalisation system inside a product whose first-run problem is surface. Right-click → Add to Quick Access Toolbar already does the job on every button |
+| **External ODBC / OLEDB source** | Restored earlier, now re-cut. Doing it properly does not require *us* to be the ODBC client — the user runs their query once and hands us a sheet the XLSX reader consumes. What we would otherwise ship is drivers, connection strings, credential prompts and a network-path failure mode across eight host configurations, supported by two people with no telemetry |
+| **Takeoff's per-rule mesh fallback** | The plan itself called it the slowest thing CamelWorks does, wrapped in four safety mechanisms around a number it admits is frequently an open shell and "a liability the free positioning cannot absorb". The safest version of a liability is not shipping it. Mesh quantities stay inside the IFC exporter, where base quantities are a schema requirement |
+| **OBJ export** | glTF/GLB is what a client's viewer opens. OBJ serves a modeller moving geometry into another package — not this user |
+| **Contact-sheet PDF** | Its structural reason was giving Simulate's smoke workflow something to exercise; M3 replaces that with a real workflow |
+| **`Data ▸ Browse` and `Data ▸ Edit` as two tabs** | One surface. The split forced a mode choice before the user knew which they wanted |
+| **`Batch ▸ Runs` as its own tab** | Run history belongs beside the job that produced it |
+| **`Project ▸ Setup` as a guided wizard** | §0. A wizard is a gate; it becomes a one-screen checklist of what was already derived |
+| **"% complete by zone" rollup** | A progress metric weighted by element count, which is the same flaw that cut the S-curve |
+
+### Cut earlier, on merit
 
 | Cut | Why — independent of what already exists |
 |---|---|
@@ -608,7 +468,13 @@ Stages 3–7 parallelise. 0, 0-P, 0-R, 0-D, 0-S*, 1 and GATE do not.
   upgrade-from-legacy-Inno all verified — installer hygiene, so two bundles never co-exist.
   **No data-format compatibility is required**: CamelWorks has no users, so export profiles, set
   recipes and settings are redesigned rather than migrated (see `HARVEST_PROTOCOL.md` §2).
-- Every persisted format carries a `schemaVersion` from its first commit.
+- Every persisted format carries a `schemaVersion` from its first commit, with **published JSON Schemas
+  and preserve-unknown-keys on rewrite** (G5), proven by a mixed-version contract test.
+- **The per-year API-surface manifest** (G10) fails the build when any Autodesk signature CamelWorks
+  binds to changes — the only instrument that catches the next version break before a user does.
+- A **Limitations page** exists, with an owner and a format, carrying every refusal this plan makes.
+- A **support-load budget** names what we answer and what we refuse, and a **published support
+  commitment** states response time, EOL policy and format continuity.
 - **Cold-start rubric:** a coordinator who has never seen CamelWorks reaches a grouped triage board and
   an exported PDF **within 10 minutes** of first launch; first launch of the sample reaches the carry-over
   banner and a Regressed-only board **in under two minutes**. Verified at 5-X *and* at Stage 9.

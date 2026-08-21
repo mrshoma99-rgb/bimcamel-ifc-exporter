@@ -1,5 +1,12 @@
 # CamelWorks — scope decision
 
+> **This document is the RECORD, not the spec.** Its outcome is folded into
+> [`CAMELWORKS_IMPLEMENTATION.md`](CAMELWORKS_IMPLEMENTATION.md), which is the single build-ready
+> source of truth — 25 ribbon buttons, 16 tabs, the revised cut list and the definition of done all
+> live there. Read this one for *why*: the 100 candidates, the three-lens judgements, the six
+> overturned verdicts, the declines and the cost argument. Where the two ever disagree, the
+> implementation plan wins.
+
 Lead Architect, final. Supersedes §6 of `CAMELWORKS_IMPLEMENTATION.md` and adds §0 below to §4.
 
 Seven roles produced 100 candidates; three lenses judged each. This document decides them. It also does
