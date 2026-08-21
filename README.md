@@ -1,8 +1,24 @@
-# BIMCamel — fast Navisworks → IFC exporter
+# BIMCamel for Navisworks
 
-A free, open-source **Autodesk Navisworks** plug-in that exports models to **IFC** (IFC4 and IFC2x3),
-built for **speed, small files, and zero-config first-click export**. Navisworks has no native IFC
-export — BIMCamel fills that gap without the slowness and setup friction of the commercial tools.
+Two free plug-ins for **Autodesk Navisworks 2024–2027**, built and released together as one bundle.
+
+| | |
+|---|---|
+| **[CamelWorks](CAMELWORKS_IMPLEMENTATION.md)** | Coordination, data and delivery. The clash board with a funnel that accounts for every result the engine produced; headroom, which no clash test can find; the Appearance layers system that can finally answer "why is this hidden"; boolean sets compiled to native search sets; BCF 2.1 and 3.0; reports; and a node canvas over the same services the buttons drive. |
+| **BIMCamel IFC Exporter** | Exports models to **IFC** (IFC4 and IFC2x3), built for speed, small files, and zero-config first-click export. Navisworks has no native IFC export — this fills that gap without the slowness and setup friction of the commercial tools. |
+
+**Nothing needs configuring first.** Every feature in both works on a raw model with no template, no
+profile and no setup: what a screen needs, it derives, and it tells you what it derived. Clash tools
+need Navisworks Manage; everything else runs on Simulate too.
+
+Licensed under the **MIT** licence — see [LICENSE](LICENSE).
+
+- **CamelWorks:** [what it is](CAMELWORKS_IMPLEMENTATION.md) · [what is built](CAMELWORKS_BUILD_STATE.md)
+- **The exporter:** the rest of this page.
+
+---
+
+## BIMCamel IFC Exporter
 
 > 📖 **[User Guide](docs/USER_GUIDE.md)** — the full manual: quick export, Smart setup,
 > the Pre-flight panel, mapping, georeferencing, batch, profiles, troubleshooting.

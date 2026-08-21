@@ -29,9 +29,8 @@ namespace CamelWorks.UI.Views
             var body = Ui.Stack(
                 Ui.Card("CamelWorks",
                     "Coordination, data and delivery tools for Navisworks, from bimcamel.com.",
-                    Ui.Line("Free to use, including commercially. Not free to resell: the source is "
-                            + "published under Apache 2.0 with the Commons Clause, which permits everything "
-                            + "except selling the software itself.", 0.85)),
+                    Ui.Line("Free to use. The source is published on GitHub; see the LICENSE file "
+                            + "in the repository for the terms.", 0.85)),
 
                 Ui.Card("How it is meant to be used", null,
                     Ui.Line("Open a model and press a button. Nothing has to be configured first — every "

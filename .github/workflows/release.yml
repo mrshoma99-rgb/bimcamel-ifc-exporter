@@ -88,6 +88,17 @@ jobs:
               -p:NavisworksYear=$year -p:Version=$numeric
             if ($LASTEXITCODE -ne 0) { exit 1 }
 
+            # CamelWorks.UI pulls in Core and Nav; Nav.Clash is built separately and on purpose,
+            # because it is the one assembly that needs Autodesk.Navisworks.Clash.dll and therefore
+            # the one that must never be loaded on Simulate.
+            dotnet build CamelWorks/CamelWorks.UI/CamelWorks.UI.csproj -c Release --no-incremental `
+              -p:NavisworksYear=$year -p:Version=$numeric
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+
+            dotnet build CamelWorks/CamelWorks.Nav.Clash/CamelWorks.Nav.Clash.csproj -c Release --no-incremental `
+              -p:NavisworksYear=$year -p:Version=$numeric
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+
             $dll = "BIMCamel/bin/Release/net48/BIMCamel.dll"
             if (-not (Test-Path $dll)) { $dll = "BIMCamel/bin/x64/Release/net48/BIMCamel.dll" }
             if (-not (Test-Path $dll)) {
@@ -100,6 +111,30 @@ jobs:
             Copy-Item $dll                          -Destination $yeardir
             Copy-Item "BIMCamel/BIMCamel.xaml"      -Destination "$yeardir/en-US"
             Copy-Item "BIMCamel/Resources/*.png"    -Destination "$yeardir/Resources"
+
+            # CamelWorks: the plug-in, the two libraries it loads directly, and the clash adapter
+            # it loads by name. The ribbon markup is hand-authored Navisworks XAML rather than WPF,
+            # so it is a content file and has to be copied from source.
+            $camel = @{
+              "CamelWorks/CamelWorks.UI/bin/Release/net48/CamelWorks.UI.dll"             = "CamelWorks.UI.dll"
+              "CamelWorks/CamelWorks.Nav/bin/Release/net48/CamelWorks.Nav.dll"           = "CamelWorks.Nav.dll"
+              "CamelWorks/CamelWorks.Nav.Clash/bin/Release/net48/CamelWorks.Nav.Clash.dll" = "CamelWorks.Nav.Clash.dll"
+              "CamelWorks/CamelWorks.Core/bin/Release/netstandard2.0/CamelWorks.Core.dll" = "CamelWorks.Core.dll"
+            }
+
+            foreach ($from in $camel.Keys) {
+              $alt = $from -replace "/bin/Release/", "/bin/x64/Release/"
+              $source = if (Test-Path $from) { $from } elseif (Test-Path $alt) { $alt } else { $null }
+
+              if (-not $source) {
+                Write-Host "::error::Missing build output for ${year}: $($camel[$from])"
+                exit 1
+              }
+
+              Copy-Item $source -Destination (Join-Path $yeardir $camel[$from])
+            }
+
+            Copy-Item "CamelWorks/CamelWorks.UI/CamelWorks.xaml" -Destination "$yeardir/en-US"
           }
 
           # Bundle manifest (multi-year Components) from the dist template, stamped with
@@ -117,10 +152,25 @@ jobs:
             Write-Host "::error::Staged PackageContents.xml failed validation"
             exit 1
           }
+          # Every file the manifest promises must actually be in the folder it names. A bundle
+          # that is missing one loads its ribbon and then fails at the first click, which reads as
+          # a broken plug-in rather than a broken build.
+          $required = 'BIMCamel.dll', 'CamelWorks.UI.dll', 'CamelWorks.Nav.dll',
+                      'CamelWorks.Nav.Clash.dll', 'CamelWorks.Core.dll'
+
           foreach ($year in $years) {
-            if (-not (Test-Path "$staging/BIMCamel.bundle/$year/BIMCamel.dll")) {
-              Write-Host "::error::Year folder $year missing from staged bundle"
-              exit 1
+            foreach ($file in $required) {
+              if (-not (Test-Path "$staging/BIMCamel.bundle/$year/$file")) {
+                Write-Host "::error::$file missing from the staged $year folder"
+                exit 1
+              }
+            }
+
+            foreach ($markup in 'BIMCamel.xaml', 'CamelWorks.xaml') {
+              if (-not (Test-Path "$staging/BIMCamel.bundle/$year/en-US/$markup")) {
+                Write-Host "::error::$markup missing from the staged $year folder"
+                exit 1
+              }
             }
           }
 
@@ -184,15 +234,20 @@ jobs:
           $checksum = Get-Content "$env:ZIP.sha256" -Raw
           $setupChecksum = Get-Content "BIMCamelSetup.exe.sha256" -Raw
           $notes = @"
-          BIMCamel IFC Exporter for Autodesk Navisworks 2024-2027 — fast Navisworks → IFC export (IFC4 / IFC2x3).
+          BIMCamel for Autodesk Navisworks 2024-2027. Two plug-ins, one bundle, one ribbon tab:
+
+          - **CamelWorks** — coordination, data and delivery. The clash board with the funnel that accounts for every result the engine produced, headroom, the Appearance layers system, boolean sets compiled to native search sets, BCF 2.1 and 3.0, reports, and a node canvas over the same services.
+          - **BIMCamel IFC Exporter** — fast Navisworks → IFC export (IFC4 / IFC2x3).
+
+          Everything works on a raw model with nothing configured. Clash tools need Navisworks Manage; the rest runs on Simulate too.
 
           ## Install (recommended)
 
           1. Download ``BIMCamelSetup.exe`` and run it — a graphical installer puts the bundle in ``%APPDATA%\Autodesk\ApplicationPlugins`` (per-user, no admin rights) and registers an Add/Remove Programs entry.
           2. If Windows SmartScreen appears (unsigned download), click **More info → Run anyway**.
-          3. Start Navisworks Manage/Simulate 2024-2027 — the **BIMCamel** ribbon tab appears with the IFC exporter button. If Dyncamelo is installed too, both tools share the one BIMCamel tab.
+          3. Start Navisworks Manage/Simulate 2024-2027 — the **CamelWorks** and **BIMCamel** ribbon tabs appear. If Dyncamelo is installed too, it shares the BIMCamel tab.
 
-          Uninstall from Windows **Settings → Apps → BIMCamel IFC Exporter for Navisworks**, or rerun the setup. Silent modes: ``BIMCamelSetup.exe /silent`` and ``BIMCamelSetup.exe /uninstall /silent``.
+          Uninstall from Windows **Settings → Apps → BIMCamel for Navisworks**, or rerun the setup. Silent modes: ``BIMCamelSetup.exe /silent`` and ``BIMCamelSetup.exe /uninstall /silent``.
 
           ## Install (zip, scripted deployments)
 

@@ -103,3 +103,9 @@ jobs:
       # search, and each looks like a different bug.
       - name: Check the ribbon, the plug-in and the catalogue agree
         run: python3 CamelWorks/checks/validate-ribbon.py
+
+      # A plug-in is named in PackageContents.xml, built by the release workflow and copied into a
+      # year folder by it, and nothing connects those three. A DLL declared but not copied gives a
+      # bundle that loads its ribbon and fails at the first click.
+      - name: Check the bundle manifest and the release workflow agree
+        run: python3 CamelWorks/checks/validate-bundle.py
