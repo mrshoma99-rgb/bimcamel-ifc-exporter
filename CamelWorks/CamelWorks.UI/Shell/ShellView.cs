@@ -190,7 +190,19 @@ namespace CamelWorks.UI.Shell
         }
 
         private void ShowContent() =>
-            _content.Content = TabViews.For(_workspace, _tab);
+            _content.Content = TabViews.For(_workspace, _tab, Go);
+
+        /// <summary>
+        /// Navigate to a "workspace/tab" route, for the screens that offer a way onward.
+        ///
+        /// Home is the reason this exists: a front door whose three steps do not take you to them
+        /// is a poster, not a front door.
+        /// </summary>
+        private void Go(string route)
+        {
+            var (workspace, tab) = Workspaces.Route(route);
+            if (workspace != null) Show(workspace.Id, tab?.Id);
+        }
 
         private void Reflow(double width)
         {

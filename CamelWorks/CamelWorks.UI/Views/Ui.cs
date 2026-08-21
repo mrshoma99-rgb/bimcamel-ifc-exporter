@@ -210,7 +210,7 @@ namespace CamelWorks.UI.Views
 
         /// <summary>Stack things vertically.</summary>
         /// <param name="children">What to stack.</param>
-        public static StackPanel Stack(params UIElement[] children)
+        public static StackPanel Stack(params UIElement?[] children)
         {
             var panel = new StackPanel();
             foreach (var child in children) if (child != null) panel.Children.Add(child);
@@ -219,7 +219,7 @@ namespace CamelWorks.UI.Views
 
         /// <summary>Lay things out left to right, wrapping when the pane is narrow.</summary>
         /// <param name="children">What to lay out.</param>
-        public static Panel Across(params UIElement[] children)
+        public static Panel Across(params UIElement?[] children)
         {
             var panel = new WrapPanel { Orientation = Orientation.Horizontal };
 
@@ -247,7 +247,7 @@ namespace CamelWorks.UI.Views
         /// <param name="title">The block's title.</param>
         /// <param name="subtitle">One line saying what it is for, or null.</param>
         /// <param name="body">The contents.</param>
-        public static Border Card(string title, string? subtitle, params UIElement[] body)
+        public static Border Card(string title, string? subtitle, params UIElement?[] body)
         {
             var panel = new StackPanel();
             panel.Children.Add(Heading(title));
