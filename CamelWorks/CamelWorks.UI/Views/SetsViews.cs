@@ -466,13 +466,19 @@ namespace CamelWorks.UI.Views
 
                     // Deliberately not "clear all overrides": that would also throw away colouring
                     // somebody applied by hand outside CamelWorks.
-                    var all = new List<ElementKey>();
+                    //
+                    // One resolver for the whole pass, because it caches: ten layers over the same
+                    // saved set would otherwise run the same search ten times.
+                    var resolver = new HostResolver(session);
+                    var all = new HashSet<ElementKey>();
 
                     foreach (var layer in _layers)
-                        all.AddRange(new HostResolver(session).Resolve(layer.Target));
+                        foreach (var key in resolver.Resolve(layer.Target))
+                            all.Add(key);
 
-                    session.View.SetVisible(all.Distinct().ToList(), true);
-                    _results.Children.Add(Ui.Line("Un-hid " + Ui.Count(all.Distinct().Count(), "element")
+                    session.View.SetVisible(all.ToList(), true);
+
+                    _results.Children.Add(Ui.Line("Un-hid " + Ui.Count(all.Count, "element")
                                                   + " the stack covers. Colours are left alone.", 0.8));
                 });
 
