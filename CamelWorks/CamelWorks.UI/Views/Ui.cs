@@ -81,15 +81,24 @@ namespace CamelWorks.UI.Views
     /// </summary>
     public sealed class Job
     {
-        private readonly Dispatcher _dispatcher;
-        private readonly TextBlock _status;
+        private readonly Dispatcher? _dispatcher;
+        private readonly TextBlock? _status;
         private readonly System.Diagnostics.Stopwatch _sincePump = System.Diagnostics.Stopwatch.StartNew();
 
-        internal Job(Dispatcher dispatcher, TextBlock status)
+        internal Job(Dispatcher? dispatcher, TextBlock? status)
         {
             _dispatcher = dispatcher;
             _status = status;
         }
+
+        /// <summary>
+        /// A job with nothing to report to and no way to be cancelled.
+        ///
+        /// For work driven by something other than a button — a graph node calling a service that
+        /// takes a job. The alternative is a second copy of every service that does not report
+        /// progress, which is how two code paths start disagreeing.
+        /// </summary>
+        internal static Job Silent() => new Job(null, null);
 
         /// <summary>Set when the user has asked to stop.</summary>
         public bool IsCancelled { get; internal set; }
@@ -98,6 +107,8 @@ namespace CamelWorks.UI.Views
         /// <param name="message">One short line.</param>
         public void Say(string message)
         {
+            if (_status == null || _dispatcher == null) return;
+
             _status.Text = message;
 
             // Pumping on every call would cost more than the work. A quarter second is fast enough
