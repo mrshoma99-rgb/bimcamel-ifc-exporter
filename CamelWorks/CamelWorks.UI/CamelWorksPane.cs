@@ -3,6 +3,7 @@ using System.Windows.Forms;
 using System.Windows.Forms.Integration;
 using Autodesk.Navisworks.Api.Plugins;
 using CamelWorks.UI.Shell;
+using CamelWorks.UI.Views;
 
 namespace CamelWorks.UI
 {
@@ -18,6 +19,16 @@ namespace CamelWorks.UI
     {
         private ElementHost? _host;
         private ShellView? _shell;
+
+        /// <summary>
+        /// Create the pane.
+        ///
+        /// The side-by-side assembly resolver is registered here rather than lazily, because by the
+        /// time a screen needs CamelWorks.Core the JIT has already tried and failed to find it. Both
+        /// entry points the host constructs — this and the command handler — register it, since
+        /// either can be the first one Navisworks touches.
+        /// </summary>
+        protected CamelWorksPaneBase() => Host.Ensure();
 
         /// <summary>Which workspace this pane shows.</summary>
         protected abstract string PaneId { get; }

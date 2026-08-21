@@ -246,6 +246,31 @@ namespace CamelWorks.Nav
             return collection;
         }
 
+        /// <summary>
+        /// Make the given elements the host's current selection.
+        ///
+        /// Every board and list in the product goes through here rather than reaching for
+        /// <c>CurrentSelection</c> itself, so that "clicking a row selects the thing" behaves the
+        /// same everywhere and there is one place to change if it should ever stop.
+        /// </summary>
+        /// <param name="keys">What to select. Keys that no longer resolve are skipped.</param>
+        public void Select(IReadOnlyList<ElementKey> keys) =>
+            Document.CurrentSelection.CopyFrom(ItemsFor(keys));
+
+        /// <summary>The keys of whatever is selected right now, geometry-bearing nodes only.</summary>
+        public IReadOnlyList<ElementKey> SelectedKeys()
+        {
+            var keys = new List<ElementKey>();
+
+            foreach (var item in Leaves(Document.CurrentSelection.SelectedItems))
+            {
+                var key = NavKeys.Of(item);
+                if (!key.IsEmpty) keys.Add(key);
+            }
+
+            return keys;
+        }
+
         private IEnumerable<IModelItem> ResolveMany(IReadOnlyList<ElementKey>? keys)
         {
             if (keys == null) yield break;

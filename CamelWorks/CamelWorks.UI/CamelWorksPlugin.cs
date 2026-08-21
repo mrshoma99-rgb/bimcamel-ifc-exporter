@@ -3,6 +3,7 @@ using System.Linq;
 using System.Windows.Forms;
 using Autodesk.Navisworks.Api.Plugins;
 using CamelWorks.UI.Shell;
+using CamelWorks.UI.Views;
 
 namespace CamelWorks.UI
 {
@@ -55,6 +56,14 @@ namespace CamelWorks.UI
     [Command("ID_CW_Help", DisplayName = "Help", ToolTip = "Guide, limitations, shortcuts, diagnostics and about")]
     public class CamelWorksPlugin : CommandHandlerPlugin
     {
+        /// <summary>
+        /// Create the handler.
+        ///
+        /// Registers the side-by-side assembly resolver — see <see cref="CamelWorksPaneBase"/> for
+        /// why both entry points do it.
+        /// </summary>
+        public CamelWorksPlugin() => Host.Ensure();
+
         /// <summary>The dock-pane lookup key: "&lt;pluginId&gt;.&lt;developerId&gt;".</summary>
         public const string MainPaneKey = "CamelWorks.Pane.CamelWorks";
 
