@@ -58,17 +58,17 @@ namespace CamelWorks.Nav.Clash
             var clash = Clash();
             if (clash == null) return tests;
 
-            foreach (var test in clash.TestsData.Tests.OfType<ClashTest>())
+            foreach (var found in AllTests(clash))
             {
                 var results = new List<ClashResult>();
-                Collect(test.Children, results);
+                Collect(found.Test.Children, results);
 
                 tests.Add(new ClashTestInfo(
-                    test.Guid.ToString(),
-                    test.DisplayName ?? "(unnamed test)",
-                    null,
+                    found.Test.Guid.ToString(),
+                    found.Test.DisplayName ?? "(unnamed test)",
+                    found.Folder,
                     results.Count,
-                    LastRunTicksOf(test)));
+                    LastRunTicksOf(found.Test)));
             }
 
             return tests;
@@ -82,7 +82,8 @@ namespace CamelWorks.Nav.Clash
             var clash = Clash();
             if (clash == null || string.IsNullOrWhiteSpace(testId)) return results;
 
-            var test = clash.TestsData.Tests.OfType<ClashTest>()
+            var test = AllTests(clash)
+                .Select(t => t.Test)
                 .FirstOrDefault(t => string.Equals(t.Guid.ToString(), testId, StringComparison.OrdinalIgnoreCase));
 
             if (test == null) return results;
@@ -107,7 +108,7 @@ namespace CamelWorks.Nav.Clash
                     a, b,
                     centre.X, centre.Y, centre.Z,
                     StatusOf(result),
-                    result.AssignedTo));
+                    AssignedToOf(result)));
             }
 
             return results;
@@ -119,6 +120,50 @@ namespace CamelWorks.Nav.Clash
             // assembly is present, which is the whole reason this file is in its own project.
             var clash = _document.Document.GetClash();
             return clash;
+        }
+
+        // The tests live under TestsData.Value, and can be nested in folders. Flattened with the
+        // folder path kept, so a board can still show "Structural / L03 hard clash" rather than
+        // losing the only thing that distinguishes two tests with the same name.
+        private static List<(ClashTest Test, string? Folder)> AllTests(DocumentClash clash)
+        {
+            var found = new List<(ClashTest, string?)>();
+            CollectTests(clash.TestsData.Value, null, found);
+            return found;
+        }
+
+        private static void CollectTests(SavedItemCollection items, string? folder,
+                                         List<(ClashTest Test, string? Folder)> found)
+        {
+            if (items == null) return;
+
+            foreach (SavedItem item in items)
+            {
+                if (item is ClashTest test) found.Add((test, folder));
+                else if (item is ClashTestFolder nested)
+                    CollectTests(nested.Children, Join(folder, nested.DisplayName), found);
+            }
+        }
+
+        private static string? Join(string? folder, string? name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return folder;
+            return string.IsNullOrEmpty(folder) ? name : folder + "/" + name;
+        }
+
+        // AssignedTo is an Assignee, not a string. Guarded rather than dereferenced, because it is
+        // null on every result nobody has assigned, which is most of them.
+        private static string? AssignedToOf(ClashResult result)
+        {
+            try
+            {
+                var text = result.AssignedTo.ToString();
+                return string.IsNullOrWhiteSpace(text) ? null : text;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
         }
 
         private static void Collect(SavedItemCollection items, List<ClashResult> results)
@@ -175,7 +220,8 @@ namespace CamelWorks.Nav.Clash
         {
             try
             {
-                return test.LastRun.Ticks;
+                // Nullable: a test that has never been run has no last-run time at all.
+                return test.LastRun?.Ticks ?? 0;
             }
             catch (Exception)
             {
