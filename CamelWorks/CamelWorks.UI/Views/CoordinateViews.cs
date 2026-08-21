@@ -692,8 +692,10 @@ namespace CamelWorks.UI.Views
                         break;
 
                     default:
+                    {
                         using (var stream = File.Create(file)) PdfReportWriter.Write(stream, document);
                         break;
+                    }
                 }
 
                 results.Children.Add(Ui.Line("Wrote " + file, 1, true));

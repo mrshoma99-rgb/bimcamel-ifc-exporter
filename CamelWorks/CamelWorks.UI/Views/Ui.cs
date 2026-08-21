@@ -30,8 +30,11 @@ namespace CamelWorks.UI.Views
     /// One row of a table, plus the object it came from.
     ///
     /// The cells are indexed rather than named so a column can bind to <c>[0]</c> without a
-    /// per-screen row class; <see cref="Item"/> keeps the original, so clicking a row can select
+    /// per-screen row class; <see cref="Source"/> keeps the original, so clicking a row can select
     /// elements, open a clash or edit a layer without the screen having to hold a parallel list.
+    ///
+    /// It is <c>Source</c> rather than the obvious <c>Item</c> because an indexer is already called
+    /// Item as far as the CLR is concerned, and the two cannot both exist.
     /// </summary>
     public sealed class TableRow
     {
@@ -42,12 +45,12 @@ namespace CamelWorks.UI.Views
         /// <param name="cells">The cell text, in column order.</param>
         public TableRow(object? item, params string?[] cells)
         {
-            Item = item;
+            Source = item;
             _cells = cells ?? Array.Empty<string?>();
         }
 
         /// <summary>What the row is about.</summary>
-        public object? Item { get; }
+        public object? Source { get; }
 
         /// <summary>How the row reads — used to tint it.</summary>
         public Tone Tone { get; set; }
@@ -452,7 +455,7 @@ namespace CamelWorks.UI.Views
         {
             table.SelectionChanged += (s, e) =>
             {
-                if (table.SelectedItem is TableRow row) onPick(row.Item);
+                if (table.SelectedItem is TableRow row) onPick(row.Source);
             };
 
             return table;
@@ -460,7 +463,7 @@ namespace CamelWorks.UI.Views
 
         /// <summary>The item behind the selected row, or null.</summary>
         /// <param name="table">The table.</param>
-        public static object? Picked(this ListView table) => (table.SelectedItem as TableRow)?.Item;
+        public static object? Picked(this ListView table) => (table.SelectedItem as TableRow)?.Source;
 
         // -----------------------------------------------------------------------------------
         // Running work
