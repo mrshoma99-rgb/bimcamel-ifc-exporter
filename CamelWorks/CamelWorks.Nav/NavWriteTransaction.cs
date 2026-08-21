@@ -186,7 +186,11 @@ namespace CamelWorks.Nav
                     vector.Properties().Add(property);
                 }
 
-                state.SetUserDefined(path, 0, TabName, TabName, vector);
+                // SetUserDefined is on the GUI property node, not on the state. The node is the
+                // per-item property panel, and asking for it with create:true is what makes a tab
+                // exist on an element that has none.
+                var node = (InwGUIPropertyNode2)state.GetGUIPropertyNode(path, true);
+                node.SetUserDefined(0, TabName, TabName, vector);
                 return true;
             }
             catch (Exception)

@@ -47,8 +47,13 @@ namespace CamelWorks.Nav
         {
             if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("a viewpoint needs a name", nameof(name));
 
-            var copy = (SavedViewpoint)Host.CurrentViewpoint.CreateCopy();
-            copy.DisplayName = name;
+            // Document.CurrentViewpoint is a Viewpoint, not a SavedViewpoint — the two are
+            // unrelated types, and only SavedViewpoint can go into the collection. So the live
+            // camera is copied and then wrapped, rather than cast.
+            var copy = new SavedViewpoint(Host.CurrentViewpoint.CreateCopy())
+            {
+                DisplayName = name,
+            };
 
             Host.SavedViewpoints.AddCopy(copy);
 
