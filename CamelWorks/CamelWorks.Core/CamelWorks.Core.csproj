@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      netstandard2.0 so this assembly loads into the net48 Navisworks plug-in AND runs on the
+      Linux CI job. NOTHING in this project may reference Autodesk.Navisworks.* — that is the
+      whole point of the seam, and it is enforced by a test (ArchitectureTests).
+    -->
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>10.0</LangVersion>
+    <AssemblyName>CamelWorks.Core</AssemblyName>
+    <RootNamespace>CamelWorks.Core</RootNamespace>
+    <Product>CamelWorks</Product>
+    <Company>BIMCamel</Company>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CamelWorks.Core.Tests" />
+  </ItemGroup>
+
+</Project>

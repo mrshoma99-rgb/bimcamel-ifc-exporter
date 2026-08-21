@@ -45,3 +45,26 @@ jobs:
       # Payload-less compile check; the release workflow embeds the real bundle.
       - name: Build installer (Release)
         run: dotnet build installer/BIMCamel.Installer/BIMCamel.Installer.csproj -c Release
+
+  # CamelWorks.Core is netstandard2.0 with no Autodesk references, so it builds AND its tests run
+  # on Linux — no Navisworks, no Windows runner. That is the point of the seam: the logic four host
+  # years have to share is verified on every push, while the host-bound assemblies only compile.
+  core:
+    name: Linux (CamelWorks.Core + tests)
+    runs-on: ubuntu-latest
+    env:
+      CI: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build CamelWorks.Core (Release)
+        run: dotnet build CamelWorks/CamelWorks.Core/CamelWorks.Core.csproj -c Release
+
+      - name: Test CamelWorks.Core
+        run: dotnet test CamelWorks/CamelWorks.Core.Tests/CamelWorks.Core.Tests.csproj -c Release --logger "console;verbosity=normal"
