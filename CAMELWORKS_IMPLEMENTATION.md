@@ -18,6 +18,58 @@ designed once, properly, and versioned from its first commit.
 
 ---
 
+---
+
+## 0. The zero-setup rule
+
+**Nobody spends five hours on templates before the plug-in does anything. Every feature works on
+first open, against the raw model, with no configuration.**
+
+This is the exporter's existing principle — *"first click produces a valid, correctly-placed IFC with
+no setup"* — promoted to a product-wide law. It outranks every other design goal in this document.
+Where it conflicts with a feature's design, the feature changes.
+
+### The three rules it decomposes into
+
+1. **Every default is DERIVED, never blank.** A screen that cannot compute a sensible default has not
+   been designed yet. "Pick a property to begin" is a failure, not a neutral starting state.
+2. **`project.cwproj` is created lazily and silently, and nothing ever blocks on it.** It is a record of
+   what you have already changed, not a prerequisite you fill in first. A user who never opens Project
+   ▸ Profile gets the whole product.
+3. **Configuration is an accelerator, never a gate.** Templates, standards, code tables and party
+   registries make the second project faster. They are never required for the first.
+
+### What every feature does with nothing set up
+
+| Feature | With zero configuration | What configuration later adds |
+|---|---|---|
+| **Clash Rules** | A default stack runs on first open: model-pair → level → proximity. Level comes from grids if present, else from elevation bands auto-seeded from a Z-histogram of the model bounds. Grouped board, first click | Your own rule order, suppression rules, name templates |
+| **Clash Tests** | One click builds every-model-vs-every-other-model with the Navisworks default tolerance | Discipline matrix, per-pair tolerances, your spreadsheet |
+| **Triage board** | Opens populated from existing clash results. Assignee is free text. Status is the five native values | Party registry turns the free-text field into a picker; assign rules fill it automatically |
+| **Coordination Report** | A built-in default template produces a PDF on first click | Your cover page, logo, column choice, per-party splits |
+| **Appearance Manager** | **Most useful with zero setup** — it opens showing what is *already* hidden and overridden in the document, which is a question Navisworks cannot answer today | Saved layer stacks, portable profiles |
+| **Set Builder** | Builds from the current selection or an ad-hoc rule immediately; no library needed | Saved recipes, folder templates, parameterised reuse |
+| **Levels & Zones** | Derives silently on first use: grids → elevation bands from the Z-histogram → existing property. States which source it used | Hand-edited band table, named zones |
+| **Health Check** | Runs its built-in rule set against any model with no rules authored | Your naming regex, required properties, an `.ids` from a client |
+| **Data Manager** | Browses and edits real properties immediately | Calculated column presets, code tables |
+| **Takeoff** | Sums the numeric properties it finds, grouped by category | Named rules, unit mapping, regex cleaners |
+| **Batch** | "Job from this document" captures the open federation as a runnable job in one click | Saved multi-step jobs, output templates |
+| **IFC export** | Unchanged — already zero-config by design | Mapping grids, georeferencing, profiles |
+
+### Enforced, not aspirational
+
+- **Definition of done:** every tab is opened on a raw federated model with **no `.camelworks/` folder
+  present** and must do something useful. A tab that renders an empty state asking for configuration
+  fails the gate.
+- **Cold-start rubric (5-X and Stage 9):** the stopwatch runs from first launch on a model the user
+  brought, with **no template, no profile and no prior session**. That is the only measured path.
+- **Set Up Project is not a wizard and never blocks.** It is a one-screen checklist showing what
+  CamelWorks already derived, with the option to override any line. It can be skipped entirely and
+  most users never open it.
+- The word "template" may not appear in any first-run copy.
+
+---
+
 ## 1. Two findings that change the plan
 
 Before anything else, because they invalidate assumptions the research doc made.
@@ -165,8 +217,8 @@ them — documented in the guide as the answer to "put my tool where I want it".
 ### Panel 1 — Project
 | Button | Type | Does |
 |---|---|---|
-| **Set Up Project** (large) | `[P:Project/Setup]` | Guided setup: federation scan → levels & zones → test matrix → set library → profile |
-| Health Check | `[P:Project/Health]` | One scorecard: Models · Sets · Data |
+| **Health Check** (large) | `[P:Project/Health]` | One scorecard: Models · Sets · Data. Runs on any model with nothing configured — this is the first button because it is the first thing that pays off |
+| Project Setup | `[P:Project/Setup]` | A checklist of what CamelWorks already derived — levels, zones, model pairs — with an override on each line. Skippable; most users never open it |
 | Fix Broken Links | `[D]` | Repoint broken NWF paths, rename models, find missing sources |
 | Project Profile ▾ | `[A]` | Save · Load · New from template |
 
@@ -249,7 +301,11 @@ only be distributed as a Navisworks Workspace file.
 Cards routing to the common jobs, plus **Open the sample project**. Reachable from any workspace.
 
 ### Project — 4 tabs
-- **Setup** — the guided sequence; per step propose → review → apply, each skippable, nothing overwritten.
+- **Setup** — **a one-screen checklist, not a wizard, and never a gate.** It shows what CamelWorks has
+  already derived from the open model — levels and their source, zones, model pairs, the default rule
+  stack — each line with an override. Nothing here must be completed before anything else works; the
+  product behaves identically if this tab is never opened. Per-line propose → override → apply, nothing
+  overwritten.
 - **Health** — one scorecard, one exportable PDF.
   *Models*: origin / rotation / units / bounding-box disagreement per model; a model whose transform
   rotation changed since last snapshot; **duplicate appends**; "no grid system found"; "multiple grid
@@ -359,7 +415,8 @@ fifteen columns as a default.**
   | **Annotate** | `A` assign · `D` due · `C` comment · `V` save viewpoint (stamps the group's report view) · `I` new manual issue |
   | **Structural** | `Ctrl+G` merge into previous group, with a confirm naming the result count |
 
-**Report** — templated PDF / XLSX / HTML. One image per **group**, not per clash. Images carry
+**Report** — PDF / XLSX / HTML from a **built-in default template that needs no setup**; custom
+templates are optional. One image per **group**, not per clash. Images carry
 **auto-numbered callouts** projected at render time from each result's centre through the image camera,
 numbered to match the result table beneath. Nothing to author, nothing to anchor, nothing that can go
 stale, correct at every image size. Group comment history prints under the image. Output modes: single,
@@ -400,8 +457,10 @@ for topics with no matching clash** rather than dropping them.
   larger scope without a confirm naming the element count.
 
 ### Sets & Views — 4 tabs
-- **Library** — templates with variables (`Level = <param>`), `.cwset` import/export, **and export of
-  resolved GUID lists** — closing the hole where Navisworks' own set XML loses its contents.
+- **Library** — saved recipes with variables (`Level = <param>`), `.cwset` import/export, **and export of
+  resolved GUID lists** — closing the hole where Navisworks' own set XML loses its contents. **An empty
+  library is a normal state**: Set Builder works fully against the live model with nothing saved, and
+  saving is an afterwards, not a before.
 - **Generate** — property → distinct values → one set each, folder naming template.
 - **Colour** — **modeless, live apply** as property/palette/stops change; editable legend; save/load
   profile. A modal over a 3D view means the user cannot orbit or click an element to check its bucket.

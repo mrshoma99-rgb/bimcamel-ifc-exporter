@@ -46,6 +46,24 @@ Two constraints govern every call below, and they are the reason the answer is n
 
 ---
 
+## 0-L — CLOSED by the owner
+
+This decision was written with "0-L publication clearance" as a blocker on all source harvesting, and
+with two open ownership questions in §6. **Both are answered: the owner has confirmed the code is theirs
+and that both sources may be used as they see fit.** 0-L is closed, source-harvest is unblocked, and
+every harvest verdict below that was marked provisional on it now stands on its own merits. The
+remaining work is mechanical de-branding under `HARVEST_PROTOCOL.md` — every company identity in the
+shipped product is **BIMCamel / bimcamel.com**.
+
+Two further owner directives amend this document:
+- **No viewer.** Harvesting from the web product means its headless engines — BCF, IDS, Findings, the
+  appearance precedence logic. Nothing that renders. Navisworks is the viewer.
+- **Zero setup.** See `CAMELWORKS_IMPLEMENTATION.md` §0. Every feature works on first open with no
+  template, profile or configuration. Where anything below assumes a configured project, the
+  zero-config default in §0 takes precedence.
+
+---
+
 ## 0. The two directed items, specified
 
 Both are decided. This section is build-ready spec, not argument. Both move **out of Stage 6**: the two

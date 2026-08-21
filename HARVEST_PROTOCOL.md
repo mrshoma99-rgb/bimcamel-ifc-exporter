@@ -7,7 +7,9 @@ through before it lands in a public repository.
 
 Three rules, from the owner:
 
-1. **No trace of "KVI" anywhere in code, UI, data or filenames.**
+1. **No trace of "KVI" or "Kanadevia" anywhere in code, UI, data or filenames.** The only company
+   identity in the product is **BIMCamel / bimcamel.com** — publisher, About box, `PackageContents.xml`,
+   support links, file headers and every user-visible string.
 2. **Do not port the UI one-to-one.** Same capability, new design, new names.
 3. **Harvesting from the web product must not expose anything that weakens its security.**
 
@@ -54,6 +56,25 @@ helper. Zero hits across the module for `fetch(`, `process.env`, `auth`, `creden
 import. It is **pure client-side state and rendering**, which is why it is the safe piece and also the
 piece worth taking.
 
+### Not a viewer — engines only
+
+**CamelWorks is not getting an IFC viewer. Navisworks is the viewer.** Permission to harvest from the
+web product is permission to take its *headless engines*, not its rendering.
+
+| Take | Leave |
+|---|---|
+| `BIMCamel.Core/Bcf/` — the BCF 2.1 + 3.0 reader/writer, viewpoint factory, extensions | anything under `bimcamel-web/src/components/viewer/` that draws |
+| `BIMCamel.Core/Ids*` — the conformant IDS 1.0 engine | the three.js scene, camera rig, picking, tessellation |
+| the Findings model and its CSV/JSON serialisers | React components, panels, canvas, WebGL |
+| **from `overrides/`: the precedence LOGIC only** — the ordered later-wins-per-property fold and its tests | `overridePainter`'s actual painting; it paints a three.js scene we do not have |
+
+The Appearance Manager takes the *data model and the fold rule* from `appearanceOverrides.ts` and paints
+through the Navisworks API. Nothing three.js-shaped crosses the boundary — including, specifically, the
+Y-up→Z-up transform, which would silently rotate every exported viewpoint 90° because Navisworks is
+already Z-up.
+
+Rule of thumb: **if it renders, it stays on the web.**
+
 ### Standing rule
 
 Harvest **by file, never by directory**, and re-run the secret scan on the staged diff before the
@@ -82,10 +103,11 @@ Every occurrence must go: the About text, all four `PackageContents.xml` files, 
 ribbon tab id, and the display name. Grep for `KVI`, `Kanadevia` and `Inova` and require zero hits as a
 release-gate check.
 
-> The owner has confirmed the code is theirs. Flagging once and moving on: a tool named for an employer
-> and referencing their IT department is the shape that attracts a work-for-hire question, and
-> publishing under an irrevocable open licence cannot be undone. Worth one look before the first
-> public push; not revisited here.
+> **Ownership: decided.** The owner has confirmed twice that this code is theirs and that both sources
+> may be used as they see fit. That is the answer; it is not reopened here or anywhere else in the
+> plan. The scope decision's "0-L publication clearance" blocker is **closed** on the same basis.
+> What remains is mechanical, and is covered by the release gate below: scrub the employer's name and
+> initials, and publish under BIMCamel's identity.
 
 ### No compatibility burden — the formats get designed properly
 
@@ -164,7 +186,12 @@ what it is made of, and never after a company. No abbreviations in ribbon labels
 Add to §8 Definition of done:
 
 - `grep -ri "kvi\|kanadevia\|inova"` over the whole published tree returns **zero** hits, including
-  `PackageContents.xml`, installer manifests, resource files and the About dialog.
+  `PackageContents.xml`, installer manifests, resource files and the About dialog — and the company
+  identity in each of those places is **BIMCamel / bimcamel.com**.
+- No harvested file brings a NuGet dependency with it. (EPPlus 6.2.10 is Polyform Noncommercial and
+  would put commercial users in violation of a product advertised as free for commercial use; SixLabors
+  is similarly restricted. Neither may ship, and the no-third-party-runtime rule already forbids them.)
+- No harvested file renders. Nothing from `bimcamel-web/src/components/viewer/` that draws is present.
 - The staged diff of every harvested file has passed the secret scan in §1.
 - No harvested file imports from `contract/`, `cloudflare/`, `BIMCamel.Api` or any auth/billing module.
 - Every persisted format carries a `schemaVersion` from its first commit.
