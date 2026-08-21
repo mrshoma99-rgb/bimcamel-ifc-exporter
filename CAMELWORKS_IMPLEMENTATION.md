@@ -205,7 +205,7 @@ identically on Simulate, and both are what a user reaches for from *any* selecti
 | **Batch** (large) | `[P:Batch/Jobs]` | The Friday federation job runner |
 | **Graph Editor** (large) | `[P:Automate]` | The Dyncamelo canvas |
 | **Export IFC** | `[P:Project/Export]` | The BIMCamel exporter — full pane, not a dropdown item |
-| Export Data ▾ | `[D]` | CSV · XLSX |
+| Export ▾ | `[D]` | glTF/GLB · OBJ · CSV · XLSX — a save path and nothing else |
 | My Tools ▾ | `[A]` | 16 fixed ribbon slots, relabelled/rebound at runtime; a 17th pinned graph opens a picker |
 | Help ▾ | `[D]` | Guide · Limitations · Shortcuts · Find a Tool… · Sample project · Report a problem · Diagnostics ▸ Run self-test · Updates · About |
 
@@ -369,8 +369,11 @@ for topics with no matching clash** rather than dropping them.
 - **Edit** — bulk add/edit/rename/delete custom tabs and properties; calculated columns (concat,
   arithmetic, regex extract, unit convert, lookup). **Preview diff before write**, pre-edit snapshot into
   the undo journal (COM `SetUserDefined` writes sit outside Navisworks' own undo).
-  **Excel import** — the one external-data path: pick a CSV/XLSX, choose the key column (default GUID),
-  map, preview, write, optionally cache the source.
+  **External data import** — pick a **CSV/XLSX**, or a **read-only ODBC/OLEDB source running exactly one
+  query**; choose the key column (default GUID), map columns, preview the diff, write as real properties,
+  and cache the result in the sidecar. **No credentials are stored** — trusted connection, or prompt once
+  per session. One cached query is the *opposite* of DataTools' per-object query storm that our own README
+  documents as the thing that ruins exports; refusing to ship it leaves users on the broken path.
   **Status Stamp** is a named preset here: writes `Status` + `StatusDate` + `StatusBy`, with a saved
   colour profile and a "% complete by zone" rollup.
 - **Zones** — three independent sources with a documented fallback chain, each usable alone:
@@ -467,23 +470,36 @@ subsystem, which would otherwise be untested inside a host on 4 of 8 rows.
 
 ## 6. Cut from the product
 
-Not deferred — removed. Criterion: *is it in the weekly coordination loop?*, and *does removing it delete
-plumbing rather than screens?*
+Not deferred — removed.
 
-| Cut | Why |
+**One criterion was struck from this section after review.** Earlier drafts justified five cuts with
+"0 existing nodes for this". That is circular — it measures what Dyncamelo happened to grow, not what
+users need, and it would have cut every genuinely new thing in the product. **Whether an engine exists is
+an effort estimate. It is never a reason to cut.** Two cuts did not survive re-examination without it and
+are restored below. The criterion that remains is: *is it in the weekly coordination loop, and does its
+cost land on a user or on us?*
+
+### Restored on re-examination
+
+| Restored | Why the original cut was wrong |
 |---|---|
-| **glTF/GLB, OBJ, DWG-per-set, web-viewer package** | 0 existing nodes for any. A web package means writing a browser 3D viewer, and no third-party runtime is allowed. Export is **IFC · CSV/XLSX** |
-| **SQL / ODBC sources** | 0 nodes. Connection strings, drivers and credentials are a support surface two people cannot carry — and our own README documents DataTools' per-object SQL path as the thing that ruins exports |
-| **BOQ tab** | 0 nodes. Estimating is a different buyer, and "stable line-item link across re-export" is a **second fingerprint problem** before the first is solved |
-| **Progress tab + S-curve** | The schedule of record is in P6/MSP, the actuals in the PM system. An S-curve from element counts weights a light fitting like a slab pour. Status stamping survives as a Data/Edit preset |
-| **Native redline authoring, and the CamelWorks annotation editor** | A redline that silently no-ops on one host year produces a report image missing the instruction the trade builds from. Replaced by auto-numbered callouts — nothing to author, nothing to go stale |
-| **ReTree** (rebuild hierarchy) | Pure greenfield, high blast radius, not in the weekly loop |
-| **Schedule Round-Trip (P6/MSP)** and **the whole Schedule/4D workspace** | Not in the weekly coordination loop, and contested by Synchro and Fuzor. The 7 `TimeLiner.*` nodes stay on the Automate side |
-| **Compare Models** | No per-element geometry signature exists in 327 nodes; its answer quality is bounded by the same fingerprint with no confidence surface. The coordination question is answered by the Δ column and the carry-over banner; the model-revision question by the IFC exporter's NEW/DELETED/MODIFIED/UNCHANGED manifest |
-| **Multi-run trend chart + per-party burn-down** | Longitudinal analytics is not a field we compete on, and it dragged a compaction format and a chart path through a hand-rolled PDF writer |
-| **`CamelWorks.Batch.exe` automation host** | Deletes a host-bound assembly, a spike, the licence-seat question, and the highest-volume support ticket. Every hardening rule survives, applied to in-session jobs |
+| **glTF / GLB and OBJ export** | The cut said "0 nodes". But `BIMCamel/Ifc/MeshWriters.cs` already defines an **`IMeshWriter` interface with two implementations**, and `InstancedExtractor` already yields `InstancedElement` = a shared `LocalMesh` (vertices, indices, material) plus per-instance translation and a 3×3 rotation — **which is exactly glTF's data model**: one mesh referenced by many nodes with TRS transforms. glTF is a *third `IMeshWriter`*, not a subsystem. And the expensive half is already paid for: `PrimitiveSink` documents that `GenerateSimplePrimitives` is the only geometry-read surface Navisworks exposes and is 82–92% of export wall-clock, so a second output format costs the serialiser only. ProtoTech charges per-seat *per format* for exactly this |
+| **External database source** (read-only ODBC/OLEDB, one query, cached, no stored credentials) | The support-surface concern — drivers, connection strings, credentials — was real, so the capability is **narrowed** rather than dropped: read-only, exactly one query, cached to the sidecar, trusted connection or prompt-per-session. This is iConstruct's paid Data Integrator, and the argument against it (our README documents DataTools' per-object SQL as ruinous) is an argument *for* doing it properly in one cached query, not for leaving users on the broken path |
 
----
+### Cut, on merit
+
+| Cut | Why — independent of what already exists |
+|---|---|
+| **DWG-per-set export** | Needs a DWG writer. That is a real new subsystem with no shared pipeline, unlike glTF/OBJ |
+| **Self-contained web-viewer package** | Means shipping a browser 3D viewer. §9 forbids a third-party runtime, so it cannot even wrap an existing one — and nobody opens an unsigned zip from an unknown plug-in. Clients want an NWD, an IFC or an ACC link |
+| **BOQ tab** (WBS template, stable line-item link) | "Stable line-item link across re-export" is a **second fingerprint problem** — and this plan has a GATE it has not yet passed on the first one. Estimating is also a different buyer with entrenched tools |
+| **S-curve and progress analytics** | An S-curve built from model-element counts weights a light fitting the same as a slab pour. The schedule of record lives in P6/MSP and the actuals in the contractor's PM system. **The useful half — status stamping with dates — is not cut**; it is a Data/Edit preset feeding a "% complete by zone" rollup |
+| **Native redline authoring, and a CamelWorks annotation editor** | A redline that silently no-ops on one host year produces a report image missing the instruction the trade builds from — and the redline API is undocumented, so we cannot know which year breaks it. Replaced by **auto-numbered callouts** projected at render time: nothing to author, nothing to anchor, nothing that can go stale. *(The 8 `Markup.*` nodes exist — this was cut despite having an engine.)* |
+| **ReTree** (rebuild the selection tree by property) | The Navisworks tree is built from the source files and **`ModelItem` parentage is not writable through the API** — iConstruct does this by authoring a new NWD, which is a different product. *Verify in spike 0-S6 before publishing this reason; if reparenting turns out to be reachable, this cut is reopened* |
+| **Schedule Round-Trip (P6/MSP) and the 4D workspace** | Not in the weekly coordination loop, and contested by Synchro and Fuzor who own the buyer. *(The 7 `TimeLiner.*` nodes exist — cut despite having an engine.)* They stay on the Automate side |
+| **Compare Models** | Its answer quality is bounded by the same fingerprint GATE, with no confidence surface to show the user when it is unsure. The two questions it answers already have better homes: coordination → the Δ column and carry-over banner; model revision → the IFC exporter's NEW/DELETED/MODIFIED/UNCHANGED manifest |
+| **Multi-run trend chart and per-party burn-down** | Longitudinal analytics is a field we decline to compete on, and it dragged a snapshot compaction format and a chart-drawing path through a hand-rolled PDF writer |
+| **`CamelWorks.Batch.exe` automation host** | A hidden `NavisworksApplication` consumes a licence seat a free add-in cannot answer for a customer's IT; it adds a host-bound assembly to all 8 install cells; and "I scheduled it at 2 am and nothing happened, there is no log" is the highest-volume support ticket this product can generate. Every hardening rule survives, applied to in-session jobs |
 
 ## 7. Build order and gates
 
@@ -499,6 +515,7 @@ Dependency order. Nothing is public until all of it passes §8.
 | **0-S2** | **Spike: section box** — port the clip-plane box to 2025+ (§1.2) |
 | **0-S3** | **Spike: NWD publish options** via `Application.Options` |
 | **0-S4** | **IFC golden-file tests from the current BIMCamel build, green before any BIMCamel code moves.** BIMCamel has no test project today. If extracting `IfcGuid` changes GlobalId derivation for one entity class, every existing user's first CamelWorks export reports 100% NEW / 100% DELETED and nothing catches it |
+| **0-S6** | **Spike: `ModelItem` reparenting.** One hour: confirm whether the tree is writable at all through the API or COM. It is the sole stated reason ReTree is cut, and that reason is currently an assumption, not a verified fact |
 | **0-S5** | **Spike: review-mode key capture + HUD.** Thread-scoped `SetWindowsHookEx(WH_GETMESSAGE, …)` with the 3D view focused and with a modal open; fallback WinForms `IMessageFilter` (worth an hour — `RibbonTabMerger.cs:53` proves a WinForms `ThreadContext` is alive on Navisworks' UI thread); plus an always-on-top HUD over the 3D view. **`ToolPlugin.OnKeyPress` is struck** — activating a `ToolPlugin` replaces the navigation tool and disables orbit/pan/zoom. *Failure branch:* HUD buttons become the only path and "keyboard-driven review mode" comes out of all copy |
 | **1** | Identity (`ElementKey` + `ClashKey` + `GroupId` together), scope resolution, traversal + cache, **all six abstractions** plus `FakeDocument` with an ordered effect log, the `ModelFixture` format, and the contract suite over all six. *A test seam not built alongside the traversal layer is never retrofitted across 30 services* |
 | **GATE** | **Fingerprint bake-off. Stage 2 does not start until this passes.** ≥95% recall on unchanged elements and a **false-match rate of exactly 0**, on a committed scrubbed corpus of ≥5 real before/after pairs including: changed export settings; a family swap; a worksharing round-trip; a moved insert point; **a changed model rotation**; **a re-run where one of several results on the same element pair was fixed** (a false-match test); and one DWG/IFC-sourced NWC. *A missed carry-over is annoying; a wrong one shows an unresolved clash as "Approved, signed off by J. Smith" and looks correct to everyone in the room.* **Failure branch decided now:** carry-over ships as an explicit reconcile step the user accepts before anything is applied, and the copy changes from "survives a re-export" to "shows you what it thinks matched, and you accept it" |
@@ -508,7 +525,7 @@ Dependency order. Nothing is public until all of it passes §8.
 | **5** | Clash services + `Nav.Clash` + the whole Coordinate workspace |
 | **5-X** | **Cold-start rehearsal.** Three coordinators who have not seen CamelWorks attempt *open sample → group → triage → export* against the §8 rubric and a stopwatch. **Findings are Stage 6 work.** *Verifying this only at Stage 9 means the first time an outside coordinator touches the product is the moment nothing is left to absorb the result* |
 | **6** | Appearance, Colour, Viewpoints, override layers, Section Box, Isolate, context menu |
-| **7** | Batch (in-session runner, run-file-at-start, timeouts), Export, Fix Broken Links |
+| **7** | Batch (in-session runner, run-file-at-start, timeouts); **Export: the glTF/GLB and OBJ `IMeshWriter` implementations** + CSV/XLSX; Fix Broken Links |
 | **8** | Automate: node wrappers for every new Core service, Open-as-graph, the parity test, Pin-to-ribbon, My Tools, Project Profile |
 | **9** | Find a Tool + guide/F1/Limitations + Diagnostics self-test + signed installer + install matrix + migration checklist + field validation + App Store submission |
 

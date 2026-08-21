@@ -128,6 +128,12 @@ closed, expensive and per-seat. There is no free, open, *complete* Navisworks to
 Effort: **S** = days, **M** = a few weeks, **L** = a month+.
 Engine: **✅** = Dyncamelo/BIMCamel already has the primitives, **🔨** = new work.
 
+> **These two columns estimate effort. Neither is a reason to cut a tool.** "We have not built it yet"
+> is circular — it measures what Dyncamelo happened to grow, not what users need, and applied as a
+> scope filter it would cut every genuinely new thing in the product. The report engine, the clash
+> fingerprint, the Tests matrix builder, manual issues and the sidecar store are all 🔨 and all
+> essential. Scope decisions live in `CAMELWORKS_IMPLEMENTATION.md` §6, on merit.
+
 ### Module A — Clash & Coordination *(build this first — it's where the money is)*
 
 | # | Tool | What it does | Kills | Effort | Engine |
