@@ -107,7 +107,7 @@ namespace CamelWorks.Core.Abstractions
     }
 
     /// <summary>An 8-bit-per-channel colour.</summary>
-    public readonly struct Colour
+    public readonly struct Colour : System.IEquatable<Colour>
     {
         /// <summary>Red, 0-255.</summary>
         public byte R { get; }
@@ -140,6 +140,24 @@ namespace CamelWorks.Core.Abstractions
             colour = new Colour(r, g, b);
             return true;
         }
+
+        /// <summary>Packed as <c>0xRRGGBB</c> — a cheap dictionary key when batching writes by colour.</summary>
+        public int Packed => (R << 16) | (G << 8) | B;
+
+        /// <inheritdoc />
+        public bool Equals(Colour other) => Packed == other.Packed;
+
+        /// <inheritdoc />
+        public override bool Equals(object? obj) => obj is Colour c && Equals(c);
+
+        /// <inheritdoc />
+        public override int GetHashCode() => Packed;
+
+        /// <summary>Value equality.</summary>
+        public static bool operator ==(Colour a, Colour b) => a.Equals(b);
+
+        /// <summary>Value inequality.</summary>
+        public static bool operator !=(Colour a, Colour b) => !a.Equals(b);
 
         /// <summary><c>#rrggbb</c>.</summary>
         public override string ToString() =>
