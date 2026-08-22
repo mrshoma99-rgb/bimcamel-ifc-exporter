@@ -807,6 +807,14 @@
                 </StackPanel>
                 <TextBlock Style="{StaticResource Lbl}" Text="Classification system name"/>
                 <TextBox x:Name="TxtClassSystem" ToolTip="Name of the classification system the codes in the grid belong to, e.g. “Uniclass 2015” or “OmniClass”. Written as IfcClassification.Name; blank falls back to a generic source label."/>
+                <TextBlock Style="{StaticResource Lbl}" Text="Published by" Margin="0,11,0,5"/>
+                <TextBox x:Name="TxtClassSource" ToolTip="Who publishes the classification, e.g. “NBS” for Uniclass. Written as IfcClassification.Source, which IFC2x3 makes mandatory — leave it blank and the system name is used. It is never this exporter’s name: a file claiming BIMCamel publishes Uniclass is a false statement in a deliverable."/>
+                <TextBlock Style="{StaticResource Lbl}" Text="Edition" Margin="0,11,0,5"/>
+                <TextBox x:Name="TxtClassEdition" ToolTip="Which edition, e.g. “2015”. Uniclass 2015 and Uniclass 1997 are different tables with overlapping codes, so this is what tells the other end whether a code means what they think it means. Mandatory in IFC2x3, where an unstated edition is written as “-”."/>
+                <TextBlock Style="{StaticResource Lbl}" Text="Edition date (YYYY-MM-DD)" Margin="0,11,0,5"/>
+                <TextBox x:Name="TxtClassEditionDate" ToolTip="The edition’s publication date, as IFC wants it. Anything that is not a plain calendar date is left out rather than guessed at: a malformed date makes a strict reader reject the file, where an absent optional one is perfectly valid."/>
+                <TextBlock Style="{StaticResource Lbl}" Text="Published at (URL)" Margin="0,11,0,5"/>
+                <TextBox x:Name="TxtClassLocation" ToolTip="Where the classification is published. IFC4 only — IfcClassification gained Location in IFC4, so on IFC2x3 this is not written rather than crammed into a field that means something else."/>
                 <TextBlock Style="{StaticResource Lbl}" Text="Also export each mapped set as" Margin="0,11,0,5"/>
                 <ComboBox x:Name="CmbGroups" ToolTip="Emit each mapped Navisworks set as an IFC group, with IfcRelAssignsToGroup membership. Use IfcSystem for MEP systems and IfcZone for spatial zones."/>
               </StackPanel>

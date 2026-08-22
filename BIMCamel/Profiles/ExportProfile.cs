@@ -48,6 +48,14 @@ namespace BIMCamel.Profiles
         [DataMember] public string BuildingName = "";
         [DataMember] public string StoreyName = "";
         [DataMember] public string ClassificationSystem = "";
+        /// <summary>Who publishes it — "NBS". Written as IfcClassification.Source.</summary>
+        [DataMember] public string ClassificationSource = "";
+        /// <summary>Which edition — "2015". Mandatory in IFC2x3.</summary>
+        [DataMember] public string ClassificationEdition = "";
+        /// <summary>The edition's date, YYYY-MM-DD. Anything else is left out rather than guessed.</summary>
+        [DataMember] public string ClassificationEditionDate = "";
+        /// <summary>Where it is published, as a URL. IFC4 only.</summary>
+        [DataMember] public string ClassificationLocation = "";
         [DataMember] public bool Split;
         [DataMember] public string SplitMb = "200";
         /// <summary>0 = none, 1 = IfcGroup, 2 = IfcSystem, 3 = IfcZone.</summary>

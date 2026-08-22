@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -55,6 +56,9 @@ namespace BIMCamel.Ifc
 
         /// <summary>Comparison against the previous export's manifest, when there was one.</summary>
         public RevisionManifest.Diff? Revision;
+
+        /// <summary>True when a change list was written beside the IFC.</summary>
+        public bool ChangesWritten;
     }
 
     /// <summary>
@@ -178,6 +182,10 @@ namespace BIMCamel.Ifc
             public readonly Dictionary<string, int> ByEntity = new(StringComparer.Ordinal);
             private readonly string _path;
             private readonly string _classSystem;
+            private readonly string _classSource;
+            private readonly string _classEdition;
+            private readonly string _classEditionDate;
+            private readonly string _classLocation;
             private readonly string _groupEntity;
 
             public Doc(string path, int coordDecimals, IfcSchema schema, CoordOptions coords,
@@ -187,6 +195,10 @@ namespace BIMCamel.Ifc
                 Manifest = manifest;
                 _path = path;
                 _classSystem = names.ClassificationSystem;
+                _classSource = names.ClassificationSource;
+                _classEdition = names.ClassificationEdition;
+                _classEditionDate = names.ClassificationEditionDate;
+                _classLocation = names.ClassificationLocation;
                 _groupEntity = names.GroupEntity;
                 W = new StreamingStepWriter(path, coordDecimals);
                 W.WriteHeader(schema, System.IO.Path.GetFileName(path), author);
@@ -203,7 +215,9 @@ namespace BIMCamel.Ifc
             {
                 WriteSpatialContainment(W, Id, S.Owner, ByStorey, Storeys);
                 WriteDeferredPsetRels(W, Id, S.Owner, Psets, sum);
-                FinishRelationships(W, Id, schema, S.Owner, Occ, sum, _classSystem, _groupEntity);
+                FinishRelationships(W, Id, schema, S.Owner, Occ, sum,
+                    new ClassId(_classSystem, _classSource, _classEdition, _classEditionDate, _classLocation),
+                    _groupEntity);
                 Storeys.WriteAggregation();
                 W.WriteFooter();
                 W.Dispose();
@@ -253,7 +267,7 @@ namespace BIMCamel.Ifc
             HashSemantics(ref hm, el.ClassKey, el.TypeName, el.Level, el.MaterialName, el.ClassCode, el.GroupName);
             hm.Add(el.Indices.Count);
             for (int i = 0; i < el.Vertices.Count; i++) hm.Add(el.Vertices[i]);
-            d.Manifest.Elements[guid] = hm.Value;
+            d.Manifest.Put(guid, hm.Value, el.Name, el.TypeName);
 
             d.Tris += el.Indices.Count / 3; d.Elem++;
         }
@@ -338,7 +352,7 @@ namespace BIMCamel.Ifc
                 for (int i = 0; i < 9; i++) hm.Add(inst.Rotation[i]);
                 for (int i = 0; i < 3; i++) hm.Add(inst.Translation[i]);
             }
-            d.Manifest.Elements[guid] = hm.Value;
+            d.Manifest.Put(guid, hm.Value, el.Name, el.TypeName);
 
             d.Elem++;
         }
@@ -352,7 +366,17 @@ namespace BIMCamel.Ifc
         private static void SaveManifest(string basePath, RevisionManifest manifest, RevisionManifest? previous, ExportSummary summary)
         {
             if (previous != null && previous.Elements.Count > 0)
-                summary.Revision = RevisionManifest.Compare(previous, manifest);
+            {
+                var diff = RevisionManifest.Compare(previous, manifest);
+                summary.Revision = diff;
+
+                // The change list, beside the IFC. Only when something actually changed: a
+                // "model.ifc.changes.csv" holding nothing but a header is a file somebody opens,
+                // reads as an error, and asks about.
+                if (diff.Changed > 0)
+                    summary.ChangesWritten = RevisionManifest.SaveChanges(basePath, diff, previous, manifest);
+            }
+
             try { manifest.Save(basePath); } catch { }
         }
 
@@ -526,7 +550,56 @@ namespace BIMCamel.Ifc
         }
 
         // ── post-loop relationship batches: types (IFC4), materials, classification (IFC4) ──
-        private static void FinishRelationships(StreamingStepWriter w, Ids ids, IfcSchema schema, int owner, List<Occ> occ, ExportSummary summary, string system, string groupEntity)
+        /// <summary>
+        /// Who publishes the classification, which edition, and where it lives.
+        ///
+        /// Passed as one thing rather than as five more positional strings, because five adjacent
+        /// string parameters is a call nobody can read and a swap nobody would notice.
+        /// </summary>
+        private readonly struct ClassId
+        {
+            public ClassId(string? system, string? source, string? edition, string? editionDate, string? location)
+            {
+                SystemName = (system ?? "").Trim();
+                Source = (source ?? "").Trim();
+                Edition = (edition ?? "").Trim();
+                EditionDate = (editionDate ?? "").Trim();
+                Location = (location ?? "").Trim();
+            }
+
+            public string SystemName { get; }
+            public string Source { get; }
+            public string Edition { get; }
+            public string EditionDate { get; }
+            public string Location { get; }
+
+            /// <summary>The system's name, or a label that does not claim to be one.</summary>
+            public string Name => SystemName.Length > 0 ? SystemName : "Source classification";
+
+            /// <summary>
+            /// Who published it. Falls back to the system's own name, never to this exporter's.
+            ///
+            /// IFC2x3 makes Source mandatory, and the old fallback put 'BIMCamel' there — a file
+            /// stating that this exporter publishes Uniclass. "Uniclass 2015" as its own source is
+            /// imprecise; 'BIMCamel' is wrong, and the two are not the same kind of imperfect.
+            /// </summary>
+            public string SourceOrName => Source.Length > 0 ? Source : Name;
+
+            /// <summary>The edition, or "-" where IFC2x3 demands one and nobody said.</summary>
+            public string EditionOrUnstated => Edition.Length > 0 ? Edition : "-";
+
+            /// <summary>
+            /// The edition date, only when it is a plain calendar date.
+            ///
+            /// A malformed IfcDate is worse than an absent one: an optional attribute left out is
+            /// valid, where "spring 2015" in a date field makes a strict reader reject the file.
+            /// </summary>
+            public bool HasEditionDate =>
+                DateTime.TryParseExact(EditionDate, "yyyy-MM-dd",
+                                       CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
+        }
+
+        private static void FinishRelationships(StreamingStepWriter w, Ids ids, IfcSchema schema, int owner, List<Occ> occ, ExportSummary summary, ClassId classification, string groupEntity)
         {
             // Type objects (IFC4 only — 2x3 type signatures diverge).
             if (schema == IfcSchema.Ifc4)
@@ -573,12 +646,25 @@ namespace BIMCamel.Ifc
                 foreach (var o in occ) if (!string.IsNullOrWhiteSpace(o.ClassCode)) AddTo(codes, o.ClassCode, o.Id);
                 if (codes.Count > 0)
                 {
-                    string sysName = string.IsNullOrWhiteSpace(system) ? "Source classification" : system.Trim();
+                    var c = classification;
+
+                    // Optional in IFC4, mandatory in 2x3, and either way a claim about somebody
+                    // else's standard. What goes here now is what the person exporting said
+                    // publishes it — never this exporter's own name. See ClassId.SourceOrName.
+                    string src = Str(c.SourceOrName);
+                    string edition = c.Edition.Length > 0 ? Str(c.Edition) : "$";
+                    string editionDate = c.HasEditionDate ? Str(c.EditionDate) : "$";
+
+                    string location = c.Location.Length > 0 ? Str(c.Location) : "$";
+
                     int source = schema == IfcSchema.Ifc4
                         // IFC4: Source, Edition, EditionDate, Name, Description, Location, ReferenceTokens
-                        ? w.Write($"IFCCLASSIFICATION($,$,$,{Str(sysName)},$,$,$)")
-                        // IFC2x3: Source, Edition, EditionDate, Name — Source and Edition are MANDATORY.
-                        : w.Write($"IFCCLASSIFICATION('BIMCamel','1',$,{Str(sysName)})");
+                        ? w.Write($"IFCCLASSIFICATION({src},{edition},{editionDate},{Str(c.Name)},$,{location},$)")
+                        // IFC2x3: Source, Edition, EditionDate, Name — Source and Edition are
+                        // MANDATORY, so an unstated edition is written as "-" rather than omitted:
+                        // a missing mandatory attribute makes the file schema-invalid, and Location
+                        // does not exist in 2x3 at all.
+                        : w.Write($"IFCCLASSIFICATION({src},{Str(c.EditionOrUnstated)},{editionDate},{Str(c.Name)})");
                     foreach (var kv in codes)
                     {
                         int refId = schema == IfcSchema.Ifc4
