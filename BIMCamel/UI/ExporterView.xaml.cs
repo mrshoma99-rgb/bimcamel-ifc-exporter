@@ -639,6 +639,10 @@ namespace BIMCamel.UI
                     // Real storey elevations, when the model's grids name the levels.
                     LevelElevations = ModelSurvey.LevelElevations(doc, unitScale),
                     ClassificationSystem = (TxtClassSystem.Text ?? "").Trim(),
+                    ClassificationSource = (TxtClassSource.Text ?? "").Trim(),
+                    ClassificationEdition = (TxtClassEdition.Text ?? "").Trim(),
+                    ClassificationEditionDate = (TxtClassEditionDate.Text ?? "").Trim(),
+                    ClassificationLocation = (TxtClassLocation.Text ?? "").Trim(),
                     GroupEntity = CmbGroups.SelectedIndex switch { 1 => "IFCGROUP", 2 => "IFCSYSTEM", 3 => "IFCZONE", _ => "" }
                 };
                 var setRules = BuildSetRules();
@@ -1491,7 +1495,19 @@ namespace BIMCamel.UI
                 : "Instancing  : off");
             sb.AppendLine($"Class rules : {ruleCount} set rule(s)");
             sb.Append(MappingLines(s));
-            if (s.Revision != null) sb.Append(s.Revision.Report());
+            if (s.Revision != null)
+            {
+                sb.Append(s.Revision.Report());
+
+                // Named, not implied. A change list nobody knows was written is a change list
+                // nobody opens, and the whole point of it is that somebody acts on it.
+                if (s.ChangesWritten)
+                    sb.AppendLine($"     · change list written beside the IFC: {s.Revision.Changed:N0} rows in *.ifc.changes.csv");
+
+                if (s.Revision.BaselineHasNoNames)
+                    sb.AppendLine("     · the previous manifest predates element names, so DELETED rows "
+                                  + "in the change list have no name — the next export will have them");
+            }
             sb.AppendLine($"Storeys     : {s.StoreyCount}");
             sb.AppendLine($"Type objects: {s.TypeCount}   Materials: {s.MaterialCount}   Classifications: {s.ClassificationCount}");
             if (s.GroupCount > 0) sb.AppendLine($"Groups      : {s.GroupCount} (from Navisworks sets)");
@@ -1611,6 +1627,10 @@ namespace BIMCamel.UI
             Roles = RolesToText(), ParamRules = ParamRulesToText(),
             ProjectName = TxtProject.Text ?? "", SiteName = TxtSite.Text ?? "", BuildingName = TxtBuilding.Text ?? "", StoreyName = TxtStorey.Text ?? "",
             ClassificationSystem = (TxtClassSystem.Text ?? "").Trim(),
+            ClassificationSource = (TxtClassSource.Text ?? "").Trim(),
+            ClassificationEdition = (TxtClassEdition.Text ?? "").Trim(),
+            ClassificationEditionDate = (TxtClassEditionDate.Text ?? "").Trim(),
+            ClassificationLocation = (TxtClassLocation.Text ?? "").Trim(),
             Split = ChkSplit.IsChecked == true, SplitMb = TxtSplitMb.Text ?? "200",
             Groups = CmbGroups.SelectedIndex
         };
@@ -1630,6 +1650,10 @@ namespace BIMCamel.UI
             if (!string.IsNullOrWhiteSpace(p.BuildingName)) TxtBuilding.Text = p.BuildingName;
             if (!string.IsNullOrWhiteSpace(p.StoreyName)) TxtStorey.Text = p.StoreyName;
             TxtClassSystem.Text = p.ClassificationSystem ?? "";
+            TxtClassSource.Text = p.ClassificationSource ?? "";
+            TxtClassEdition.Text = p.ClassificationEdition ?? "";
+            TxtClassEditionDate.Text = p.ClassificationEditionDate ?? "";
+            TxtClassLocation.Text = p.ClassificationLocation ?? "";
             ChkSplit.IsChecked = p.Split; if (!string.IsNullOrWhiteSpace(p.SplitMb)) TxtSplitMb.Text = p.SplitMb;
             CmbGroups.SelectedIndex = Clamp(p.Groups, CmbGroups.Items.Count);
             TextToRoles(p.Roles); TextToParamRules(p.ParamRules);
