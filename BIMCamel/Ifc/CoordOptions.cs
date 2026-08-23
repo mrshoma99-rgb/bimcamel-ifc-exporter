@@ -101,6 +101,44 @@ namespace BIMCamel.Ifc
         public string ClassificationSystem = "";
 
         /// <summary>
+        /// Who publishes the classification — "NBS", "OmniClass", "buildingSMART".
+        ///
+        /// Written as IfcClassification.Source. IFC2x3 makes Source and Edition MANDATORY, and
+        /// with nothing to put there this exporter used to write its own name: every 2x3 file it
+        /// produced claimed BIMCamel published Uniclass. That is a false statement about somebody
+        /// else's standard sitting in a contractual deliverable, and a checker that reads Source to
+        /// decide which classification it is looking at gets the wrong answer.
+        ///
+        /// Blank falls back to the system's own name, which is at least not a claim about anybody.
+        /// </summary>
+        public string ClassificationSource = "";
+
+        /// <summary>
+        /// Which edition — "2015", "v1.2", "Table Ss". Written as IfcClassification.Edition.
+        ///
+        /// Uniclass 2015 and Uniclass 1997 are different tables with overlapping codes, so an
+        /// edition is not decoration: it is what tells the other end whether "Ss_25_10_30" means
+        /// what they think it means.
+        /// </summary>
+        public string ClassificationEdition = "";
+
+        /// <summary>
+        /// The edition's publication date, as IFC wants it: YYYY-MM-DD.
+        ///
+        /// Written as IfcClassification.EditionDate. Anything that is not a plain calendar date is
+        /// left out rather than guessed at — a malformed date in a deliverable is worse than an
+        /// absent one, because a reader that parses it strictly rejects the file.
+        /// </summary>
+        public string ClassificationEditionDate = "";
+
+        /// <summary>
+        /// Where the classification is published, as a URL. IFC4 only — IfcClassification gained
+        /// Location in IFC4 and 2x3 has nowhere to put it, so on 2x3 it is silently not written
+        /// rather than crammed into a field that means something else.
+        /// </summary>
+        public string ClassificationLocation = "";
+
+        /// <summary>
         /// IFC entity to emit for each mapped Navisworks set — "IFCGROUP", "IFCSYSTEM" or
         /// "IFCZONE". Empty means don't. Navisworks sets map onto these cleanly, and
         /// IfcRelAssignsToGroup was the one commonly-expected relationship we could actually
