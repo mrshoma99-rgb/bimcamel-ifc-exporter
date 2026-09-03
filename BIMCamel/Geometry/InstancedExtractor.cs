@@ -148,7 +148,7 @@ namespace BIMCamel.Geometry
             }
             else
             {
-                var fresh = ReadFragments(el, frags, unitScale, itemMat, o.WeldTol);
+                var fresh = ReadFragments(el, frags, unitScale, itemMat, o.WeldTol, o.MinFragmentSize);
                 collapsedFrags = fresh.CollapsedFrags;
 
                 if (verifying)
@@ -202,7 +202,7 @@ namespace BIMCamel.Geometry
         /// instances. Also returns the shape, ready to cache.
         /// </summary>
         private static CachedShape ReadFragments(InstancedElement el, List<InwOaFragment3> frags, double unitScale,
-                                                 Data.Material? itemMat, double weldTol)
+                                                 Data.Material? itemMat, double weldTol, double minSize)
         {
             var shape = new CachedShape();
             for (int fi = 0; fi < frags.Count; fi++)
@@ -217,6 +217,14 @@ namespace BIMCamel.Geometry
                 frag.GenerateSimplePrimitives(nwEVertexProperty.eNONE, sink);
                 ExportTiming.ReadTicks += ExportTiming.Now - tr; ExportTiming.Fragments++;
                 if (sink.TriangleCount == 0) continue;
+
+                // v6 Z7: drop screen-only detail — washers, fasteners, tiny fittings. The sink
+                // already tracked the extents while reading, so the test is free.
+                if (minSize > 0)
+                {
+                    double sx = sink.MaxX - sink.MinX, sy = sink.MaxY - sink.MinY, sz = sink.MaxZ - sink.MinZ;
+                    if (Math.Max(sx, Math.Max(sy, sz)) < minSize) { ExportIssues.TooSmall++; continue; }
+                }
 
                 var lv = sink.Vertices;
                 var li = sink.Indices;

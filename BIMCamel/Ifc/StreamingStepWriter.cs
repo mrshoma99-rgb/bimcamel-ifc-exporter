@@ -46,13 +46,22 @@ namespace BIMCamel.Ifc
         private readonly double _fracPowD;
 
         public StreamingStepWriter(string path, int coordDecimals = 6)
+            : this(new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 20), coordDecimals) { }
+
+        /// <summary>
+        /// Write into an arbitrary stream rather than a file (v6 Z1). This is what lets the export
+        /// go straight into a ZIP entry: the uncompressed IFC is then never written to disk at all,
+        /// so `.ifczip` costs less I/O than a plain export rather than more. The stream is owned
+        /// from here on and closed by <see cref="Dispose"/>.
+        /// </summary>
+        public StreamingStepWriter(Stream output, int coordDecimals = 6)
         {
             _frac = coordDecimals < 1 ? 1 : (coordDecimals > 9 ? 9 : coordDecimals);
             _fracPowL = 1; for (int i = 0; i < _frac; i++) _fracPowL *= 10;
             _fracPowD = _fracPowL;
             // UTF-8 without BOM: accepted by modern IFC readers (Solibri, Navisworks, xBim).
             // 4 MB buffer keeps the hot path away from per-call flushing.
-            _w = new StreamWriter(path, false, new UTF8Encoding(false), 4 << 20);
+            _w = new StreamWriter(output, new UTF8Encoding(false), 4 << 20);
         }
 
         /// <summary>Write one fully-formed entity line and return its #id (convenience path).</summary>

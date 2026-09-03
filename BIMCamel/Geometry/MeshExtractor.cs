@@ -35,6 +35,19 @@ namespace BIMCamel.Geometry
         /// (512 MB). An evicted shape is simply read again, so this only trades time for space.</summary>
         public long FastInstancingBudgetBytes;
 
+        /// <summary>
+        /// Drop geometry whose bounding box is smaller than this, IN THE VERTICES' OWN UNITS —
+        /// the same convention as <see cref="WeldTol"/>, so the caller converts (0 = keep
+        /// everything — v6 Z7). Washers, fasteners and screen-only detail are a large share of the
+        /// triangle count on plant models and contribute nothing to a coordination deliverable.
+        ///
+        /// This REMOVES objects rather than approximating them, which is why it is off by default
+        /// and why every dropped fragment is counted and reported. True mesh decimation is a
+        /// different thing and is deliberately not here: v3 A7 established we can only coarsen, and
+        /// the weld tolerance already is a vertex-clustering decimator.
+        /// </summary>
+        public double MinFragmentSize;
+
         public HashSet<string>? PsetFilter;
         public Dictionary<string, string>? ClassMap; // itemKey → classKey (encoded class|predef)
         public Dictionary<string, string>? ClassificationMap; // itemKey → classification code (set rule)
@@ -127,6 +140,13 @@ namespace BIMCamel.Geometry
             ExportTiming.ReadTicks += ExportTiming.Now - ts;
 
             if (sink.TriangleCount == 0) { ExportIssues.NoTriangles++; return null; }
+
+            // v6 Z7. PrimitiveSink accumulated the extents as it read, so this costs nothing.
+            if (o.MinFragmentSize > 0 && sink.TriangleCount > 0)
+            {
+                double sx = sink.MaxX - sink.MinX, sy = sink.MaxY - sink.MinY, sz = sink.MaxZ - sink.MinZ;
+                if (Math.Max(sx, Math.Max(sy, sz)) < o.MinFragmentSize) { ExportIssues.TooSmall++; return null; }
+            }
 
             var verts = sink.Vertices;
             var idx = sink.Indices;

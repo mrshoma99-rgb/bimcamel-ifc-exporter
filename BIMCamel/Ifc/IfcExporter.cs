@@ -26,6 +26,12 @@ namespace BIMCamel.Ifc
         public int StoreyCount, TypeCount, MaterialCount, ClassificationCount;
         public bool QuantitiesWritten;
         public int PsetUnique, PsetRefs; // F3 dedup: distinct property sets written vs element→pset assignments
+        public int QtyUnique, QtyRefs;   // v6 Z2 dedup: the same, for base quantities
+        /// <summary>v6 Z3: occurrences whose pset property NAMES differed from their type's, so the
+        /// type-sharing could not express them. Zero means the export is exactly faithful.</summary>
+        public int TypeShareNameMismatch;
+        /// <summary>v6 Z3: property sets hoisted onto IfcElementType.HasPropertySets.</summary>
+        public int TypeSharedPsets;
         public readonly List<string> Files = new(); // all output files (≥1; >1 when size-split)
         public int FileCount => Files.Count;
 
@@ -76,7 +82,8 @@ namespace BIMCamel.Ifc
         public static ExportSummary Export(
             string basePath, IfcSchema schema, IEnumerable<ElementMesh> elements,
             string author, double unitScale, CoordOptions coords, bool computeQuantities, int coordDecimals,
-            (double x, double y, double z) geomMin, SpatialNames? names = null, long splitLimitBytes = 0, ExportSummary? summary = null)
+            (double x, double y, double z) geomMin, SpatialNames? names = null, long splitLimitBytes = 0, ExportSummary? summary = null,
+            bool shareTypeProps = false)
         {
             names ??= new SpatialNames();
             summary ??= new ExportSummary();
@@ -92,7 +99,7 @@ namespace BIMCamel.Ifc
             var manifest = new RevisionManifest { Schema = schema == IfcSchema.Ifc4 ? "IFC4" : "IFC2X3", Written = DateTime.Now.ToString("yyyy-MM-dd HH:mm") };
 
             int part = 1;
-            var doc = new Doc(PartPath(basePath, part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest);
+            var doc = new Doc(PartPath(basePath, part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest, shareTypeProps);
             bool needRoll = false;
             int index = 0;
             foreach (var el in elements)
@@ -104,7 +111,7 @@ namespace BIMCamel.Ifc
                 if (needRoll)
                 {
                     doc.Finish(schema, computeQuantities, summary);
-                    doc = new Doc(PartPath(basePath, ++part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest);
+                    doc = new Doc(PartPath(basePath, ++part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest, shareTypeProps);
                     needRoll = false;
                 }
                 WriteMeshElement(doc, schema, meshWriter, el, t, unitScale, computeQuantities, index);
@@ -118,7 +125,8 @@ namespace BIMCamel.Ifc
 
         public static ExportSummary ExportInstanced(
             string basePath, IfcSchema schema, IEnumerable<InstancedElement> elements, string author, double unitScale, CoordOptions coords, bool computeQuantities, int coordDecimals,
-            (double x, double y, double z) geomMin, SpatialNames? names = null, long splitLimitBytes = 0, ExportSummary? summary = null)
+            (double x, double y, double z) geomMin, SpatialNames? names = null, long splitLimitBytes = 0, ExportSummary? summary = null,
+            bool shareTypeProps = false)
         {
             names ??= new SpatialNames();
             summary ??= new ExportSummary();
@@ -134,7 +142,7 @@ namespace BIMCamel.Ifc
             var manifest = new RevisionManifest { Schema = schema == IfcSchema.Ifc4 ? "IFC4" : "IFC2X3", Written = DateTime.Now.ToString("yyyy-MM-dd HH:mm") };
 
             int part = 1;
-            var doc = new Doc(PartPath(basePath, part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest);
+            var doc = new Doc(PartPath(basePath, part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest, shareTypeProps);
             bool needRoll = false;
             int index = 0;
             foreach (var el in elements)
@@ -144,7 +152,7 @@ namespace BIMCamel.Ifc
                 if (needRoll)
                 {
                     doc.Finish(schema, computeQuantities, summary);
-                    doc = new Doc(PartPath(basePath, ++part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest);
+                    doc = new Doc(PartPath(basePath, ++part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest, shareTypeProps);
                     needRoll = false;
                 }
                 WriteInstancedElement(doc, schema, meshWriter, el, identity, minX, minY, minZ, computeQuantities, index);
@@ -168,6 +176,9 @@ namespace BIMCamel.Ifc
         private sealed class Doc
         {
             public readonly StreamingStepWriter W;
+            /// <summary>Owns the writer, and the ZIP archive behind it when the output is
+            /// .ifczip (v6 Z1). Disposed by Finish — never dispose W directly.</summary>
+            private readonly IfcSource.Handle _out;
             public readonly SkelBase S;
             public readonly StoreyTable Storeys;
             public readonly Ids Id;
@@ -175,6 +186,8 @@ namespace BIMCamel.Ifc
             public readonly List<Occ> Occ = new();
             public readonly Dictionary<int, List<int>> ByStorey = new();
             public readonly PsetDedup Psets = new();
+            public readonly QtyDedup Qtys = new();                                 // v6 Z2
+            public readonly TypeShare Shared;                                      // v6 Z3
             public readonly Dictionary<(long, long, long), int> DirCache = new();   // instanced: shared IfcDirection
             public readonly Dictionary<DedupKey, GeomDef> Geom = new();             // instanced: per-file dedup
             public int Elem, Tris, Insts, UniqueGeom;
@@ -190,9 +203,12 @@ namespace BIMCamel.Ifc
 
             public Doc(string path, int coordDecimals, IfcSchema schema, CoordOptions coords,
                        double minX, double minY, double minZ, bool georef, string author, SpatialNames names,
-                       RevisionManifest manifest)
+                       RevisionManifest manifest, bool shareTypeProps)
             {
                 Manifest = manifest;
+                // Type objects are IFC4-only in this exporter, so there is nowhere to hang shared
+                // property sets on 2x3 — the flag is simply inert there (v6 Z3).
+                Shared = new TypeShare(shareTypeProps && schema == IfcSchema.Ifc4);
                 _path = path;
                 _classSystem = names.ClassificationSystem;
                 _classSource = names.ClassificationSource;
@@ -200,8 +216,11 @@ namespace BIMCamel.Ifc
                 _classEditionDate = names.ClassificationEditionDate;
                 _classLocation = names.ClassificationLocation;
                 _groupEntity = names.GroupEntity;
-                W = new StreamingStepWriter(path, coordDecimals);
-                W.WriteHeader(schema, System.IO.Path.GetFileName(path), author);
+                _out = IfcSource.Create(path, coordDecimals);
+                W = _out.Writer;
+                // The header names the .ifc, not the archive: inside an .ifczip the entry is the
+                // IFC file and that is the name a reader will report.
+                W.WriteHeader(schema, System.IO.Path.GetFileNameWithoutExtension(path) + ".ifc", author);
                 // Salted by PROJECT, deliberately not by file name: a revision exported as
                 // "model_P04.ifc" must reuse the ids from "model_P03.ifc" or the diff is worthless.
                 // Split parts therefore share their skeleton ids, which is correct — they describe
@@ -215,12 +234,14 @@ namespace BIMCamel.Ifc
             {
                 WriteSpatialContainment(W, Id, S.Owner, ByStorey, Storeys);
                 WriteDeferredPsetRels(W, Id, S.Owner, Psets, sum);
+                WriteDeferredQtyRels(W, Id, S.Owner, Qtys, sum);
                 FinishRelationships(W, Id, schema, S.Owner, Occ, sum,
                     new ClassId(_classSystem, _classSource, _classEdition, _classEditionDate, _classLocation),
-                    _groupEntity);
+                    _groupEntity, Shared);
+                sum.TypeShareNameMismatch += Shared.NameMismatch;
                 Storeys.WriteAggregation();
                 W.WriteFooter();
-                W.Dispose();
+                _out.Dispose();   // flushes the writer, then finalises the archive
                 sum.Files.Add(_path);
                 sum.ElementCount += Elem; sum.TriangleCount += Tris;
                 sum.InstanceCount += Insts; sum.UniqueGeometries += UniqueGeom;
@@ -248,7 +269,7 @@ namespace BIMCamel.Ifc
             string guid = StableGuid(el.InstanceGuid, el.Name, index);
             int id = WriteElement(d, w, schema, el.ClassKey, el.TypeName, guid, d.S.Owner, el.Name, place, prodShape);
             long tp = ExportTiming.Now;
-            if (el.Properties != null && el.Properties.Count > 0) RegisterPropertySets(w, d.Id, d.S.Owner, id, el.Properties, d.Psets);
+            if (el.Properties != null && el.Properties.Count > 0) RegisterPropertySets(w, d.Id, d.S.Owner, id, el.Properties, d.Psets, d.Shared, TypeKeyOf(el.ClassKey, el.TypeName), el.TypeName);
             ExportTiming.PropWriteTicks += ExportTiming.Now - tp;
             if (computeQuantities)
             {
@@ -256,7 +277,7 @@ namespace BIMCamel.Ifc
                 // The extractor already accumulated these while welding (v5 E4), so the mesh is
                 // not walked again here; Quantities is null only when nothing welded it.
                 var q = el.Quantities ?? MeshQuantities.Compute(el.Vertices, el.Indices, unitScale);
-                WriteQuantities(w, d.Id, schema, d.S.Owner, id, q, el.ClassKey, guid);
+                RegisterQuantities(w, d.Id, schema, d.S.Owner, id, q, el.ClassKey, d.Qtys);
                 ExportTiming.QtyWriteTicks += ExportTiming.Now - tq;
             }
             if (!d.ByStorey.TryGetValue(storeyId, out var lst)) { lst = new List<int>(); d.ByStorey[storeyId] = lst; }
@@ -332,13 +353,13 @@ namespace BIMCamel.Ifc
             string guid = StableGuid(el.InstanceGuid, el.Name, index);
             int id = WriteElement(d, w, schema, el.ClassKey, el.TypeName, guid, d.S.Owner, el.Name, place, prodShape);
             long tp = ExportTiming.Now;
-            if (el.Properties != null && el.Properties.Count > 0) RegisterPropertySets(w, d.Id, d.S.Owner, id, el.Properties, d.Psets);
+            if (el.Properties != null && el.Properties.Count > 0) RegisterPropertySets(w, d.Id, d.S.Owner, id, el.Properties, d.Psets, d.Shared, TypeKeyOf(el.ClassKey, el.TypeName), el.TypeName);
             ExportTiming.PropWriteTicks += ExportTiming.Now - tp;
             if (computeQuantities)
             {
                 long tq = ExportTiming.Now;
-                WriteQuantities(w, d.Id, schema, d.S.Owner, id,
-                    new MeshQty { Volume = vol, Area = area, Dx = box.Dx, Dy = box.Dy, Dz = box.Dz }, el.ClassKey, guid);
+                RegisterQuantities(w, d.Id, schema, d.S.Owner, id,
+                    new MeshQty { Volume = vol, Area = area, Dx = box.Dx, Dy = box.Dy, Dz = box.Dz }, el.ClassKey, d.Qtys);
                 ExportTiming.QtyWriteTicks += ExportTiming.Now - tq;
             }
             if (!d.ByStorey.TryGetValue(storeyId, out var lst)) { lst = new List<int>(); d.ByStorey[storeyId] = lst; }
@@ -604,7 +625,7 @@ namespace BIMCamel.Ifc
                                        CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
         }
 
-        private static void FinishRelationships(StreamingStepWriter w, Ids ids, IfcSchema schema, int owner, List<Occ> occ, ExportSummary summary, ClassId classification, string groupEntity)
+        private static void FinishRelationships(StreamingStepWriter w, Ids ids, IfcSchema schema, int owner, List<Occ> occ, ExportSummary summary, ClassId classification, string groupEntity, TypeShare share)
         {
             // Type objects (IFC4 only — 2x3 type signatures diverge).
             if (schema == IfcSchema.Ifc4)
@@ -613,12 +634,13 @@ namespace BIMCamel.Ifc
                 foreach (var o in occ)
                 {
                     if (string.IsNullOrEmpty(o.TypeName)) continue;
-                    string key = (o.ClassKey ?? "") + "" + o.TypeName;
+                    string key = TypeKeyOf(o.ClassKey, o.TypeName);
                     if (!groups.TryGetValue(key, out var g)) { g = (TypeMapping.Friendly(o.ClassKey), TypeMapping.Predef(o.ClassKey), o.TypeName, new List<int>()); groups[key] = g; }
                     g.ids.Add(o.Id);
                 }
-                foreach (var g in groups.Values)
+                foreach (var kvg in groups)
                 {
+                    var g = kvg.Value;
                     string ent = TypeMapping.TypeEntityFor(g.cls);
                     // PredefinedType is MANDATORY on IFC4 type entities (unlike on the occurrences,
                     // where it is optional) — '$' makes the file schema-invalid and Revit refuses it.
@@ -627,7 +649,20 @@ namespace BIMCamel.Ifc
                     // window types carry a second mandatory enum after PredefinedType; furniture
                     // types put a mandatory AssemblyPlace before it.
                     string tail = TypeMapping.TypeTail4For(g.cls, predef);
-                    int typeId = w.Write($"{ent}({ids.G("type:" + ent + ":" + g.type)},{Ref(owner)},{Str(g.type)},$,$,$,$,$,$,{tail})");
+
+                    // v6 Z3: the property sets hoisted off this type's occurrences. IfcTypeObject
+                    // attribute order is GlobalId, OwnerHistory, Name, Description,
+                    // ApplicableOccurrence, HasPropertySets, RepresentationMaps, Tag, ElementType —
+                    // so HasPropertySets is the THIRD of the six '$' that follow the name.
+                    string hasPsets = "$";
+                    if (share.On && share.Types.TryGetValue(kvg.Key, out var sharedPsets))
+                    {
+                        var psetIds = WriteTypePsets(w, ids, owner, g.type, sharedPsets);
+                        if (psetIds.Count > 0) { hasPsets = "(" + Join(psetIds) + ")"; summary.TypeSharedPsets += psetIds.Count; }
+                    }
+                    // Name, Description, ApplicableOccurrence, HasPropertySets, RepresentationMaps,
+                    // Tag, ElementType — six attributes after the name, of which the third is ours.
+                    int typeId = w.Write($"{ent}({ids.G("type:" + ent + ":" + g.type)},{Ref(owner)},{Str(g.type)},$,$,{hasPsets},$,$,$,{tail})");
                     w.Write($"IFCRELDEFINESBYTYPE({ids.G("reltype:" + ent + ":" + g.type)},{Ref(owner)},$,$,({Join(g.ids)}),{Ref(typeId)})");
                 }
                 summary.TypeCount += groups.Count;
@@ -712,17 +747,74 @@ namespace BIMCamel.Ifc
         /// improvement on "Length = longest edge of the box" but it is still a bounding box, not a
         /// parametric dimension — a diagonal brace reports its box, not its length.
         /// </summary>
-        private static void WriteQuantities(StreamingStepWriter w, Ids ids, IfcSchema schema, int owner, int occId, MeshQty q, string? classKey, string elemGuid)
+        /// <summary>
+        /// Quantity-set dedup, the same shape v4's F3 gave property sets (v6 Z2).
+        ///
+        /// Before this, every element got 7 entities of its own — five IfcQuantity*, an
+        /// IfcElementQuantity and an IfcRelDefinesByProperties — no matter how many identical parts
+        /// the model contained. On a model with 6.7x geometry instancing most repeated parts have
+        /// identical quantities, so almost all of that was duplicate bytes.
+        ///
+        /// Honest limit: on the INSTANCED path Dx/Dy/Dz come from the world-space box, so a
+        /// ROTATED copy of a part has different dimensions and will not share. Axis-aligned copies
+        /// will. The hit rate is data-dependent, which is why the report prints it.
+        /// </summary>
+        private sealed class QtyDedup
         {
-            string f = schema == IfcSchema.Ifc4 ? ",$" : ""; // IFC4 IfcQuantity* has a trailing Formula
-            int qv = w.Write($"IFCQUANTITYVOLUME('NetVolume',$,$,{R(q.Volume)}{f})");
-            int qa = w.Write($"IFCQUANTITYAREA('NetSurfaceArea',$,$,{R(q.Area)}{f})");
-            int ql = w.Write($"IFCQUANTITYLENGTH('Length',$,$,{R(q.Length)}{f})");
-            int qw = w.Write($"IFCQUANTITYLENGTH('Width',$,$,{R(q.Width)}{f})");
-            int qh = w.Write($"IFCQUANTITYLENGTH('Height',$,$,{R(q.Height)}{f})");
+            public readonly Dictionary<long, int> ByHash = new();
+            public readonly Dictionary<int, List<int>> Members = new();  // IfcElementQuantity id → objects
+            public readonly Dictionary<int, long> HashOf = new();
+            public int Refs;
+        }
+
+        private static void RegisterQuantities(StreamingStepWriter w, Ids ids, IfcSchema schema, int owner, int occId, MeshQty q, string? classKey, QtyDedup d)
+        {
             string set = TypeMapping.QtoSetFor(TypeMapping.Friendly(classKey));
-            int eq = w.Write($"IFCELEMENTQUANTITY({ids.G("qty:" + elemGuid)},{Ref(owner)},{Str(set)},$,$,({Ref(qv)},{Ref(qa)},{Ref(ql)},{Ref(qw)},{Ref(qh)}))");
-            w.Write($"IFCRELDEFINESBYPROPERTIES({ids.G("relqty:" + elemGuid)},{Ref(owner)},$,$,({Ref(occId)}),{Ref(eq)})");
+
+            // Hash the five values EXACTLY as they will be written, so two elements share an entity
+            // only when their serialised quantities are byte-identical.
+            long h = HashQty(set, q);
+            if (!d.ByHash.TryGetValue(h, out int eq))
+            {
+                string f = schema == IfcSchema.Ifc4 ? ",$" : ""; // IFC4 IfcQuantity* has a trailing Formula
+                int qv = w.Write($"IFCQUANTITYVOLUME('NetVolume',$,$,{R(q.Volume)}{f})");
+                int qa = w.Write($"IFCQUANTITYAREA('NetSurfaceArea',$,$,{R(q.Area)}{f})");
+                int ql = w.Write($"IFCQUANTITYLENGTH('Length',$,$,{R(q.Length)}{f})");
+                int qw = w.Write($"IFCQUANTITYLENGTH('Width',$,$,{R(q.Width)}{f})");
+                int qh = w.Write($"IFCQUANTITYLENGTH('Height',$,$,{R(q.Height)}{f})");
+                eq = w.Write($"IFCELEMENTQUANTITY({ids.G("qty:" + set + ":" + h.ToString("x"))},{Ref(owner)},{Str(set)},$,$,({Ref(qv)},{Ref(qa)},{Ref(ql)},{Ref(qw)},{Ref(qh)}))");
+                d.ByHash[h] = eq; d.HashOf[eq] = h;
+            }
+            if (!d.Members.TryGetValue(eq, out var mem)) { mem = new List<int>(); d.Members[eq] = mem; }
+            mem.Add(occId);
+            d.Refs++;
+        }
+
+        private static void WriteDeferredQtyRels(StreamingStepWriter w, Ids ids, int owner, QtyDedup d, ExportSummary summary)
+        {
+            foreach (var kv in d.Members)
+                w.Write($"IFCRELDEFINESBYPROPERTIES({ids.G("relqty:" + (d.HashOf.TryGetValue(kv.Key, out var qh) ? qh.ToString("x") : kv.Key.ToString()))},{Ref(owner)},$,$,({Join(kv.Value)}),{Ref(kv.Key)})");
+            summary.QtyUnique += d.ByHash.Count;
+            summary.QtyRefs += d.Refs;
+        }
+
+        /// <summary>FNV-1a over the Qto set name and the five quantities, rounded to the precision
+        /// they are written at so float noise cannot split two identical parts.</summary>
+        private static long HashQty(string set, MeshQty q)
+        {
+            unchecked
+            {
+                ulong h = 14695981039346656037UL;
+                void Mix(string? str)
+                {
+                    if (str != null) foreach (char c in str) { h ^= c; h *= 1099511628211UL; }
+                    h ^= 0x1FUL; h *= 1099511628211UL;
+                }
+                void MixD(double v) { h ^= (ulong)(long)Math.Round(v * 1e6); h *= 1099511628211UL; }
+                Mix(set);
+                MixD(q.Volume); MixD(q.Area); MixD(q.Length); MixD(q.Width); MixD(q.Height);
+                return (long)h;
+            }
         }
 
         /// <summary>
@@ -789,6 +881,116 @@ namespace BIMCamel.Ifc
         // at the end, emit ONE IfcRelDefinesByProperties per pset relating all its objects (RelatedObjects
         // is a SET in both IFC4 and IFC2x3). Element-unique categories (Id, Mark…) simply don't dedup —
         // no worse than before. Memory: a hash→id map + per-pset object-id lists (ints), bounded.
+        /// <summary>
+        /// Type-level property sharing (v6 Z3) — the case F3 structurally cannot catch.
+        ///
+        /// F3 hashes the WHOLE property set, so a Revit pset with 19 type-constant properties and
+        /// one per-element Id hashes differently for every element and all 20 get written every
+        /// time. This splits the pset: the constant part goes on the IfcElementType via
+        /// HasPropertySets, and each occurrence writes only what DIFFERS — which is exactly the
+        /// merge rule IFC_STRUCTURE_NOTES.md records ("type Psets are shared, occurrence Psets
+        /// override").
+        ///
+        /// SINGLE PASS, BOUNDED MEMORY. The first occurrence of a type defines the candidate; later
+        /// ones override by name. The tables are keyed by (type, pset name), so memory is
+        /// types x categories — thousands of entries, never one per element.
+        ///
+        /// THE FAILURE MODE, NAMED. IFC gives an occurrence no way to REMOVE a property its type
+        /// supplies. So an occurrence whose pset carries a different set of property NAMES cannot
+        /// be expressed by overriding: it writes its full pset, and may additionally inherit a type
+        /// property it did not originally carry. Every occurrence under one Navisworks type node
+        /// normally carries the same names and differs only in values, so this should be zero —
+        /// and because "should be" is not "is", it is counted and printed. Zero means the export is
+        /// exactly faithful.
+        /// </summary>
+        private sealed class SharedPset
+        {
+            public readonly List<IfcProp> Props;
+            public readonly Dictionary<string, IfcProp> ByName = new(StringComparer.Ordinal);
+            public SharedPset(List<IfcProp> props)
+            {
+                Props = props;
+                foreach (var p in props) ByName[p.Name] = p;
+            }
+        }
+
+        private sealed class TypeShare
+        {
+            public readonly bool On;
+            /// <summary>type key → pset name → the candidate captured from the first occurrence.</summary>
+            public readonly Dictionary<string, Dictionary<string, SharedPset>> Types =
+                new(StringComparer.Ordinal);
+            public int NameMismatch;
+            public TypeShare(bool on) { On = on; }
+
+            public Dictionary<string, SharedPset> For(string typeKey)
+            {
+                if (!Types.TryGetValue(typeKey, out var t)) { t = new Dictionary<string, SharedPset>(StringComparer.Ordinal); Types[typeKey] = t; }
+                return t;
+            }
+        }
+
+        /// <summary>
+        /// What this occurrence still has to say, given what its type already says (v6 Z3).
+        ///
+        /// Returns null when the occurrence matches the type exactly — nothing is written at all,
+        /// which is the whole point. Returns only the DIFFERING properties in the normal case; they
+        /// override the type's by name. Returns the FULL list when the occurrence's property names
+        /// differ from the type's, because IFC cannot express "the type says this but I do not have
+        /// it" — that case is counted so the report can say whether it ever happened.
+        /// </summary>
+        private static List<IfcProp>? Reduce(List<IfcProp> list, SharedPset shared, TypeShare share)
+        {
+            if (list.Count != shared.Props.Count) { share.NameMismatch++; return list; }
+            foreach (var p in list)
+                if (!shared.ByName.ContainsKey(p.Name)) { share.NameMismatch++; return list; }
+
+            List<IfcProp>? diff = null;
+            foreach (var p in list)
+            {
+                var t = shared.ByName[p.Name];
+                if (t.Kind == p.Kind && string.Equals(t.Value, p.Value, StringComparison.Ordinal)) continue;
+                (diff ??= new List<IfcProp>()).Add(p);
+            }
+            return diff;   // null → identical to the type
+        }
+
+        /// <summary>
+        /// Writes the property sets hoisted onto one type and returns their ids, for
+        /// IfcElementType.HasPropertySets. Called as the type objects are written, at end of file.
+        /// </summary>
+        private static List<int> WriteTypePsets(StreamingStepWriter w, Ids ids, int owner, string typeName, Dictionary<string, SharedPset> psets)
+        {
+            var result = new List<int>(psets.Count);
+            foreach (var kv in psets)
+            {
+                var list = kv.Value.Props;
+                if (list.Count == 0) continue;
+                var valueIds = new List<int>(list.Count);
+                foreach (var p in list)
+                {
+                    int pv = w.Begin("IFCPROPERTYSINGLEVALUE");
+                    w.WriteStr(p.Name); w.Sep(); w.Tok("$"); w.Sep(); WriteNominal(w, p); w.Sep(); w.Tok("$");
+                    w.End();
+                    valueIds.Add(pv);
+                }
+                int id = w.Begin("IFCPROPERTYSET");
+                w.Tok(ids.G("typepset:" + typeName + ":" + kv.Key)); w.Sep(); w.RefTok(owner); w.Sep();
+                w.WriteStr(kv.Key); w.Sep(); w.Tok("$"); w.Sep();
+                w.Tok("(");
+                for (int i = 0; i < valueIds.Count; i++) { if (i > 0) w.Sep(); w.RefTok(valueIds[i]); }
+                w.Tok(")");
+                w.End();
+                result.Add(id);
+            }
+            return result;
+        }
+
+        /// <summary>The one spelling of "which type is this occurrence", shared by the property
+        /// sharing and by the IfcRelDefinesByType grouping so the two cannot drift apart.</summary>
+        private static string TypeKeyOf(string? classKey, string? typeName) =>
+            (classKey ?? "") + "\u001F" + (typeName ?? "");
+
         private sealed class PsetDedup
         {
             public readonly Dictionary<long, int> ByHash = new();
@@ -798,7 +1000,8 @@ namespace BIMCamel.Ifc
             public int Refs;
         }
 
-        private static void RegisterPropertySets(StreamingStepWriter w, Ids ids, int owner, int objId, List<IfcProp> props, PsetDedup d)
+        private static void RegisterPropertySets(StreamingStepWriter w, Ids ids, int owner, int objId, List<IfcProp> props, PsetDedup d,
+                                                 TypeShare share, string typeKey, string? typeName)
         {
             var groups = new Dictionary<string, List<IfcProp>>(StringComparer.Ordinal);
             var order = new List<string>();
@@ -807,9 +1010,30 @@ namespace BIMCamel.Ifc
                 if (!groups.TryGetValue(p.Pset, out var l)) { l = new List<IfcProp>(); groups[p.Pset] = l; order.Add(p.Pset); }
                 l.Add(p);
             }
+
+            // v6 Z3: only elements that actually HAVE a type can share through one.
+            bool sharing = share.On && !string.IsNullOrEmpty(typeName);
+            var table = sharing ? share.For(typeKey) : null;
+
             foreach (var pset in order)
             {
                 var list = groups[pset];
+
+                if (sharing)
+                {
+                    if (!table!.TryGetValue(pset, out var shared))
+                    {
+                        // First occurrence of this type: it defines the shared set, and writes
+                        // nothing of its own — everything it has now lives on the type.
+                        table[pset] = new SharedPset(list);
+                        continue;
+                    }
+
+                    var reduced = Reduce(list, shared, share);
+                    if (reduced == null) continue;              // identical to the type: write nothing
+                    list = reduced;                             // only what differs, or the full set
+                }
+
                 long h = HashPset(pset, list);
                 if (!d.ByHash.TryGetValue(h, out int psetId))
                 {

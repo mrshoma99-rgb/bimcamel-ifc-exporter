@@ -122,7 +122,7 @@ namespace BIMCamel.Ifc
             var t = new Tally();
 
             // Pass 1: entity ids, GlobalIds, aggregates, enum tokens.
-            using (var r = new StreamReader(path))
+            using (var r = IfcSource.OpenText(path))
             {
                 string? line; bool first = true;
                 while ((line = r.ReadLine()) != null)
@@ -143,7 +143,7 @@ namespace BIMCamel.Ifc
             // phantom "dangling reference" reports.
             int missing = 0;
             var sample = new List<int>();
-            using (var r = new StreamReader(path))
+            using (var r = IfcSource.OpenText(path))
             {
                 string? line;
                 while ((line = r.ReadLine()) != null)

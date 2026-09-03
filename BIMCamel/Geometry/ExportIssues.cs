@@ -35,6 +35,11 @@ namespace BIMCamel.Geometry
         /// <summary>Items skipped because reading their geometry or properties threw.</summary>
         public static int Failed;
 
+        /// <summary>Fragments dropped by the minimum-size filter (v6 Z7). Unlike a weld collapse
+        /// this is a deliberate removal the user asked for — counted so the report can say exactly
+        /// how much was left out rather than letting it look like the model simply had less in it.</summary>
+        public static int TooSmall;
+
         /// <summary>Geometry-bearing nodes that also had children. Before v0.8.0 the collector
         /// only took childless nodes, so these were dropped (a SolidWorks/Inventor part whose
         /// children are reference planes vanished entirely).</summary>
@@ -45,7 +50,7 @@ namespace BIMCamel.Geometry
 
         public static void Reset()
         {
-            NoTriangles = CollapsedByWeld = CollapsedFragments = Failed = BranchGeometryRecovered = 0;
+            TooSmall = NoTriangles = CollapsedByWeld = CollapsedFragments = Failed = BranchGeometryRecovered = 0;
             FailureSamples.Clear();
         }
 
@@ -71,6 +76,8 @@ namespace BIMCamel.Geometry
                 foreach (var f in FailureSamples) sb.AppendLine("      " + f);
                 if (Failed > FailureSamples.Count) sb.AppendLine($"      … and {Failed - FailureSamples.Count:N0} more");
             }
+            if (TooSmall > 0)
+                sb.AppendLine($"  {TooSmall:N0} part(s) left out by the minimum-size filter — a deliberate removal, not a loss; untick \"Skip geometry smaller than\" to keep them");
             if (NoTriangles > 0)
                 sb.AppendLine($"  {NoTriangles:N0} item(s) carried no triangles (groups / annotations — normal)");
             if (BranchGeometryRecovered > 0)

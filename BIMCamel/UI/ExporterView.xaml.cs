@@ -119,6 +119,11 @@ namespace BIMCamel.UI
             ChkGeoref.IsChecked = true; ChkInstancing.IsChecked = true; ChkValidate.IsChecked = true; ChkProfile.IsChecked = true;
             // Fast instancing stays OFF until a run proves the guess holds on this model (v5 E1).
             ChkFastInstancing.IsChecked = false;
+            // v6. Compression and dropping blank properties are pure wins, so they default ON.
+            // Type-level sharing MOVES data to where a simpler reader may not look, and the size
+            // filter REMOVES objects — both change what a recipient sees, so both default OFF.
+            ChkZip.IsChecked = true; ChkSkipEmptyProps.IsChecked = true;
+            ChkShareTypeProps.IsChecked = false; ChkMinSize.IsChecked = false;
             ChkProps.IsChecked = true; ChkMaterials.IsChecked = true; ChkQuantities.IsChecked = true; ChkSplit.IsChecked = false;
             TxtE.Text = TxtN.Text = TxtElev.Text = TxtRot.Text = "0";
             TxtSurveyE.Text = TxtSurveyN.Text = TxtSurveyElev.Text = "0";
@@ -461,7 +466,14 @@ namespace BIMCamel.UI
             // all-ticked meant every scan quietly reverted the user's pset
             // filter: the same proposal-beats-decision bug as the roles.
             var unticked = new HashSet<string>(_cats.Where(c => !c.Checked).Select(c => c.Name), StringComparer.OrdinalIgnoreCase);
-            _cats.Clear(); foreach (var c in cats) _cats.Add(new CheckItem(c, !unticked.Contains(c)));
+            // Categories the user has already seen keep whatever they decided; only categories that
+            // are NEW to this pane get a default, and for Navisworks' own bookkeeping ones that
+            // default is off (v6 Z5). Same rule as everywhere else here: a proposal must never beat
+            // a decision.
+            var known = new HashSet<string>(_cats.Select(c => c.Name), StringComparer.OrdinalIgnoreCase);
+            _cats.Clear();
+            foreach (var c in cats)
+                _cats.Add(new CheckItem(c, known.Contains(c) ? !unticked.Contains(c) : !IsBookkeeping(c)));
 
             // grid catalogs (categories + the property-name suggestion list)
             ParamRow.SharedCategories.Clear(); ParamRow.SharedCategories.Add(AnyCat); foreach (var c in cats) ParamRow.SharedCategories.Add(c);
@@ -497,6 +509,17 @@ namespace BIMCamel.UI
             SetStatus($"Scanned {cats.Count} categories / {allParams.Count} properties from {read} — {_lastRolesFilled} role(s) filled, {_lastRolesKept} kept.");
             return true;
         }
+
+        /// <summary>
+        /// Navisworks' own tree bookkeeping, which describes the VIEWER's model rather than the
+        /// building: "Item" is the node itself, "Transform" its placement, "Geometry" its render
+        /// state. All three are noise in an IFC deliverable and all three were exported by default.
+        /// Only the exact names — a user category that merely contains one of these words is theirs.
+        /// </summary>
+        private static readonly HashSet<string> Bookkeeping =
+            new HashSet<string>(new[] { "Item", "Transform", "Geometry" }, StringComparer.OrdinalIgnoreCase);
+
+        private static bool IsBookkeeping(string category) => Bookkeeping.Contains(category);
 
         /// <summary>At most <paramref name="cap"/> items, taken with an even stride
         /// so the sample spans the whole list instead of its first slice.</summary>
@@ -685,8 +708,20 @@ namespace BIMCamel.UI
 
                 if (batch) { RunBatchExport(doc, schema, schemaName, unitScale, unitName, coords, names, setRules, weldTolMetres, coordDecimals, splitLimit); return; }
 
-                using var sfd = new WF.SaveFileDialog { Title = "Export IFC", Filter = "IFC file (*.ifc)|*.ifc", FileName = $"{ModelBaseName(doc)}_{schemaName}.ifc", DefaultExt = "ifc" };
+                bool zip = ChkZip.IsChecked == true;
+                string ext = zip ? "ifczip" : "ifc";
+                using var sfd = new WF.SaveFileDialog
+                {
+                    Title = "Export IFC",
+                    Filter = zip ? "Compressed IFC (*.ifczip)|*.ifczip|IFC file (*.ifc)|*.ifc"
+                                 : "IFC file (*.ifc)|*.ifc|Compressed IFC (*.ifczip)|*.ifczip",
+                    FileName = $"{ModelBaseName(doc)}_{schemaName}.{ext}",
+                    DefaultExt = ext
+                };
                 if (sfd.ShowDialog() != WF.DialogResult.OK) return;
+                // The extension the user actually settled on decides the form — the checkbox only
+                // seeds the dialog, and a typed ".ifc" must not be silently zipped (v6 Z1).
+                string outPath = sfd.FileName;
 
                 var scanSw = Stopwatch.StartNew();
                 ET.ResetScan();
@@ -719,7 +754,7 @@ namespace BIMCamel.UI
                 var sw = Stopwatch.StartNew();
 
                 var summary = new ExportSummary();
-                RunOneExport(sfd.FileName, schema, items, unitScale, coords, names, opts, weldTolMetres, coordDecimals, geomMin, splitLimit, summary, "Exporting");
+                RunOneExport(outPath, schema, items, unitScale, coords, names, opts, weldTolMetres, coordDecimals, geomMin, splitLimit, summary, "Exporting");
 
                 sw.Stop(); heapTimer.Dispose();
                 FinishReport(summary, schemaName, ScopeLabel(), unitName, items.Count, scanSw.ElapsedMilliseconds, sw.ElapsedMilliseconds, setRules.Count, baseHeap);
@@ -777,7 +812,9 @@ namespace BIMCamel.UI
                 var items = ItemCollector.GetItemsFromSet(doc, set, CollectTick);
                 if (items.Count == 0) { skipped++; continue; }
                 totalItems += items.Count;
-                string baseName = Sanitize(set.DisplayName ?? $"set{setNum}") + "_" + schemaName + ".ifc";
+                // Batch honours the compression choice too (v6 Z1) — one archive per set.
+                string baseName = Sanitize(set.DisplayName ?? $"set{setNum}") + "_" + schemaName
+                                  + (ChkZip.IsChecked == true ? BIMCamel.Ifc.IfcSource.ZipExtension : ".ifc");
                 RunOneExport(System.IO.Path.Combine(folder, baseName), schema, items, unitScale, coords, names, opts, weldTolMetres, coordDecimals, geomMin, splitLimit, summary, $"Set {setNum}/{chosen.Count}");
             }
             sw.Stop(); heapTimer.Dispose();
@@ -806,6 +843,13 @@ namespace BIMCamel.UI
             SwitchToDeterminate(items.Count);
             bool quantities = ChkQuantities.IsChecked == true;
             string author = Environment.UserName;
+            bool shareTypeProps = ChkShareTypeProps.IsChecked == true;   // v6 Z3
+            PropertyHarvester.SkipEmptyValues = ChkSkipEmptyProps.IsChecked == true;   // v6 Z4
+            // v6 Z7. Expressed in the vertices' own units, the same convention as WeldTol: the
+            // instanced path reads in metres, the plain path in model units.
+            double minSizeMetres = ChkMinSize.IsChecked == true
+                && double.TryParse(TxtMinSizeMm.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out var mm) && mm > 0
+                ? mm / 1000.0 : 0;
 
             // v5 E7: the extractor runs here, on the Navisworks UI thread (the read API is STA and
             // cannot move); the writer runs behind ExportPipeline on a background thread. Both
@@ -818,18 +862,20 @@ namespace BIMCamel.UI
                 // fragment here — 6.7x fewer measurements on the prova model (v5 E4).
                 opts.QtyScale = 0;
                 opts.FastInstancing = ChkFastInstancing.IsChecked == true;
+                opts.MinFragmentSize = minSizeMetres;
                 var stream = InstancedExtractor.ExtractStream(items, unitScale, opts, p => Tick(p, items.Count, verb));
                 ExportPipeline.Run(stream, s =>
-                    IfcExporter.ExportInstanced(basePath, schema, s, author, unitScale, coords, quantities, coordDecimals, geomMin, names, splitLimit, summary));
+                    IfcExporter.ExportInstanced(basePath, schema, s, author, unitScale, coords, quantities, coordDecimals, geomMin, names, splitLimit, summary, shareTypeProps));
             }
             else
             {
                 opts.WeldTol = weldTolMetres / unitScale;
                 // Plain: one element, one weld, one measurement — folded into the weld (v5 E4).
                 opts.QtyScale = quantities ? unitScale : 0;
+                opts.MinFragmentSize = minSizeMetres / unitScale;
                 var stream = MeshExtractor.ExtractStream(items, opts, p => Tick(p, items.Count, verb));
                 ExportPipeline.Run(stream, s =>
-                    IfcExporter.Export(basePath, schema, s, author, unitScale, coords, quantities, coordDecimals, geomMin, names, splitLimit, summary));
+                    IfcExporter.Export(basePath, schema, s, author, unitScale, coords, quantities, coordDecimals, geomMin, names, splitLimit, summary, shareTypeProps));
             }
         }
 
@@ -1447,6 +1493,15 @@ namespace BIMCamel.UI
                     PreflightRow(warn, $"Schema — IFC2x3: {degradedLive:N0} rule-matched element(s) use classes IFC2x3 cannot represent → they fall to proxy. Export IFC4 to keep them.");
 
                 PreflightRow(info, $"Geometry — {(f.GeomSampled ? "≈" : "")}{f.Prims:N0} primitives · instancing {(ChkInstancing.IsChecked == true ? "on" : "off")}{tail}");
+                // v6 Z6. IFC2x3 has no compact tessellation entity, so IfcFaceBasedSurfaceModel
+                // needs an IfcPolyLoop + IfcFaceOuterBound + IfcFace PER TRIANGLE plus a point per
+                // vertex, against IFC4's single indexed point list. That is not fixable in code —
+                // it is the schema — but it should be said before the export, not discovered from
+                // the file size afterwards.
+                if (schema2x3)
+                    PreflightRow(info, "Schema — IFC2x3 stores each triangle as separate face entities, so the file "
+                                     + "is typically several times larger than the same model in IFC4. Choose it for "
+                                     + "compatibility, not for size.", "→ Export (Schema)");
             }
 
             // ── instant rows (always live, no scan needed) ──────────────────
@@ -1623,8 +1678,21 @@ namespace BIMCamel.UI
             sb.AppendLine($"Type objects: {s.TypeCount}   Materials: {s.MaterialCount}   Classifications: {s.ClassificationCount}");
             if (s.GroupCount > 0) sb.AppendLine($"Groups      : {s.GroupCount} (from Navisworks sets)");
             sb.AppendLine($"Property sets: {s.PsetUnique:N0} unique / {s.PsetRefs:N0} refs" + (s.PsetUnique > 0 ? $"  (×{(double)s.PsetRefs / s.PsetUnique:0.0} shared)" : ""));
-            sb.AppendLine($"Quantities  : {(s.QuantitiesWritten ? "computed (volume/area/length/width/height)" : "none")}");
-            sb.AppendLine($"{(s.FileCount > 1 ? "Total size  " : "File size   ")}: {s.FileSizeBytes / 1024.0:N0} KB");
+            if (s.TypeSharedPsets > 0 || s.TypeShareNameMismatch > 0)
+            {
+                sb.AppendLine($"  type-shared : {s.TypeSharedPsets:N0} pset(s) hoisted onto IfcElementType");
+                sb.AppendLine(s.TypeShareNameMismatch == 0
+                    ? "  faithful    : every occurrence was expressible as an override"
+                    : $"  ⚠ {s.TypeShareNameMismatch:N0} occurrence(s) had different property NAMES than their type. "
+                      + "IFC cannot express \"my type says this but I do not have it\", so those wrote their full "
+                      + "set and may ALSO inherit a type property they did not carry. Untick "
+                      + "\"Share type-level properties\" if that matters for this model.");
+            }
+            sb.AppendLine($"Quantities  : {(s.QuantitiesWritten ? "computed (volume/area/length/width/height)" : "none")}"
+                          + (s.QtyUnique > 0 ? $"  —  {s.QtyUnique:N0} unique / {s.QtyRefs:N0} refs (×{(double)s.QtyRefs / s.QtyUnique:0.0} shared)" : ""));
+            bool zipped = s.Files.Count > 0 && BIMCamel.Ifc.IfcSource.IsZip(s.Files[0]);
+            sb.AppendLine($"{(s.FileCount > 1 ? "Total size  " : "File size   ")}: {s.FileSizeBytes / 1024.0:N0} KB"
+                          + (zipped ? "  (compressed .ifczip)" : ""));
             sb.AppendLine($"Scan        : {scanMs:N0} ms  (tree walk + extents)");
             // v5 S4: one Scan number could not say whether the tree walk, the set searches or the
             // property sample was the slow half — so S1/S2/S3 could only ever be plausible. The
@@ -1766,6 +1834,9 @@ namespace BIMCamel.UI
             CustomE = ParseD(TxtE.Text), CustomN = ParseD(TxtN.Text), CustomElev = ParseD(TxtElev.Text), Rotation = ParseD(TxtRot.Text),
             Georef = ChkGeoref.IsChecked == true, Props = ChkProps.IsChecked == true, Materials = ChkMaterials.IsChecked == true, Instancing = ChkInstancing.IsChecked == true,
             FastInstancing = ChkFastInstancing.IsChecked == true,
+            Zip = ChkZip.IsChecked == true, ShareTypeProps = ChkShareTypeProps.IsChecked == true,
+            SkipEmptyProps = ChkSkipEmptyProps.IsChecked == true,
+            MinSize = ChkMinSize.IsChecked == true, MinSizeMm = (TxtMinSizeMm.Text ?? "").Trim(),
             Validate = ChkValidate.IsChecked == true, Quantities = ChkQuantities.IsChecked == true, Mapping = GridToText(),
             Crs = (TxtCrs.Text ?? "").Trim(), SurveyE = ParseD(TxtSurveyE.Text), SurveyN = ParseD(TxtSurveyN.Text), SurveyElev = ParseD(TxtSurveyElev.Text),
             Roles = RolesToText(), ParamRules = ParamRulesToText(),
@@ -1789,6 +1860,10 @@ namespace BIMCamel.UI
             ChkGeoref.IsChecked = p.Georef; ChkProps.IsChecked = p.Props; ChkMaterials.IsChecked = p.Materials;
             ChkInstancing.IsChecked = p.Instancing; ChkValidate.IsChecked = p.Validate; ChkQuantities.IsChecked = p.Quantities;
             ChkFastInstancing.IsChecked = p.FastInstancing;
+            ChkZip.IsChecked = p.Zip; ChkShareTypeProps.IsChecked = p.ShareTypeProps;
+            ChkSkipEmptyProps.IsChecked = p.SkipEmptyProps;
+            ChkMinSize.IsChecked = p.MinSize;
+            if (!string.IsNullOrWhiteSpace(p.MinSizeMm)) TxtMinSizeMm.Text = p.MinSizeMm;
             TxtCrs.Text = p.Crs ?? ""; TxtSurveyE.Text = Inv(p.SurveyE); TxtSurveyN.Text = Inv(p.SurveyN); TxtSurveyElev.Text = Inv(p.SurveyElev);
             if (!string.IsNullOrWhiteSpace(p.ProjectName)) TxtProject.Text = p.ProjectName;
             if (!string.IsNullOrWhiteSpace(p.SiteName)) TxtSite.Text = p.SiteName;

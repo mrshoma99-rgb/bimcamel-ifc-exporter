@@ -52,6 +52,15 @@ namespace BIMCamel.Data
     /// </summary>
     public static class PropertyHarvester
     {
+        /// <summary>
+        /// Drop properties whose value is blank (v6 Z4). An empty property costs a whole
+        /// IfcPropertySingleValue entity carrying one space (WriteNominal writes IFCTEXT(' ')), and
+        /// it also participates in the F3 content hash — so blanks make property sets LESS likely
+        /// to dedup as well as bigger. Static because it is a global output preference, set once
+        /// per export before the extractors run.
+        /// </summary>
+        public static bool SkipEmptyValues = true;
+
         /// <summary>Harvest props; if <paramref name="include"/> is non-null, only those Pset (category) names.</summary>
         public static List<IfcProp> Harvest(ModelItem item, HashSet<string>? include = null)
             => HarvestWithRoles(item, include, null, out _);
@@ -100,8 +109,10 @@ namespace BIMCamel.Data
                         if (wantProps)
                         {
                             var prop = Typed(pset, name, p.Value);
-                            list.Add(prop);
                             text = prop.Value;
+                            // A blank value is written as IFCTEXT(' ') — an entity that says
+                            // nothing the property's absence does not (v6 Z4).
+                            if (!SkipEmptyValues || !string.IsNullOrWhiteSpace(prop.Value)) list.Add(prop);
                         }
 
                         if (!wantRoles) continue;
