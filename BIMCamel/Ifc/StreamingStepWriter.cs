@@ -46,13 +46,22 @@ namespace BIMCamel.Ifc
         private readonly double _fracPowD;
 
         public StreamingStepWriter(string path, int coordDecimals = 6)
+            : this(new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 20), coordDecimals) { }
+
+        /// <summary>
+        /// Write into an arbitrary stream rather than a file (v6 Z1). This is what lets the export
+        /// go straight into a ZIP entry: the uncompressed IFC is then never written to disk at all,
+        /// so `.ifczip` costs less I/O than a plain export rather than more. The stream is owned
+        /// from here on and closed by <see cref="Dispose"/>.
+        /// </summary>
+        public StreamingStepWriter(Stream output, int coordDecimals = 6)
         {
             _frac = coordDecimals < 1 ? 1 : (coordDecimals > 9 ? 9 : coordDecimals);
             _fracPowL = 1; for (int i = 0; i < _frac; i++) _fracPowL *= 10;
             _fracPowD = _fracPowL;
             // UTF-8 without BOM: accepted by modern IFC readers (Solibri, Navisworks, xBim).
             // 4 MB buffer keeps the hot path away from per-call flushing.
-            _w = new StreamWriter(path, false, new UTF8Encoding(false), 4 << 20);
+            _w = new StreamWriter(output, new UTF8Encoding(false), 4 << 20);
         }
 
         /// <summary>Write one fully-formed entity line and return its #id (convenience path).</summary>
@@ -141,13 +150,26 @@ namespace BIMCamel.Ifc
             // Geometry sits near the origin after the base-point offset, so it lands here.
             if (v < 1.0e7 && v > -1.0e7)
             {
-                WriteRealFast(v);
+                WriteRealFast(v, _frac, _fracPowL, _fracPowD);
                 return;
             }
             Emit(R(v));
         }
 
-        private void WriteRealFast(double v)
+        /// <summary>
+        /// A STEP real capped at 6 fractional digits — the streaming twin of <see cref="R6"/>,
+        /// for the near-origin instance translations (v5 E5). Those are written once per instance
+        /// (683,917 times on the prova model) and each one used to cost a format string plus three
+        /// double.ToString() allocations. Byte-for-byte identical to what R6 produced.
+        /// </summary>
+        public void WriteReal6(double v)
+        {
+            if (double.IsNaN(v) || double.IsInfinity(v)) { Emit("0.0"); return; }
+            if (v < 1.0e7 && v > -1.0e7) { WriteRealFast(v, 6, 1000000L, 1000000.0); return; }
+            Emit(R6(v));
+        }
+
+        private void WriteRealFast(double v, int frac, long fracPowL, double fracPowD)
         {
             bool neg = v < 0;
             double av = neg ? -v : v;
@@ -156,12 +178,14 @@ namespace BIMCamel.Ifc
             // double's 2^53 exact-integer range). f < 1, so f*1e6 < 1e6 and stays exact.
             long intPart = (long)av;
             double f = av - intPart;
-            long frac = (long)(f * _fracPowD + 0.5);                 // round half up; 0 .. 10^frac
-            if (frac >= _fracPowL) { frac -= _fracPowL; intPart++; }  // rounding carry
+            long fracDigits = (long)(f * fracPowD + 0.5);                    // round half up; 0 .. 10^frac
+            if (fracDigits >= fracPowL) { fracDigits -= fracPowL; intPart++; } // rounding carry
 
             var buf = _num;
             int p = 0;
-            if (neg && (intPart != 0 || frac != 0)) buf[p++] = '-';
+            // `frac` is now the digit COUNT, so the "don't write -0.0" guard must test the rounded
+            // fractional VALUE — testing frac would make it always true and reintroduce "-0.0".
+            if (neg && (intPart != 0 || fracDigits != 0)) buf[p++] = '-';
 
             if (intPart == 0) buf[p++] = '0';
             else
@@ -174,10 +198,10 @@ namespace BIMCamel.Ifc
 
             buf[p++] = '.';
 
-            // _frac fractional digits, most-significant first
-            long div = _fracPowL / 10;
+            // `frac` fractional digits, most-significant first
+            long div = fracPowL / 10;
             int fracStart = p;
-            for (int i = 0; i < _frac; i++) { buf[p++] = (char)('0' + (int)(frac / div)); frac %= div; div /= 10; }
+            for (int i = 0; i < frac; i++) { buf[p++] = (char)('0' + (int)(fracDigits / div)); fracDigits %= div; div /= 10; }
 
             // trim trailing zeros, keep at least one fractional digit
             int end = p - 1;

@@ -20,7 +20,7 @@ namespace BIMCamel.Ifc
             var count = new Dictionary<string, long>(StringComparer.Ordinal);
             long total = 0;
 
-            using (var r = new StreamReader(path))
+            using (var r = IfcSource.OpenText(path))
             {
                 string? line;
                 while ((line = r.ReadLine()) != null)

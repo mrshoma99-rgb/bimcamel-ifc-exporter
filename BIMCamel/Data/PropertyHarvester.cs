@@ -52,21 +52,75 @@ namespace BIMCamel.Data
     /// </summary>
     public static class PropertyHarvester
     {
+        /// <summary>
+        /// Drop properties whose value is blank (v6 Z4). An empty property costs a whole
+        /// IfcPropertySingleValue entity carrying one space (WriteNominal writes IFCTEXT(' ')), and
+        /// it also participates in the F3 content hash — so blanks make property sets LESS likely
+        /// to dedup as well as bigger. Static because it is a global output preference, set once
+        /// per export before the extractors run.
+        /// </summary>
+        public static bool SkipEmptyValues = true;
+
         /// <summary>Harvest props; if <paramref name="include"/> is non-null, only those Pset (category) names.</summary>
         public static List<IfcProp> Harvest(ModelItem item, HashSet<string>? include = null)
+            => HarvestWithRoles(item, include, null, out _);
+
+        /// <summary>
+        /// One pass over an element's properties that fills BOTH the property sets and the semantic
+        /// role values (v5 E2).
+        ///
+        /// The extractors used to call <see cref="Harvest"/> and then <see cref="ReadRoles"/>, and
+        /// each walked <c>PropertyCategories → Properties → Value</c> from scratch. Every one of
+        /// those member accesses crosses into COM, so on a 674k-element model with ~40 properties
+        /// each that is tens of millions of interop calls paid TWICE for the same bytes. This reads
+        /// them once.
+        ///
+        /// The two filters stay independent, exactly as before: the pset filter narrows what lands
+        /// in <c>props</c>, while the role scan looks at EVERY category — a role may legitimately
+        /// point at a category the user chose not to export. A category wanted by neither is skipped
+        /// before its <c>Properties</c> collection is touched, which is where the cost is.
+        /// </summary>
+        public static List<IfcProp> HarvestWithRoles(ModelItem item, HashSet<string>? include, PropertyRoles? roles, out RoleValues rv)
         {
+            rv = new RoleValues { Type = "", Level = "", Material = "", Classification = "" };
+            bool wantRoles = roles != null && roles.Any;
             var list = new List<IfcProp>();
             try
             {
                 foreach (var cat in item.PropertyCategories)
                 {
-                    string pset = cat.DisplayName ?? cat.Name ?? "Properties";
-                    if (include != null && !include.Contains(pset)) continue;
+                    // Read each COM-backed name ONCE; the two consumers disagreed on the fallback
+                    // for a category with no names at all ("Properties" for psets, "" for role
+                    // matching) and that difference is preserved rather than quietly unified.
+                    string? dn = cat.DisplayName, cn = cat.Name;
+                    string pset = dn ?? cn ?? "Properties";
+                    string roleCat = dn ?? cn ?? "";
+
+                    bool wantProps = include == null || include.Contains(pset);
+                    if (!wantProps && !wantRoles) continue;
+
                     foreach (var p in cat.Properties)
                     {
                         string name = p.DisplayName ?? p.Name ?? "";
                         if (string.IsNullOrEmpty(name)) continue;
-                        list.Add(Typed(pset, name, p.Value));
+
+                        // Format the value at most once, and only when something wants it.
+                        string? text = null;
+                        if (wantProps)
+                        {
+                            var prop = Typed(pset, name, p.Value);
+                            text = prop.Value;
+                            // A blank value is written as IFCTEXT(' ') — an entity that says
+                            // nothing the property's absence does not (v6 Z4).
+                            if (!SkipEmptyValues || !string.IsNullOrWhiteSpace(prop.Value)) list.Add(prop);
+                        }
+
+                        if (!wantRoles) continue;
+                        // Same first-wins ordering as the old ReadRoles chain.
+                        if (rv.Type == "" && Match(roles!.Type, roleCat, name)) rv.Type = text ??= ValueToString(p.Value);
+                        else if (rv.Level == "" && Match(roles!.Level, roleCat, name)) rv.Level = text ??= ValueToString(p.Value);
+                        else if (rv.Material == "" && Match(roles!.Material, roleCat, name)) rv.Material = text ??= ValueToString(p.Value);
+                        else if (rv.Classification == "" && Match(roles!.Classification, roleCat, name)) rv.Classification = text ??= ValueToString(p.Value);
                     }
                 }
             }
@@ -111,7 +165,7 @@ namespace BIMCamel.Data
                     foreach (var cat in item.PropertyCategories)
                         foreach (var p in cat.Properties)
                         {
-                            var v = Typed("", "", p.Value).Value;
+                            var v = ValueToString(p.Value);
                             if (!string.IsNullOrEmpty(v) && v.Length <= 60) set.Add(v);
                             if (set.Count > valueCap) { onProgress?.Invoke(n + 1); return set.ToList(); }
                         }
@@ -199,29 +253,37 @@ namespace BIMCamel.Data
             };
         }
 
-        /// <summary>One pass over an item's properties reading the configured role values (category-qualified).</summary>
+        /// <summary>
+        /// Role values only, for callers that do not also want the property sets. Delegates to the
+        /// merged pass with an "include nothing" filter, so there is one implementation of the
+        /// matching rules rather than two that can drift apart.
+        /// </summary>
         public static RoleValues ReadRoles(ModelItem item, PropertyRoles roles)
         {
-            var rv = new RoleValues { Type = "", Level = "", Material = "", Classification = "" };
-            if (roles == null || !roles.Any) return rv;
-            try
-            {
-                foreach (var cat in item.PropertyCategories)
-                {
-                    var cn = cat.DisplayName ?? cat.Name ?? "";
-                    foreach (var p in cat.Properties)
-                    {
-                        var name = p.DisplayName ?? p.Name;
-                        if (string.IsNullOrEmpty(name)) continue;
-                        if (rv.Type == "" && Match(roles.Type, cn, name!)) rv.Type = Typed("", "", p.Value).Value;
-                        else if (rv.Level == "" && Match(roles.Level, cn, name!)) rv.Level = Typed("", "", p.Value).Value;
-                        else if (rv.Material == "" && Match(roles.Material, cn, name!)) rv.Material = Typed("", "", p.Value).Value;
-                        else if (rv.Classification == "" && Match(roles.Classification, cn, name!)) rv.Classification = Typed("", "", p.Value).Value;
-                    }
-                }
-            }
-            catch { }
+            if (roles == null || !roles.Any)
+                return new RoleValues { Type = "", Level = "", Material = "", Classification = "" };
+            HarvestWithRoles(item, NoCategories, roles, out var rv);
             return rv;
+        }
+
+        /// <summary>An include-filter that matches nothing — "roles only, no property sets".</summary>
+        private static readonly HashSet<string> NoCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// What the extractors actually want: the property sets if the user asked for them, the
+        /// role values if any role is configured, and NOTHING read at all when neither applies.
+        /// One entry point so both extractors make exactly one pass over an item's properties.
+        /// </summary>
+        public static List<IfcProp>? HarvestAndRoles(ModelItem item, bool wantProps, HashSet<string>? include, PropertyRoles? roles, out RoleValues rv)
+        {
+            bool wantRoles = roles != null && roles.Any;
+            if (!wantProps && !wantRoles)
+            {
+                rv = new RoleValues { Type = "", Level = "", Material = "", Classification = "" };
+                return null;
+            }
+            var props = HarvestWithRoles(item, wantProps ? include : NoCategories, roles, out rv);
+            return wantProps ? props : null;
         }
 
         private static bool Match(PropRef r, string categoryName, string propName)
@@ -243,22 +305,36 @@ namespace BIMCamel.Data
         private static IfcProp Typed(string pset, string name, VariantData value)
         {
             var p = new IfcProp { Pset = pset, Name = name };
+            p.Value = ValueToString(value, out var kind);
+            p.Kind = kind;
+            return p;
+        }
+
+        /// <summary>
+        /// The value text alone, without building an <see cref="IfcProp"/> around it. The role scan
+        /// and the mapping-keyword scan only ever wanted the string, and each allocated a throwaway
+        /// IfcProp per property to reach it (v5 E2).
+        /// </summary>
+        public static string ValueToString(VariantData value) => ValueToString(value, out _);
+
+        private static string ValueToString(VariantData value, out PropKind kind)
+        {
+            kind = PropKind.Text;
             try
             {
-                if (value == null) { p.Value = ""; }
-                else if (value.IsBoolean) { p.Kind = PropKind.Boolean; p.Value = value.ToBoolean() ? "T" : "F"; }
-                else if (value.IsDouble) { p.Kind = PropKind.Real; p.Value = value.ToDouble().ToString("R", CultureInfo.InvariantCulture); }
-                else if (value.IsInt32) { p.Kind = PropKind.Integer; p.Value = value.ToInt32().ToString(CultureInfo.InvariantCulture); }
-                else if (value.IsDisplayString) { p.Value = value.ToDisplayString(); }
-                else if (value.IsNamedConstant) { p.Value = value.ToNamedConstant().DisplayName; }
-                else { p.Value = value.ToString(); }
+                if (value == null) return "";
+                if (value.IsBoolean) { kind = PropKind.Boolean; return value.ToBoolean() ? "T" : "F"; }
+                if (value.IsDouble) { kind = PropKind.Real; return value.ToDouble().ToString("R", CultureInfo.InvariantCulture); }
+                if (value.IsInt32) { kind = PropKind.Integer; return value.ToInt32().ToString(CultureInfo.InvariantCulture); }
+                if (value.IsDisplayString) return value.ToDisplayString();
+                if (value.IsNamedConstant) return value.ToNamedConstant().DisplayName;
+                return value.ToString();
             }
             catch
             {
-                p.Kind = PropKind.Text;
-                try { p.Value = value?.ToString() ?? ""; } catch { p.Value = ""; }
+                kind = PropKind.Text;
+                try { return value?.ToString() ?? ""; } catch { return ""; }
             }
-            return p;
         }
     }
 }

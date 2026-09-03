@@ -96,6 +96,11 @@
          breaks the WPF markup compiler under the modern SDK (MC1000). -->
     <Reference Include="System.Runtime.Serialization" />
     <Reference Include="System.Xml.Linq" />
+    <!-- ZipArchive for the .ifczip output form (v6 Z1). On net48 these are framework assemblies
+         and are NOT referenced by default; System.IO.Compression carries ZipArchive itself and
+         .FileSystem the extension methods. -->
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
   </ItemGroup>
 
   <!-- ── XAML ribbon layout is a Navisworks content file, NOT WPF-compiled ───
