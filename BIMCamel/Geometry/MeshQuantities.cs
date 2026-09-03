@@ -63,6 +63,18 @@ namespace BIMCamel.Geometry
                 if (x < minX) minX = x; if (y < minY) minY = y; if (z < minZ) minZ = z;
                 if (x > maxX) maxX = x; if (y > maxY) maxY = y; if (z > maxZ) maxZ = z;
             }
+            return Finish(vol6, area2, minX, minY, minZ, maxX, maxY, maxZ);
+        }
+
+        /// <summary>
+        /// Turns the raw accumulators into a <see cref="MeshQty"/>. Shared with
+        /// <see cref="MeshWelder"/>, which gathers the same sums inside its own loops (v5 E4) —
+        /// having ONE finalisation is what keeps the folded numbers identical to this pass's.
+        /// </summary>
+        internal static MeshQty Finish(double vol6, double area2,
+                                       double minX, double minY, double minZ,
+                                       double maxX, double maxY, double maxZ)
+        {
             bool hasBox = minX != double.MaxValue;
             if (!hasBox) { minX = minY = minZ = maxX = maxY = maxZ = 0; }
 

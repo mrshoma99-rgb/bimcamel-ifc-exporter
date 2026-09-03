@@ -240,11 +240,11 @@ namespace BIMCamel.Ifc
             int item = mw.WriteMesh(w, el, t);
             ExportTiming.GeomWriteTicks += ExportTiming.Now - tg;
             if (el.Material != null) WriteStyle(w, schema, item, el.Material);
-            int rep = w.Write($"IFCSHAPEREPRESENTATION({Ref(d.S.Ctx)},'Body','{mw.RepresentationType}',({Ref(item)}))");
-            int prodShape = w.Write($"IFCPRODUCTDEFINITIONSHAPE($,$,({Ref(rep)}))");
+            int rep = WriteShapeRep(w, d.S.Ctx, mw.RepresentationType, item);
+            int prodShape = WriteProdShape(w, rep);
             // storeyAxis cancels the storey's own elevation, so raising a storey to its real height
             // repositions the storey without moving the geometry hanging off it.
-            int place = w.Write($"IFCLOCALPLACEMENT({Ref(storeyPlace)},{Ref(storeyAxis)})");
+            int place = WriteLocalPlacement(w, storeyPlace, storeyAxis);
             string guid = StableGuid(el.InstanceGuid, el.Name, index);
             int id = WriteElement(d, w, schema, el.ClassKey, el.TypeName, guid, d.S.Owner, el.Name, place, prodShape);
             long tp = ExportTiming.Now;
@@ -253,9 +253,11 @@ namespace BIMCamel.Ifc
             if (computeQuantities)
             {
                 long tq = ExportTiming.Now;
-                var q = MeshQuantities.Compute(el.Vertices, el.Indices, unitScale);
+                // The extractor already accumulated these while welding (v5 E4), so the mesh is
+                // not walked again here; Quantities is null only when nothing welded it.
+                var q = el.Quantities ?? MeshQuantities.Compute(el.Vertices, el.Indices, unitScale);
                 WriteQuantities(w, d.Id, schema, d.S.Owner, id, q, el.ClassKey, guid);
-                ExportTiming.QtyTicks += ExportTiming.Now - tq;
+                ExportTiming.QtyWriteTicks += ExportTiming.Now - tq;
             }
             if (!d.ByStorey.TryGetValue(storeyId, out var lst)) { lst = new List<int>(); d.ByStorey[storeyId] = lst; }
             lst.Add(id);
@@ -298,18 +300,23 @@ namespace BIMCamel.Ifc
                     long tg = ExportTiming.Now;
                     int item = mw.WriteMesh(w, new ElementMesh { Vertices = lm.Vertices, Indices = lm.Indices }, identity);
                     if (lm.Material != null) WriteStyle(w, schema, item, lm.Material); // colour shared by all instances (v4 D)
-                    int rep0 = w.Write($"IFCSHAPEREPRESENTATION({Ref(d.S.Ctx)},'Body','{mw.RepresentationType}',({Ref(item)}))");
-                    int mapOrigin = w.Write($"IFCAXIS2PLACEMENT3D({Ref(d.S.OriginPt)},$,$)");
-                    int repMap = w.Write($"IFCREPRESENTATIONMAP({Ref(mapOrigin)},{Ref(rep0)})");
+                    int rep0 = WriteShapeRep(w, d.S.Ctx, mw.RepresentationType, item);
+                    int mapOrigin = w.Begin("IFCAXIS2PLACEMENT3D");
+                    w.RefTok(d.S.OriginPt); w.Tok(",$,$"); w.End();
+                    int repMap = w.Begin("IFCREPRESENTATIONMAP");
+                    w.RefTok(mapOrigin); w.Sep(); w.RefTok(rep0); w.End();
                     ExportTiming.GeomWriteTicks += ExportTiming.Now - tg;
                     long tq0 = ExportTiming.Now;
+                    // Per UNIQUE geometry (102,384 on the prova), not per instance (683,917) — so
+                    // this one stays in the writer rather than folding into the per-fragment weld,
+                    // where it would be computed 6.7x more often (v5 E4).
                     var qy = computeQuantities ? MeshQuantities.Compute(lm.Vertices, lm.Indices, 1.0) : default;
-                    ExportTiming.QtyTicks += ExportTiming.Now - tq0;
+                    ExportTiming.QtyWriteTicks += ExportTiming.Now - tq0;
                     gd = new GeomDef { RepMapId = repMap, Qty = qy, Tri = lm.Indices.Count / 3 };
                     d.Geom[inst.Key] = gd; d.UniqueGeom++;
                 }
                 int cto = WriteTransform(w, inst, minX, minY, minZ, d.DirCache);
-                mapped.Add(w.Write($"IFCMAPPEDITEM({Ref(gd.RepMapId)},{Ref(cto)})"));
+                mapped.Add(WriteMappedItem(w, gd.RepMapId, cto));
                 if (computeQuantities)
                 {
                     double s = InstanceScale(inst.Rotation);
@@ -319,11 +326,9 @@ namespace BIMCamel.Ifc
                 }
                 d.Tris += gd.Tri; d.Insts++;
             }
-            var sb = new StringBuilder();
-            for (int i = 0; i < mapped.Count; i++) { if (i > 0) sb.Append(','); sb.Append(Ref(mapped[i])); }
-            int rep = w.Write($"IFCSHAPEREPRESENTATION({Ref(d.S.Ctx)},'Body','MappedRepresentation',({sb}))");
-            int prodShape = w.Write($"IFCPRODUCTDEFINITIONSHAPE($,$,({Ref(rep)}))");
-            int place = w.Write($"IFCLOCALPLACEMENT({Ref(storeyPlace)},{Ref(storeyAxis)})");
+            int rep = WriteMappedShapeRep(w, d.S.Ctx, mapped);
+            int prodShape = WriteProdShape(w, rep);
+            int place = WriteLocalPlacement(w, storeyPlace, storeyAxis);
             string guid = StableGuid(el.InstanceGuid, el.Name, index);
             int id = WriteElement(d, w, schema, el.ClassKey, el.TypeName, guid, d.S.Owner, el.Name, place, prodShape);
             long tp = ExportTiming.Now;
@@ -334,7 +339,7 @@ namespace BIMCamel.Ifc
                 long tq = ExportTiming.Now;
                 WriteQuantities(w, d.Id, schema, d.S.Owner, id,
                     new MeshQty { Volume = vol, Area = area, Dx = box.Dx, Dy = box.Dy, Dz = box.Dz }, el.ClassKey, guid);
-                ExportTiming.QtyTicks += ExportTiming.Now - tq;
+                ExportTiming.QtyWriteTicks += ExportTiming.Now - tq;
             }
             if (!d.ByStorey.TryGetValue(storeyId, out var lst)) { lst = new List<int>(); d.ByStorey[storeyId] = lst; }
             lst.Add(id);
@@ -887,14 +892,25 @@ namespace BIMCamel.Ifc
             (double[] yd, double sy) = NormAxis(inst.Rotation[3], inst.Rotation[4], inst.Rotation[5], 0, 1, 0);
             (double[] zd, double sz) = NormAxis(inst.Rotation[6], inst.Rotation[7], inst.Rotation[8], 0, 0, 1);
             double scale = (sx + sy + sz) / 3.0; if (scale <= 0 || double.IsNaN(scale)) scale = 1.0;
-            int op = w.Write($"IFCCARTESIANPOINT(({R6(inst.Translation[0] - ox)},{R6(inst.Translation[1] - oy)},{R6(inst.Translation[2] - oz)}))");
+            int op = w.Begin("IFCCARTESIANPOINT");
+            w.Tok('(');
+            w.WriteReal6(inst.Translation[0] - ox); w.Sep();
+            w.WriteReal6(inst.Translation[1] - oy); w.Sep();
+            w.WriteReal6(inst.Translation[2] - oz);
+            w.Tok(')');
+            w.End();
 
             // Axis1/Axis2/Axis3 and Scale are OPTIONAL on IfcCartesianTransformationOperator3D and
             // default to the context axes / 1.0. The common axis-aligned, unit-scale instance can
             // therefore omit all three directions — 3 fewer entities per instance (v4 F1).
             bool identity = IsAxis(xd, 1, 0, 0) && IsAxis(yd, 0, 1, 0) && IsAxis(zd, 0, 0, 1) && Math.Abs(scale - 1.0) < 1e-9;
             if (identity)
-                return w.Write($"IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,{Ref(op)},$,$)");
+            {
+                int cid = w.Begin("IFCCARTESIANTRANSFORMATIONOPERATOR3D");
+                w.Tok("$,$,"); w.RefTok(op); w.Tok(",$,$");
+                w.End();
+                return cid;
+            }
 
             // Rotated/scaled: share IfcDirection entities across instances (only a handful of distinct axes).
             int xId = DirId(w, dirCache, xd);
@@ -920,6 +936,65 @@ namespace BIMCamel.Ifc
             double len = Math.Sqrt(x * x + y * y + z * z);
             if (len < 1e-12) return (new[] { fx, fy, fz }, 1.0);
             return (new[] { x / len, y / len, z / len }, len);
+        }
+
+        // ── per-element / per-instance entities, streamed (v5 E5) ───────────────────
+        // These were interpolated strings. They are small, but they repeat once per ELEMENT
+        // (674,641) or once per INSTANCE (683,917) on the prova model, so each one was a string
+        // allocation — and the transform's point was three double.ToString() calls on top — in the
+        // hottest loop in the writer, feeding the GC that the peak-heap line tracks. The writer
+        // already had a zero-allocation entity API; the mesh used it and everything around the mesh
+        // did not. The emitted bytes are unchanged, which is what makes this safe.
+
+        /// <summary>IFCSHAPEREPRESENTATION(#ctx,'Body','&lt;type&gt;',(#item))</summary>
+        private static int WriteShapeRep(StreamingStepWriter w, int ctx, string repType, int item)
+        {
+            int id = w.Begin("IFCSHAPEREPRESENTATION");
+            w.RefTok(ctx); w.Sep(); w.Tok("'Body'"); w.Sep();
+            w.Tok('\''); w.Tok(repType); w.Tok('\''); w.Sep();
+            w.Tok('('); w.RefTok(item); w.Tok(')');
+            w.End();
+            return id;
+        }
+
+        /// <summary>IFCSHAPEREPRESENTATION(#ctx,'Body','MappedRepresentation',(#a,#b,…)) — the list
+        /// is streamed straight from the ids, so the per-element StringBuilder is gone too.</summary>
+        private static int WriteMappedShapeRep(StreamingStepWriter w, int ctx, List<int> items)
+        {
+            int id = w.Begin("IFCSHAPEREPRESENTATION");
+            w.RefTok(ctx); w.Sep(); w.Tok("'Body'"); w.Sep(); w.Tok("'MappedRepresentation'"); w.Sep();
+            w.Tok('(');
+            for (int i = 0; i < items.Count; i++) { if (i > 0) w.Sep(); w.RefTok(items[i]); }
+            w.Tok(')');
+            w.End();
+            return id;
+        }
+
+        /// <summary>IFCPRODUCTDEFINITIONSHAPE($,$,(#rep))</summary>
+        private static int WriteProdShape(StreamingStepWriter w, int rep)
+        {
+            int id = w.Begin("IFCPRODUCTDEFINITIONSHAPE");
+            w.Tok("$,$,("); w.RefTok(rep); w.Tok(')');
+            w.End();
+            return id;
+        }
+
+        /// <summary>IFCLOCALPLACEMENT(#rel,#axis)</summary>
+        private static int WriteLocalPlacement(StreamingStepWriter w, int rel, int axis)
+        {
+            int id = w.Begin("IFCLOCALPLACEMENT");
+            w.RefTok(rel); w.Sep(); w.RefTok(axis);
+            w.End();
+            return id;
+        }
+
+        /// <summary>IFCMAPPEDITEM(#repMap,#operator)</summary>
+        private static int WriteMappedItem(StreamingStepWriter w, int repMap, int op)
+        {
+            int id = w.Begin("IFCMAPPEDITEM");
+            w.RefTok(repMap); w.Sep(); w.RefTok(op);
+            w.End();
+            return id;
         }
 
         // ── helpers ─────────────────────────────────────────────────────────────────

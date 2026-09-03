@@ -90,6 +90,9 @@ namespace BIMCamel.Ifc
         public string RepresentationType => "SurfaceModel";
 
         private int[] _faceIds = new int[1024]; // reused across WriteMesh calls; grown as needed
+        // Pooled for the same reason _faceIds is: this was a fresh array PER ELEMENT (674,641 of
+        // them on the prova model), allocated only to hold ids that die at the end of the call.
+        private int[] _ptIds = new int[1024];
 
         public int WriteMesh(StreamingStepWriter w, ElementMesh mesh, CoordTransform t)
         {
@@ -97,7 +100,8 @@ namespace BIMCamel.Ifc
             var idx = mesh.Indices;
 
             int vCount = verts.Count / 3;
-            var ptIds = new int[vCount];
+            if (_ptIds.Length < vCount) _ptIds = new int[vCount];
+            var ptIds = _ptIds;
             for (int v = 0; v < vCount; v++)
             {
                 int i = v * 3;

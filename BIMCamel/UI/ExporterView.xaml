@@ -579,6 +579,7 @@
                     <TextBlock Text="MB" VerticalAlignment="Center" Foreground="{DynamicResource Muted}"/>
                   </StackPanel>
                   <CheckBox x:Name="ChkInstancing" Content="Optimize repeated geometry (instancing)" ToolTip="Reuse identical geometry across elements to shrink the file and speed up export."/>
+                  <CheckBox x:Name="ChkFastInstancing" Margin="18,0,0,0" Content="Fast instancing — trust type + size (experimental)" ToolTip="Skip re-reading the geometry of elements that look like a repeat of one already read (same tree type, size, fragment count and colour). Reading triangles is 80-90% of the export, and most models repeat their shapes many times, so this can be several times faster.&#x0a;&#x0a;It is a GUESS about the model, so it checks itself: every 20th repeat is read for real and compared. Any disagreement is reported, that shape is dropped, and the file stays correct. Turn this on only after a run reports zero mismatches on YOUR model."/>
                   <CheckBox x:Name="ChkValidate" Content="Validate output after export" ToolTip="Check the written IFC for structural damage and for the mistakes this exporter can make — bad PredefinedType values, wrong attribute counts, dangling references."/>
                   <CheckBox x:Name="ChkProfile" Content="Size &amp; time breakdown in report (slower)" ToolTip="Break down where the file size and the export time went, in the report below. Adds a little overhead."/>
                 </StackPanel>

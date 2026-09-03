@@ -43,6 +43,10 @@ namespace BIMCamel.UI
         private readonly ObservableCollection<CheckItem> _batchItems = new ObservableCollection<CheckItem>();
         private readonly ObservableCollection<ParamRow> _paramRows = new ObservableCollection<ParamRow>();
         private readonly ObservableCollection<MapRow> _mapRows = new ObservableCollection<MapRow>();
+
+        /// <summary>What the scan already worked out, so Smart setup → preview → export computes
+        /// each item key and resolves each mapping set ONCE instead of three times (v5 S2).</summary>
+        private readonly ScanCache _scan = new ScanCache();
         private Dictionary<string, List<string>> _catParams = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
 
         // scope radios + role combos (built in code)
@@ -113,6 +117,8 @@ namespace BIMCamel.UI
             // Validation defaults ON: it exists to catch the mistakes this exporter can make, and
             // silently shipping an invalid file is worse than the second it costs to check.
             ChkGeoref.IsChecked = true; ChkInstancing.IsChecked = true; ChkValidate.IsChecked = true; ChkProfile.IsChecked = true;
+            // Fast instancing stays OFF until a run proves the guess holds on this model (v5 E1).
+            ChkFastInstancing.IsChecked = false;
             ChkProps.IsChecked = true; ChkMaterials.IsChecked = true; ChkQuantities.IsChecked = true; ChkSplit.IsChecked = false;
             TxtE.Text = TxtN.Text = TxtElev.Text = TxtRot.Text = "0";
             TxtSurveyE.Text = TxtSurveyN.Text = TxtSurveyElev.Text = "0";
@@ -336,7 +342,10 @@ namespace BIMCamel.UI
                 // Resolved ONCE, then handed to both the property scan and the
                 // preview. This is the whole cost of Smart setup on a large
                 // model, so doing it twice was doubling the wait.
+                ET.ResetScan();
+                long tc = ET.Now;
                 var items = ResolveScope(doc, CollectTick);
+                ET.CollectTicks += ET.Now - tc;
                 if (items == null) { TxtSmartSummary.Text = "Smart setup needs a usable scope — see the message below the progress bar."; return; }
                 if (items.Count == 0) { TxtSmartSummary.Text = "No geometry elements in this scope."; SetStatus("No geometry elements in scope."); return; }
                 sb.AppendLine($"Scope          : {ScopeLabel()} — {items.Count:N0} element(s)");
@@ -399,11 +408,28 @@ namespace BIMCamel.UI
             BeginBusyMarquee("Scanning properties…", cancelable: true);
             try
             {
+                ET.ResetScan();
                 var sel = doc.CurrentSelection.SelectedItems;
-                if (sel == null || sel.Count == 0) { SetStatus("Select elements in Navisworks, then Scan selection."); return false; }
-                var items = ItemCollector.ResolveLeaves(sel, CollectTick);
+                long tc = ET.Now;
+                List<ModelItem> items;
+                string label;
+                if (sel == null || sel.Count == 0)
+                {
+                    // Nothing selected used to be a dead end ("select something first"). The scan
+                    // only ever reads a sample, so it can answer from one without resolving the
+                    // model at all (v5 S3): CollectSample stops walking the moment it has enough,
+                    // spread across the roots and their top-level branches.
+                    items = ItemCollector.CollectSample(doc, SampleCap, CollectTick);
+                    label = "sampled";
+                }
+                else
+                {
+                    items = ItemCollector.ResolveLeaves(sel, CollectTick);
+                    label = "selected";
+                }
+                ET.CollectTicks += ET.Now - tc;
                 if (items.Count == 0) { SetStatus("No geometry elements to scan."); return false; }
-                return ScanFrom(items, "selected");
+                return ScanFrom(items, label);
             }
             catch (OperationCanceledException) { SetStatus("Scan stopped."); return false; }
             catch (Exception ex) { SetStatus("Scan failed: " + ex.Message); return false; }
@@ -422,8 +448,11 @@ namespace BIMCamel.UI
         {
             SetStatus("Reading properties…"); PumpUi(Dispatcher);
             ThrowIfCancelled();
+            long tp = ET.Now;
             var sample = Spread(items, SampleCap);
             _catParams = PropertyHarvester.ScanCategoryParams(sample, SampleCap);
+            ET.PropScanTicks += ET.Now - tp;
+            ET.SampledItems = sample.Count;
 
             var cats = _catParams.Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase).ToList();
             var allParams = _catParams.Values.SelectMany(v => v).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList();
@@ -557,6 +586,11 @@ namespace BIMCamel.UI
         private void RefreshSets()
         {
             var doc = NavApp.ActiveDocument;
+            // Re-reading the document's sets is exactly the moment to assume set MEMBERSHIP may
+            // have moved under us — a search set re-evaluates against the model, and nothing tells
+            // us when the model changed. Rule EDITS are caught separately, by the rules signature.
+            _scan.Bind(doc);
+            _scan.DropMaps();
             _sets = doc != null ? ItemCollector.GetSelectionSets(doc) : new List<SelectionSet>();
 
             // saved-set combo, keeping the current pick if it still exists
@@ -655,22 +689,26 @@ namespace BIMCamel.UI
                 if (sfd.ShowDialog() != WF.DialogResult.OK) return;
 
                 var scanSw = Stopwatch.StartNew();
+                ET.ResetScan();
                 BeginBusyMarquee("Collecting elements…");
-                var items = ResolveScope(doc, CollectTick);
+                // wantMinCorner: the walk folds each collected leaf's bounding box into a running
+                // minimum, so the separate per-element ScopeMinCorner pass disappears (v5 S1). Asked
+                // for only when the base point actually comes from the geometry.
+                bool wantMin = coords.Mode == BasePointMode.GeometryOrigin;
+                long tc = ET.Now;
+                var items = ResolveScope(doc, CollectTick, wantMin);
+                ET.CollectTicks += ET.Now - tc;
                 if (items == null) return;
                 if (items.Count == 0) { SetStatus("No geometry elements in scope."); return; }
 
-                var maps = new ItemCollector.SetMaps();
-                // One ItemKey memo shared between rule resolution and the
-                // per-element lookups in the extractor — the same items get
-                // their key computed once instead of twice.
-                var keyCache = setRules.Count > 0 ? new Dictionary<ModelItem, string>() : null;
-                if (setRules.Count > 0) { SetStatus("Resolving mapping sets…"); PumpUi(Dispatcher); maps = ItemCollector.BuildSetMaps(doc, setRules, CollectTick, keyCache); }
+                // One ItemKey memo shared between rule resolution and the per-element lookups in
+                // the extractor — and now across the whole session, not just this button (v5 S2).
+                var maps = ResolveMaps(doc, setRules);
                 var opts = BuildExtractOptions(maps);
-                opts.KeyCache = keyCache;
+                opts.KeyCache = _scan.Keys;
 
-                SetStatus("Computing model extents…"); PumpUi(Dispatcher);
-                var sm = ItemCollector.ScopeMinCorner(items, n => CollectTick(n));
+                if (wantMin && !ItemCollector.MinCornerValid) { SetStatus("Computing model extents…"); PumpUi(Dispatcher); }
+                var sm = ScopeMin(items, coords, n => CollectTick(n));
                 var geomMin = (sm.x * unitScale, sm.y * unitScale, sm.z * unitScale);
                 scanSw.Stop();
 
@@ -713,13 +751,12 @@ namespace BIMCamel.UI
             if (fbd.ShowDialog() != WF.DialogResult.OK) return;
             string folder = fbd.SelectedPath;
 
-            var maps = new ItemCollector.SetMaps();
-            var keyCache = setRules.Count > 0 ? new Dictionary<ModelItem, string>() : null;
-            if (setRules.Count > 0) { SetStatus("Resolving mapping sets…"); PumpUi(Dispatcher); maps = ItemCollector.BuildSetMaps(doc, setRules, CollectTick, keyCache); }
+            var maps = ResolveMaps(doc, setRules);
             var opts = BuildExtractOptions(maps);
-            opts.KeyCache = keyCache;
+            opts.KeyCache = _scan.Keys;
 
             var scanSw = Stopwatch.StartNew();
+            ET.ResetScan();
             BeginBusyMarquee("Preparing batch…");
             var mc = ModelMinCorner(doc);
             var geomMin = (mc.Item1 * unitScale, mc.Item2 * unitScale, mc.Item3 * unitScale);
@@ -767,17 +804,32 @@ namespace BIMCamel.UI
             ExtractOptions opts, double weldTolMetres, int coordDecimals, (double x, double y, double z) geomMin, long splitLimit, ExportSummary summary, string verb)
         {
             SwitchToDeterminate(items.Count);
+            bool quantities = ChkQuantities.IsChecked == true;
+            string author = Environment.UserName;
+
+            // v5 E7: the extractor runs here, on the Navisworks UI thread (the read API is STA and
+            // cannot move); the writer runs behind ExportPipeline on a background thread. Both
+            // exporter entry points already take a lazy IEnumerable, so the seam needed no change
+            // — the elements simply arrive over a bounded queue instead of a direct pull.
             if (ChkInstancing.IsChecked == true)
             {
                 opts.WeldTol = weldTolMetres;
+                // Instanced: quantities are measured per UNIQUE geometry inside the writer, not per
+                // fragment here — 6.7x fewer measurements on the prova model (v5 E4).
+                opts.QtyScale = 0;
+                opts.FastInstancing = ChkFastInstancing.IsChecked == true;
                 var stream = InstancedExtractor.ExtractStream(items, unitScale, opts, p => Tick(p, items.Count, verb));
-                IfcExporter.ExportInstanced(basePath, schema, stream, Environment.UserName, unitScale, coords, ChkQuantities.IsChecked == true, coordDecimals, geomMin, names, splitLimit, summary);
+                ExportPipeline.Run(stream, s =>
+                    IfcExporter.ExportInstanced(basePath, schema, s, author, unitScale, coords, quantities, coordDecimals, geomMin, names, splitLimit, summary));
             }
             else
             {
                 opts.WeldTol = weldTolMetres / unitScale;
+                // Plain: one element, one weld, one measurement — folded into the weld (v5 E4).
+                opts.QtyScale = quantities ? unitScale : 0;
                 var stream = MeshExtractor.ExtractStream(items, opts, p => Tick(p, items.Count, verb));
-                IfcExporter.Export(basePath, schema, stream, Environment.UserName, unitScale, coords, ChkQuantities.IsChecked == true, coordDecimals, geomMin, names, splitLimit, summary);
+                ExportPipeline.Run(stream, s =>
+                    IfcExporter.Export(basePath, schema, s, author, unitScale, coords, quantities, coordDecimals, geomMin, names, splitLimit, summary));
             }
         }
 
@@ -788,8 +840,14 @@ namespace BIMCamel.UI
             {
                 SetStatus("Validating…"); PumpUi(Dispatcher);
                 var issues = new List<string>();
+                // Timed since v5 E6: validation streams the whole output twice, so on a multi-GB
+                // export it is wall clock the user waits through — and it sits OUTSIDE the export
+                // stopwatch, so until now the report never admitted it existed.
+                long tv = ET.Now;
                 foreach (var f in summary.Files) { var iss = IfcValidator.Validate(f); if (iss.Count > 0) issues.Add(System.IO.Path.GetFileName(f) + ": " + string.Join("; ", iss)); }
-                validation = issues.Count == 0 ? $"passed ({summary.Files.Count} file(s))" : "ISSUES — " + string.Join(" | ", issues);
+                ET.ValidateTicks += ET.Now - tv;
+                validation = (issues.Count == 0 ? $"passed ({summary.Files.Count} file(s))" : "ISSUES — " + string.Join(" | ", issues))
+                             + $"  [{ET.Ms(ET.ValidateTicks):N0} ms]";
             }
             string profile = "";
             if (ChkProfile.IsChecked == true && summary.Files.Count > 0)
@@ -823,18 +881,22 @@ namespace BIMCamel.UI
             return name.Length == 0 ? "set" : name;
         }
 
-        private List<ModelItem>? ResolveScope(Document doc, Action<int>? onProgress = null)
+        /// <param name="wantMinCorner">Ask the walk to accumulate the scope's minimum corner as it
+        /// goes (v5 S1). Only the export needs it, and only when the base point is the geometry
+        /// origin — every other caller passes false and pays nothing.</param>
+        private List<ModelItem>? ResolveScope(Document doc, Action<int>? onProgress = null, bool wantMinCorner = false)
         {
             // Reset here, not only inside the visible-only walks: scopes that
             // include hidden items never touch the counter, and the pre-flight
             // panel reads it right after this call.
             ItemCollector.HiddenSkipped = 0;
+            ItemCollector.MinCornerValid = false;
             switch (ScopeIndex())
             {
                 case 1:
                     var sel = doc.CurrentSelection.SelectedItems;
                     if (sel == null || sel.Count == 0) { SetStatus("Nothing selected. Select elements or choose another scope."); return null; }
-                    return ItemCollector.ResolveLeaves(sel, onProgress);
+                    return ItemCollector.ResolveLeaves(sel, onProgress, wantMinCorner);
                 case 2:
                     try { return ItemCollector.GetItemsInSectionBox(doc, onProgress); }
                     // Stop is not a "no section box" problem: let it unwind rather
@@ -844,7 +906,7 @@ namespace BIMCamel.UI
                 case 3:
                     int si = CmbSavedSet.SelectedIndex;
                     if (_sets.Count == 0 || si < 0 || si >= _sets.Count) { SetStatus("Pick a saved set (Scope = Saved set)."); return null; }
-                    return ItemCollector.GetItemsFromSet(doc, _sets[si], onProgress);
+                    return ItemCollector.GetItemsFromSet(doc, _sets[si], onProgress, wantMinCorner);
                 case 4:
                 {
                     // The union of the ticked batch sets. Export never reaches
@@ -860,11 +922,61 @@ namespace BIMCamel.UI
                     foreach (var set in chosen)
                         foreach (var it in ItemCollector.GetItemsFromSet(doc, set, onProgress))
                             if (seenItems.Add(it)) union.Add(it);
+                    // Several walks, then a dedup: the last walk's min corner describes only its own
+                    // set, not the union. Fall back to the explicit pass (v5 S1).
+                    ItemCollector.MinCornerValid = false;
                     return union;
                 }
                 default:
-                    return ItemCollector.GetVisibleLeafItemsWithGeometry(doc, onProgress);
+                    return ItemCollector.GetVisibleLeafItemsWithGeometry(doc, onProgress, wantMinCorner);
             }
+        }
+
+        /// <summary>
+        /// Resolve the mapping rules to item-key maps, reusing the last resolution when the rules
+        /// are unchanged (v5 S2). Every caller — preview, export, batch — goes through here, so the
+        /// model-wide <c>Search.FindAll</c> behind each set runs once per rule list, not once per
+        /// button press.
+        /// </summary>
+        private ItemCollector.SetMaps ResolveMaps(Document doc, List<ItemCollector.SetRule> rules)
+        {
+            _scan.Bind(doc);
+            if (rules.Count == 0) return new ItemCollector.SetMaps();
+
+            var cached = _scan.Maps(rules);
+            if (cached != null) return cached;
+
+            SetStatus("Resolving mapping sets…"); PumpUi(Dispatcher);
+            long t = ET.Now;
+            var maps = ItemCollector.BuildSetMaps(doc, rules, CollectTick, _scan.Keys);
+            ET.SetResolveTicks += ET.Now - t;
+            ET.SetsResolved = rules.Count;
+            _scan.StoreMaps(rules, maps);
+            return maps;
+        }
+
+        /// <summary>
+        /// The scope's minimum corner in MODEL units, for the geometry-origin base point (v5 S1).
+        ///
+        /// Three tiers, cheapest first:
+        ///  1. The base point does not come from the geometry at all (model origin, or a custom
+        ///     survey point) — <c>ComputeOffset</c> ignores this value entirely, so computing it is
+        ///     pure waste. Skipped: zero bounding-box reads.
+        ///  2. The walk already accumulated it (v5 S1) — free.
+        ///  3. Anything else (a section-box scope, a batch union — results the walk post-processed)
+        ///     falls back to the original per-item pass, which is still correct, just not free.
+        /// </summary>
+        private static (double x, double y, double z) ScopeMin(List<ModelItem> items, CoordOptions coords, Action<int>? onProgress)
+        {
+            if (coords.Mode != BasePointMode.GeometryOrigin) return (0, 0, 0);
+
+            long t = ET.Now;
+            try
+            {
+                if (ItemCollector.MinCornerValid) return ItemCollector.LastMinCorner;
+                return ItemCollector.ScopeMinCorner(items, onProgress);
+            }
+            finally { ET.MinCornerTicks += ET.Now - t; }
         }
 
         private CoordOptions BuildCoords() => new CoordOptions
@@ -1053,9 +1165,8 @@ namespace BIMCamel.UI
                 if (items == null) { TxtPreview.Text = "Pick a scope first."; return null; }
 
                 var rules = BuildSetRules();
-                SetStatus("Resolving mapping sets…"); PumpUi(Dispatcher);
-                var keyCache = rules.Count > 0 ? new Dictionary<ModelItem, string>() : null;
-                var maps = rules.Count > 0 ? ItemCollector.BuildSetMaps(doc, rules, CollectTick, keyCache) : new ItemCollector.SetMaps();
+                var maps = ResolveMaps(doc, rules);
+                var keyCache = _scan.Keys;
 
                 int mapped = 0, unmapped = 0, degraded = 0, classified = 0, walked = 0;
                 var byClass = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -1515,19 +1626,51 @@ namespace BIMCamel.UI
             sb.AppendLine($"Quantities  : {(s.QuantitiesWritten ? "computed (volume/area/length/width/height)" : "none")}");
             sb.AppendLine($"{(s.FileCount > 1 ? "Total size  " : "File size   ")}: {s.FileSizeBytes / 1024.0:N0} KB");
             sb.AppendLine($"Scan        : {scanMs:N0} ms  (tree walk + extents)");
+            // v5 S4: one Scan number could not say whether the tree walk, the set searches or the
+            // property sample was the slow half — so S1/S2/S3 could only ever be plausible. The
+            // decomposition is what makes them checkable on a real model.
+            {
+                double ct = ET.Ms(ET.CollectTicks), sr = ET.Ms(ET.SetResolveTicks);
+                double mc = ET.Ms(ET.MinCornerTicks), ps = ET.Ms(ET.PropScanTicks);
+                double sother = scanMs - ct - sr - mc - ps; if (sother < 0) sother = 0;
+                sb.AppendLine($"  Collect     : {ct,10:N0} ms   ({ET.NodesVisited:N0} nodes)");
+                sb.AppendLine($"  Set resolve : {sr,10:N0} ms   ({ET.SetsResolved:N0} rule(s))");
+                sb.AppendLine($"  Min corner  : {mc,10:N0} ms" + (ET.MinCornerTicks == 0 ? "   (folded into the walk, or not needed)" : ""));
+                if (ET.PropScanTicks > 0) sb.AppendLine($"  Prop scan   : {ps,10:N0} ms   ({ET.SampledItems:N0} sampled)");
+                sb.AppendLine($"  Other       : {sother,10:N0} ms");
+            }
             sb.AppendLine($"Export      : {ms:N0} ms  ({tps:N0} tris/s)");
             double com = ET.Ms(ET.ComConvertTicks), rd = ET.Ms(ET.ReadTicks), hv = ET.Ms(ET.HarvestTicks), wl = ET.Ms(ET.WeldTicks);
-            double gw = ET.Ms(ET.GeomWriteTicks), pw = ET.Ms(ET.PropWriteTicks), qw = ET.Ms(ET.QtyTicks), ui = ET.Ms(ET.UiTicks);
-            double other = ms - com - rd - hv - wl - gw - pw - qw - ui; if (other < 0) other = 0;
-            sb.AppendLine($"  COM convert : {com,10:N0} ms   ({ET.ComConverts:N0} items)");
+            double qc = ET.Ms(ET.QtyTicks);
+            double gw = ET.Ms(ET.GeomWriteTicks), pw = ET.Ms(ET.PropWriteTicks), qw = ET.Ms(ET.QtyWriteTicks), ui = ET.Ms(ET.UiTicks);
+            // Read and write now overlap on two threads (v5 E7), so the parts no longer sum to the
+            // wall clock — the read side IS the wall clock and the write side hides inside it. The
+            // buckets are still each thread's own honest total; "Other" is what the read thread did
+            // outside them, never a negative remainder.
+            double readSide = com + rd + hv + wl + qc + ui;
+            double other = ms - readSide; if (other < 0) other = 0;
+            sb.AppendLine($"  COM convert : {com,10:N0} ms   ({ET.ComConverts:N0} conversion(s))");
             sb.AppendLine($"  Geometry rd : {rd,10:N0} ms   ({ET.Fragments:N0} fragments)");
             sb.AppendLine($"  Prop harvest: {hv,10:N0} ms");
             sb.AppendLine($"  Weld        : {wl,10:N0} ms");
+            sb.AppendLine($"  Qty compute : {qc,10:N0} ms");
+            sb.AppendLine($"  UI pump     : {ui,10:N0} ms   ({ET.UiPumps:N0} pumps)");
+            sb.AppendLine($"  Other (read): {other,10:N0} ms");
+            sb.AppendLine($"  ── writer thread (overlapped) ──");
             sb.AppendLine($"  Geom write  : {gw,10:N0} ms");
             sb.AppendLine($"  Prop write  : {pw,10:N0} ms");
-            sb.AppendLine($"  Qty compute : {qw,10:N0} ms");
-            sb.AppendLine($"  UI pump     : {ui,10:N0} ms   ({ET.UiPumps:N0} DoEvents)");
-            sb.AppendLine($"  Other       : {other,10:N0} ms");
+            sb.AppendLine($"  Qty write   : {qw,10:N0} ms");
+            if (ET.GeomReadsSkipped > 0 || ET.GeomVerifications > 0)
+            {
+                sb.AppendLine($"  ── fast instancing (v5 E1) ──");
+                sb.AppendLine($"  Reads skipped : {ET.GeomReadsSkipped,8:N0} fragment(s)");
+                sb.AppendLine($"  Verified      : {ET.GeomVerifications,8:N0} sample(s), {ET.GeomMismatches:N0} mismatch(es)");
+                if (ET.GeomEvictions > 0) sb.AppendLine($"  Evicted       : {ET.GeomEvictions,8:N0} (memory budget)");
+                if (ET.GeomMismatches > 0)
+                    sb.AppendLine("  ⚠  A mismatch means the type+size guess was WRONG for that shape. Those "
+                                + "candidates were dropped and re-read, so this file is correct — but the "
+                                + "assumption does not hold on this model, and Fast instancing should be off.");
+            }
             sb.AppendLine($"Peak heap   : {peakHeap / 1048576.0:N0} MB  (start {baseHeap / 1048576.0:N0} MB)");
             sb.AppendLine($"Validation  : {validation}");
             sb.AppendLine($"Exported    : {DateTime.Now:yyyy-MM-dd HH:mm}");
@@ -1622,6 +1765,7 @@ namespace BIMCamel.UI
             Quality = CmbQuality.SelectedIndex, BasePoint = CmbBasePoint.SelectedIndex,
             CustomE = ParseD(TxtE.Text), CustomN = ParseD(TxtN.Text), CustomElev = ParseD(TxtElev.Text), Rotation = ParseD(TxtRot.Text),
             Georef = ChkGeoref.IsChecked == true, Props = ChkProps.IsChecked == true, Materials = ChkMaterials.IsChecked == true, Instancing = ChkInstancing.IsChecked == true,
+            FastInstancing = ChkFastInstancing.IsChecked == true,
             Validate = ChkValidate.IsChecked == true, Quantities = ChkQuantities.IsChecked == true, Mapping = GridToText(),
             Crs = (TxtCrs.Text ?? "").Trim(), SurveyE = ParseD(TxtSurveyE.Text), SurveyN = ParseD(TxtSurveyN.Text), SurveyElev = ParseD(TxtSurveyElev.Text),
             Roles = RolesToText(), ParamRules = ParamRulesToText(),
@@ -1644,6 +1788,7 @@ namespace BIMCamel.UI
             TxtE.Text = Inv(p.CustomE); TxtN.Text = Inv(p.CustomN); TxtElev.Text = Inv(p.CustomElev); TxtRot.Text = Inv(p.Rotation);
             ChkGeoref.IsChecked = p.Georef; ChkProps.IsChecked = p.Props; ChkMaterials.IsChecked = p.Materials;
             ChkInstancing.IsChecked = p.Instancing; ChkValidate.IsChecked = p.Validate; ChkQuantities.IsChecked = p.Quantities;
+            ChkFastInstancing.IsChecked = p.FastInstancing;
             TxtCrs.Text = p.Crs ?? ""; TxtSurveyE.Text = Inv(p.SurveyE); TxtSurveyN.Text = Inv(p.SurveyN); TxtSurveyElev.Text = Inv(p.SurveyElev);
             if (!string.IsNullOrWhiteSpace(p.ProjectName)) TxtProject.Text = p.ProjectName;
             if (!string.IsNullOrWhiteSpace(p.SiteName)) TxtSite.Text = p.SiteName;

@@ -25,6 +25,9 @@ namespace BIMCamel.Profiles
         [DataMember] public bool Props = true;
         [DataMember] public bool Materials = true;
         [DataMember] public bool Instancing;
+        /// <summary>v5 E1. Defaults to false on load of an older profile, which is the safe
+        /// direction: an experimental read optimisation should never arrive switched on.</summary>
+        [DataMember] public bool FastInstancing;
         [DataMember] public bool Validate;
         [DataMember] public bool Quantities = true;
         [DataMember] public string Mapping = "";

@@ -23,31 +23,133 @@ namespace BIMCamel.Collect
         /// does not silently become "I shipped a deliverable without it".</summary>
         public static int HiddenSkipped;
 
-        public static List<ModelItem> GetAllLeafItemsWithGeometry(Document doc, Action<int>? onProgress = null)
+        // ── min corner gathered BY the walk (v5 S1) ───────────────────────────────
+        // ScopeMinCorner used to be a second full pass calling BoundingBox() on every collected
+        // leaf. The walk already visits each of those leaves, so it accumulates the corner as it
+        // goes and the second pass disappears. Statics for the same reason HiddenSkipped is one:
+        // UI-thread only, set by the walk, read by the caller immediately afterwards.
+        //
+        // Valid ONLY when the returned list is exactly what the walk collected. A scope that
+        // post-filters the walk's result (the section box) or unions several walks (batch) must
+        // clear the flag, because the corner would then cover items the export will not write.
+        public static bool MinCornerValid;
+        private static double _mnX, _mnY, _mnZ;
+
+        /// <summary>Min corner of the last walk, in model units. Only meaningful while
+        /// <see cref="MinCornerValid"/> is true.</summary>
+        public static (double x, double y, double z) LastMinCorner =>
+            _mnX == double.MaxValue ? (0, 0, 0) : (_mnX, _mnY, _mnZ);
+
+        /// <summary>Carries the walk's mutable state so the recursion keeps a short signature.</summary>
+        private sealed class Walk
         {
+            public readonly List<ModelItem> Result;
+            public readonly bool IncludeHidden;
+            public readonly Action<int>? OnProgress;
+            public readonly bool WantMin;
+            public int Visited;
+            public Walk(List<ModelItem> result, bool includeHidden, Action<int>? onProgress, bool wantMin)
+            { Result = result; IncludeHidden = includeHidden; OnProgress = onProgress; WantMin = wantMin; }
+        }
+
+        private static void BeginWalk() { MinCornerValid = true; _mnX = _mnY = _mnZ = double.MaxValue; }
+
+        /// <summary>Publish what the walk cost, for the scan decomposition on the report (v5 S4).</summary>
+        private static void EndWalk(Walk w) { Geometry.ExportTiming.NodesVisited += w.Visited; }
+
+        public static List<ModelItem> GetAllLeafItemsWithGeometry(Document doc, Action<int>? onProgress = null, bool wantMinCorner = false)
+        {
+            BeginWalk();
             var result = new List<ModelItem>();
-            int visited = 0;
             if (doc != null)
-                CollectLeaves(doc.Models.RootItems, result, includeHidden: true, onProgress, ref visited);
+            {
+                var w = new Walk(result, true, onProgress, wantMinCorner);
+                CollectLeaves(doc.Models.RootItems, w);
+                EndWalk(w);
+            }
             return result;
         }
 
-        public static List<ModelItem> GetVisibleLeafItemsWithGeometry(Document doc, Action<int>? onProgress = null)
+        public static List<ModelItem> GetVisibleLeafItemsWithGeometry(Document doc, Action<int>? onProgress = null, bool wantMinCorner = false)
         {
             HiddenSkipped = 0;
+            BeginWalk();
             var result = new List<ModelItem>();
-            int visited = 0;
             if (doc != null)
-                CollectLeaves(doc.Models.RootItems, result, includeHidden: false, onProgress, ref visited);
+            {
+                var w = new Walk(result, false, onProgress, wantMinCorner);
+                CollectLeaves(doc.Models.RootItems, w);
+                EndWalk(w);
+            }
             return result;
         }
 
         /// <summary>Resolve any selection of items down to their geometry leaves.</summary>
-        public static List<ModelItem> ResolveLeaves(IEnumerable<ModelItem> items, Action<int>? onProgress = null)
+        public static List<ModelItem> ResolveLeaves(IEnumerable<ModelItem> items, Action<int>? onProgress = null, bool wantMinCorner = false)
+        {
+            BeginWalk();
+            var result = new List<ModelItem>();
+            var w = new Walk(result, true, onProgress, wantMinCorner);
+            CollectLeaves(items, w);
+            EndWalk(w);
+            return result;
+        }
+
+        /// <summary>
+        /// Geometry leaves, but stopping as soon as <paramref name="cap"/> of them are in hand
+        /// (v5 S3). The mapping property scan reads a sample of ~1,000 items and never needs the
+        /// full leaf list — it used to pay a whole-model traversal to obtain one.
+        ///
+        /// SPREAD, and its honest limit. Filling the cap out of the first model of a federation
+        /// would describe one discipline, and the roles this proposes are only as good as the
+        /// spread of properties it saw — the same reason <c>Spread</c> strides instead of taking a
+        /// head. So the budget is divided fairly across the roots, and again across each root's own
+        /// top-level children (levels, systems, zones — whatever the source grouped by), so the
+        /// sample lands in several places in each model.
+        ///
+        /// It is still a HEAD sample within each of those branches, which the full walk was not.
+        /// That is the price of not traversing the model: a branch whose property schema changes
+        /// deep inside it can be described by its first few elements. For proposing role mappings —
+        /// which the user reviews before exporting — that trade is worth it; nothing here decides
+        /// what gets exported.
+        /// </summary>
+        public static List<ModelItem> CollectSample(Document doc, int cap, Action<int>? onProgress = null)
         {
             var result = new List<ModelItem>();
-            int visited = 0;
-            CollectLeaves(items, result, includeHidden: true, onProgress, ref visited);
+            if (doc == null || cap <= 0) return result;
+            HiddenSkipped = 0;
+            BeginWalk();
+            MinCornerValid = false;   // a sample is not the scope; never let it set a base point
+
+            // The branches the budget is split across: each root's children, or the root itself
+            // when it has none. Disjoint subtrees, so the results can never duplicate and no
+            // dedup set (and no O(n^2) ModelItem comparison) is needed.
+            var branches = new List<ModelItem>();
+            try
+            {
+                foreach (var root in doc.Models.RootItems)
+                {
+                    int before = branches.Count;
+                    foreach (var child in root.Children) branches.Add(child);
+                    if (branches.Count == before) branches.Add(root);
+                }
+            }
+            catch { /* odd tree — fall back to whatever we gathered */ }
+            if (branches.Count == 0) return result;
+
+            // Each branch is walked exactly once, for its own share of the budget. Branches with
+            // fewer leaves than their share simply leave the sample short of the cap — deliberately
+            // not topped up from the others: re-walking a drained branch would re-collect the very
+            // same leading leaves, and a sample of 800 well-spread items beats 1,000 with 200
+            // duplicates in it.
+            var w = new Walk(result, false, onProgress, false);
+            int share = Math.Max(1, cap / branches.Count);
+            foreach (var b in branches)
+            {
+                if (result.Count >= cap) break;
+                CollectFromCapped(b, w, Math.Min(cap, result.Count + share));
+            }
+            EndWalk(w);
             return result;
         }
 
@@ -68,8 +170,12 @@ namespace BIMCamel.Collect
 
             HiddenSkipped = 0;
             var leaves = new List<ModelItem>();
-            int visited = 0;
-            CollectLeaves(doc.Models.RootItems, leaves, includeHidden: false, onProgress, ref visited);
+            var boxWalk = new Walk(leaves, false, onProgress, false);
+            CollectLeaves(doc.Models.RootItems, boxWalk);
+            EndWalk(boxWalk);
+            // The result is a FILTERED subset of what the walk collected, so the walk's min corner
+            // would cover items this scope excludes. Caller must fall back to ScopeMinCorner.
+            MinCornerValid = false;
             return leaves.Where(i => OverlapsBox(i, box)).ToList();
         }
 
@@ -97,16 +203,21 @@ namespace BIMCamel.Collect
         }
 
         /// <summary>Geometry leaves resolved from a saved selection or search set.</summary>
-        public static List<ModelItem> GetItemsFromSet(Document doc, SelectionSet set, Action<int>? onProgress = null)
+        public static List<ModelItem> GetItemsFromSet(Document doc, SelectionSet set, Action<int>? onProgress = null, bool wantMinCorner = false)
         {
             var result = new List<ModelItem>();
+            BeginWalk();
             try
             {
                 ModelItemCollection? mic =
                     set.HasExplicitModelItems ? set.ExplicitModelItems :
                     set.Search != null ? set.Search.FindAll(doc, false) : null;
-                int visited = 0;
-                if (mic != null) CollectLeaves(mic, result, includeHidden: true, onProgress, ref visited);
+                if (mic != null)
+                {
+                    var w = new Walk(result, true, onProgress, wantMinCorner);
+                    CollectLeaves(mic, w);
+                    EndWalk(w);
+                }
             }
             // A Stop request travels out through onProgress, and this catch-all
             // would have turned it into "this set resolved to nothing" — silently
@@ -248,10 +359,10 @@ namespace BIMCamel.Collect
         // Walks the model tree on the UI thread (the API is STA). On large models this is slow, so
         // it reports nodes visited every 1024 so the caller can pump the message loop and the UI
         // does not appear frozen (v3 follow-up: the pre-dialog freeze was this walk with no feedback).
-        private static void CollectLeaves(IEnumerable<ModelItem> items, List<ModelItem> result, bool includeHidden, Action<int>? onProgress, ref int visited)
+        private static void CollectLeaves(IEnumerable<ModelItem> items, Walk w)
         {
             foreach (var item in items)
-                CollectFrom(item, result, includeHidden, onProgress, ref visited);
+                CollectFrom(item, w);
         }
 
         /// <summary>
@@ -269,26 +380,74 @@ namespace BIMCamel.Collect
         /// because a node is only taken when its descendants contributed nothing — so a multibody
         /// part still exports as its separate child bodies, exactly as before.
         /// </summary>
-        private static bool CollectFrom(ModelItem item, List<ModelItem> result, bool includeHidden, Action<int>? onProgress, ref int visited)
+        private static bool CollectFrom(ModelItem item, Walk w)
         {
-            visited++;
-            if ((visited & 0x3FF) == 0) onProgress?.Invoke(visited);
+            w.Visited++;
+            if ((w.Visited & 0x3FF) == 0) w.OnProgress?.Invoke(w.Visited);
 
-            if (!includeHidden && item.IsHidden) { HiddenSkipped++; return false; }
+            if (!w.IncludeHidden && item.IsHidden) { HiddenSkipped++; return false; }
 
             bool any = false, hadChildren = false;
             foreach (var child in item.Children)
             {
                 hadChildren = true;
-                if (CollectFrom(child, result, includeHidden, onProgress, ref visited)) any = true;
+                if (CollectFrom(child, w)) any = true;
             }
 
             if (any) return true;              // descendants covered this subtree's geometry
             if (!item.HasGeometry) return false;
 
-            result.Add(item);
+            Take(item, w);
             if (hadChildren) Geometry.ExportIssues.BranchGeometryRecovered++;
             return true;
+        }
+
+        /// <summary>As <see cref="CollectFrom"/>, but abandons the subtree once the result list has
+        /// reached <paramref name="limit"/> items (v5 S3 sampling).</summary>
+        private static bool CollectFromCapped(ModelItem item, Walk w, int limit)
+        {
+            if (w.Result.Count >= limit) return false;
+
+            w.Visited++;
+            if ((w.Visited & 0x3FF) == 0) w.OnProgress?.Invoke(w.Visited);
+
+            if (!w.IncludeHidden && item.IsHidden) { HiddenSkipped++; return false; }
+
+            bool any = false, hadChildren = false;
+            foreach (var child in item.Children)
+            {
+                hadChildren = true;
+                if (CollectFromCapped(child, w, limit)) any = true;
+                if (w.Result.Count >= limit) return true;
+            }
+
+            if (any) return true;
+            if (!item.HasGeometry) return false;
+
+            Take(item, w);
+            if (hadChildren) Geometry.ExportIssues.BranchGeometryRecovered++;
+            return true;
+        }
+
+        /// <summary>
+        /// Accept one geometry leaf, folding its bounding box into the running min corner when the
+        /// caller asked for one (v5 S1). This is the pass that <c>ScopeMinCorner</c> used to make
+        /// separately over the finished list — same BoundingBox() call, same items, same result,
+        /// one traversal instead of two.
+        /// </summary>
+        private static void Take(ModelItem item, Walk w)
+        {
+            w.Result.Add(item);
+            if (!w.WantMin) return;
+            try
+            {
+                var bb = item.BoundingBox();
+                if (bb == null) return;
+                if (bb.Min.X < _mnX) _mnX = bb.Min.X;
+                if (bb.Min.Y < _mnY) _mnY = bb.Min.Y;
+                if (bb.Min.Z < _mnZ) _mnZ = bb.Min.Z;
+            }
+            catch { /* skip odd nodes, exactly as ScopeMinCorner did */ }
         }
 
         // ── Section box resolution ───────────────────────────────────────────────
