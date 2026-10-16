@@ -23,6 +23,9 @@ namespace BIMCamel.Ifc
         public double RotationDeg;
         public bool Instanced;
         public int UniqueGeometries, InstanceCount;
+        /// <summary>Element-level instancing: elements whose parts were merged into one shape, and
+        /// how many distinct merged shapes that needed (the rest reuse one already written).</summary>
+        public int MergedElements, MergedShapes;
         public int StoreyCount, TypeCount, MaterialCount, ClassificationCount;
         public bool QuantitiesWritten;
         public int PsetUnique, PsetRefs; // F3 dedup: distinct property sets written vs element→pset assignments
@@ -126,7 +129,7 @@ namespace BIMCamel.Ifc
         public static ExportSummary ExportInstanced(
             string basePath, IfcSchema schema, IEnumerable<InstancedElement> elements, string author, double unitScale, CoordOptions coords, bool computeQuantities, int coordDecimals,
             (double x, double y, double z) geomMin, SpatialNames? names = null, long splitLimitBytes = 0, ExportSummary? summary = null,
-            bool shareTypeProps = false)
+            bool shareTypeProps = false, int mergePartsAbove = 0)
         {
             names ??= new SpatialNames();
             summary ??= new ExportSummary();
@@ -155,7 +158,7 @@ namespace BIMCamel.Ifc
                     doc = new Doc(PartPath(basePath, ++part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest, shareTypeProps);
                     needRoll = false;
                 }
-                WriteInstancedElement(doc, schema, meshWriter, el, identity, minX, minY, minZ, computeQuantities, index);
+                WriteInstancedElement(doc, schema, meshWriter, el, identity, minX, minY, minZ, computeQuantities, index, mergePartsAbove);
                 if (split && doc.W.BytesWritten >= splitLimitBytes) needRoll = true;
             }
             doc.Finish(schema, computeQuantities, summary);
@@ -190,7 +193,8 @@ namespace BIMCamel.Ifc
             public readonly TypeShare Shared;                                      // v6 Z3
             public readonly Dictionary<(long, long, long), int> DirCache = new();   // instanced: shared IfcDirection
             public readonly Dictionary<DedupKey, GeomDef> Geom = new();             // instanced: per-file dedup
-            public int Elem, Tris, Insts, UniqueGeom;
+            public readonly Dictionary<DedupKey, GeomDef> ElemGeom = new();         // element-level: merged shapes
+            public int Elem, Tris, Insts, UniqueGeom, MergedElems, MergedShapes;
             public int Mapped, ProxyUnmapped, ProxyDegraded;
             public readonly Dictionary<string, int> ByEntity = new(StringComparer.Ordinal);
             private readonly string _path;
@@ -245,6 +249,7 @@ namespace BIMCamel.Ifc
                 sum.Files.Add(_path);
                 sum.ElementCount += Elem; sum.TriangleCount += Tris;
                 sum.InstanceCount += Insts; sum.UniqueGeometries += UniqueGeom;
+                sum.MergedElements += MergedElems; sum.MergedShapes += MergedShapes;
                 sum.MappedCount += Mapped; sum.ProxyUnmapped += ProxyUnmapped; sum.ProxyDegraded2x3 += ProxyDegraded;
                 foreach (var kv in ByEntity) { sum.ByEntity.TryGetValue(kv.Key, out int n); sum.ByEntity[kv.Key] = n + kv.Value; }
                 if (Storeys.Count > sum.StoreyCount) sum.StoreyCount = Storeys.Count;
@@ -295,7 +300,7 @@ namespace BIMCamel.Ifc
             d.Tris += el.Indices.Count / 3; d.Elem++;
         }
 
-        private static void WriteInstancedElement(Doc d, IfcSchema schema, IMeshWriter mw, InstancedElement el, CoordTransform identity, double minX, double minY, double minZ, bool computeQuantities, int index)
+        private static void WriteInstancedElement(Doc d, IfcSchema schema, IMeshWriter mw, InstancedElement el, CoordTransform identity, double minX, double minY, double minZ, bool computeQuantities, int index, int mergePartsAbove)
         {
             var w = d.W;
             // Defence in depth: an instance whose mesh has no triangles would emit an empty
@@ -312,6 +317,10 @@ namespace BIMCamel.Ifc
             // size and volume than the very same element exported with instancing off.
             double vol = 0, area = 0;
             var box = new WorldBox();
+            var parts = el.Instances.Where(i => i.Mesh != null && i.Mesh.Indices.Count > 0).ToList();
+            if (mergePartsAbove > 0 && parts.Count > mergePartsAbove)
+                WriteMergedParts(d, schema, mw, parts, identity, minX, minY, minZ, computeQuantities, mapped, ref vol, ref area, ref box);
+            else
             foreach (var inst in el.Instances)
             {
                 if (inst.Mesh == null || inst.Mesh.Indices.Count == 0) continue;
@@ -381,6 +390,151 @@ namespace BIMCamel.Ifc
             d.Manifest.Put(guid, hm.Value, el.Name, el.TypeName);
 
             d.Elem++;
+        }
+
+        /// <summary>
+        /// Element-level instancing. An element made of many fragments (a stadium seat of ~1,440
+        /// parts) used to get one IfcMappedItem per fragment, so a viewer had to place millions of
+        /// tiny copies. Here the element's parts are baked into ONE shape in the frame of its first
+        /// part, keyed by the parts' content keys plus their placements relative to that first part.
+        /// Every further element with the same key — the next seat, rotated and moved — reuses that
+        /// shape through a single IfcMappedItem. The parts' own relative transforms are baked into
+        /// the vertices exactly, so nothing is lost to the operator's uniform-scale form.
+        /// </summary>
+        private static void WriteMergedParts(Doc d, IfcSchema schema, IMeshWriter mw, List<MeshInstance> parts, CoordTransform identity,
+            double minX, double minY, double minZ, bool computeQuantities, List<int> mapped, ref double vol, ref double area, ref WorldBox box)
+        {
+            var w = d.W;
+            var anchor = Anchor(parts[0], out double s);
+            var rel = new double[parts.Count][];   // per part: 9 rotation (column-major) + 3 translation, anchor frame
+            const ulong P0 = 1099511628211UL, P1 = 1099511628219UL;
+            ulong h0 = 14695981039346656037UL, h1 = 1469598103934665600UL ^ 0x9E3779B97F4A7C15UL;
+            int tris = 0;
+            for (int p = 0; p < parts.Count; p++)
+            {
+                var r = RelativeTo(anchor.Rotation, s, anchor.Translation, parts[p]);
+                rel[p] = r;
+                var k = parts[p].Key;
+                Mix(ref h0, ref h1, k.H0, P0, P1); Mix(ref h0, ref h1, k.H1, P0, P1);
+                Mix(ref h0, ref h1, (ulong)(uint)k.V, P0, P1); Mix(ref h0, ref h1, (ulong)(uint)k.T, P0, P1);
+                // Rotation to 1e-6, translation to 0.1 mm: the same grain as the mesh keys.
+                for (int i = 0; i < 9; i++) Mix(ref h0, ref h1, (ulong)(long)Math.Round(r[i] * 1e6), P0, P1);
+                for (int i = 9; i < 12; i++) Mix(ref h0, ref h1, (ulong)(long)Math.Round(r[i] * 1e4), P0, P1);
+                tris += k.T;
+            }
+            var sig = new DedupKey(h0, h1, parts.Count, tris);
+
+            if (!d.ElemGeom.TryGetValue(sig, out var gd))   // first element of this shape IN THIS FILE
+            {
+                long tg = ExportTiming.Now;
+                // One face set per colour, so the parts keep their colours inside the one shape.
+                var byColour = new Dictionary<long, (ElementMesh mesh, Material? mat)>();
+                var all = computeQuantities ? new ElementMesh() : null;
+                for (int p = 0; p < parts.Count; p++)
+                {
+                    var lm = parts[p].Mesh;
+                    long ck = ColourKey(lm.Material);
+                    if (!byColour.TryGetValue(ck, out var g)) { g = (new ElementMesh(), lm.Material); byColour[ck] = g; }
+                    AppendTransformed(g.mesh, lm, rel[p]);
+                    if (all != null) AppendTransformed(all, lm, rel[p]);
+                }
+                var items = new List<int>(byColour.Count);
+                foreach (var g in byColour.Values)
+                {
+                    int item = mw.WriteMesh(w, g.mesh, identity);
+                    if (g.mat != null) WriteStyle(w, schema, item, g.mat);
+                    items.Add(item);
+                }
+                int rep0 = WriteShapeRepItems(w, d.S.Ctx, mw.RepresentationType, items);
+                int mapOrigin = w.Begin("IFCAXIS2PLACEMENT3D");
+                w.RefTok(d.S.OriginPt); w.Tok(",$,$"); w.End();
+                int repMap = w.Begin("IFCREPRESENTATIONMAP");
+                w.RefTok(mapOrigin); w.Sep(); w.RefTok(rep0); w.End();
+                ExportTiming.GeomWriteTicks += ExportTiming.Now - tg;
+                long tq0 = ExportTiming.Now;
+                var qy = all != null ? MeshQuantities.Compute(all.Vertices, all.Indices, 1.0) : default;
+                ExportTiming.QtyWriteTicks += ExportTiming.Now - tq0;
+                gd = new GeomDef { RepMapId = repMap, Qty = qy, Tri = tris };
+                d.ElemGeom[sig] = gd; d.MergedShapes++;
+            }
+
+            int cto = WriteTransform(w, anchor, minX, minY, minZ, d.DirCache);
+            mapped.Add(WriteMappedItem(w, gd.RepMapId, cto));
+            if (computeQuantities)
+            {
+                vol += gd.Qty.Volume * s * s * s;
+                area += gd.Qty.Area * s * s;
+                box.AddTransformed(gd.Qty, anchor.Rotation, anchor.Translation, minX, minY, minZ);
+            }
+            d.Tris += gd.Tri; d.Insts++; d.MergedElems++;
+        }
+
+        private static void Mix(ref ulong h0, ref ulong h1, ulong q, ulong p0, ulong p1)
+        {
+            unchecked { h0 = (h0 ^ q) * p0; h1 = (h1 ^ q) * p1; }
+        }
+
+        private static long ColourKey(Material? m) => m == null ? -1 :
+            ((long)Math.Round(m.R * 255) << 24) | ((long)Math.Round(m.G * 255) << 16) |
+            ((long)Math.Round(m.B * 255) << 8) | (long)Math.Round(m.Transparency * 255);
+
+        /// <summary>
+        /// The placement a merged shape is written with: the first part's translation, and its
+        /// rotation when that is a proper rotation with uniform scale — which is exactly what an
+        /// IfcCartesianTransformationOperator3D can carry. Anything else (a mirror, a shear) falls
+        /// back to translation only and the orientation is baked into the vertices instead.
+        /// </summary>
+        private static MeshInstance Anchor(MeshInstance first, out double scale)
+        {
+            var r = first.Rotation;
+            double sx = Math.Sqrt(r[0] * r[0] + r[1] * r[1] + r[2] * r[2]);
+            double sy = Math.Sqrt(r[3] * r[3] + r[4] * r[4] + r[5] * r[5]);
+            double sz = Math.Sqrt(r[6] * r[6] + r[7] * r[7] + r[8] * r[8]);
+            double sm = (sx + sy + sz) / 3.0;
+            var a = new MeshInstance { Translation = (double[])first.Translation.Clone() };
+            bool ok = sm > 1e-12 && Math.Abs(sx - sm) < 1e-6 * sm && Math.Abs(sy - sm) < 1e-6 * sm && Math.Abs(sz - sm) < 1e-6 * sm;
+            if (ok)
+            {
+                double dxy = (r[0] * r[3] + r[1] * r[4] + r[2] * r[5]) / (sm * sm);
+                double dxz = (r[0] * r[6] + r[1] * r[7] + r[2] * r[8]) / (sm * sm);
+                double dyz = (r[3] * r[6] + r[4] * r[7] + r[5] * r[8]) / (sm * sm);
+                double det = r[0] * (r[4] * r[8] - r[5] * r[7]) - r[3] * (r[1] * r[8] - r[2] * r[7]) + r[6] * (r[1] * r[5] - r[2] * r[4]);
+                ok = Math.Abs(dxy) < 1e-6 && Math.Abs(dxz) < 1e-6 && Math.Abs(dyz) < 1e-6 && det > 0;
+            }
+            if (ok) { a.Rotation = (double[])r.Clone(); scale = sm; }
+            else { a.Rotation = new double[] { 1, 0, 0, 0, 1, 0, 0, 0, 1 }; scale = 1.0; }
+            return a;
+        }
+
+        /// <summary>A part's transform in the anchor's frame: A⁻¹·T, where A = scale·Q (Q
+        /// orthonormal), so A⁻¹ = Qᵀ/scale. Returns 9 rotation values (column-major) + 3 translation.</summary>
+        private static double[] RelativeTo(double[] aRot, double scale, double[] aT, MeshInstance part)
+        {
+            double inv = 1.0 / (scale * scale);   // aRot columns have length = scale: Qᵀ/s = aRotᵀ/s²
+            var o = new double[12];
+            var pr = part.Rotation;
+            for (int c = 0; c < 3; c++)
+                for (int row = 0; row < 3; row++)
+                    o[c * 3 + row] = (aRot[row * 3] * pr[c * 3] + aRot[row * 3 + 1] * pr[c * 3 + 1] + aRot[row * 3 + 2] * pr[c * 3 + 2]) * inv;
+            double tx = part.Translation[0] - aT[0], ty = part.Translation[1] - aT[1], tz = part.Translation[2] - aT[2];
+            for (int row = 0; row < 3; row++)
+                o[9 + row] = (aRot[row * 3] * tx + aRot[row * 3 + 1] * ty + aRot[row * 3 + 2] * tz) * inv;
+            return o;
+        }
+
+        private static void AppendTransformed(ElementMesh into, LocalMesh lm, double[] t)
+        {
+            int baseV = into.Vertices.Count / 3;
+            var v = lm.Vertices;
+            for (int i = 0; i + 2 < v.Count; i += 3)
+            {
+                double x = v[i], y = v[i + 1], z = v[i + 2];
+                into.Vertices.Add(t[0] * x + t[3] * y + t[6] * z + t[9]);
+                into.Vertices.Add(t[1] * x + t[4] * y + t[7] * z + t[10]);
+                into.Vertices.Add(t[2] * x + t[5] * y + t[8] * z + t[11]);
+            }
+            var idx = lm.Indices;
+            for (int i = 0; i < idx.Count; i++) into.Indices.Add(idx[i] + baseV);
         }
 
 
@@ -1177,6 +1331,20 @@ namespace BIMCamel.Ifc
             w.RefTok(ctx); w.Sep(); w.Tok("'Body'"); w.Sep();
             w.Tok('\''); w.Tok(repType); w.Tok('\''); w.Sep();
             w.Tok('('); w.RefTok(item); w.Tok(')');
+            w.End();
+            return id;
+        }
+
+        /// <summary>IFCSHAPEREPRESENTATION(#ctx,'Body','&lt;type&gt;',(#a,#b,…)) — a merged element's
+        /// face sets, one per colour.</summary>
+        private static int WriteShapeRepItems(StreamingStepWriter w, int ctx, string repType, List<int> items)
+        {
+            int id = w.Begin("IFCSHAPEREPRESENTATION");
+            w.RefTok(ctx); w.Sep(); w.Tok("'Body'"); w.Sep();
+            w.Tok('\''); w.Tok(repType); w.Tok('\''); w.Sep();
+            w.Tok('(');
+            for (int i = 0; i < items.Count; i++) { if (i > 0) w.Sep(); w.RefTok(items[i]); }
+            w.Tok(')');
             w.End();
             return id;
         }

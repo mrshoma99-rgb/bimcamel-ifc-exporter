@@ -28,6 +28,13 @@ namespace BIMCamel.Profiles
         /// <summary>v5 E1. Defaults to false on load of an older profile, which is the safe
         /// direction: an experimental read optimisation should never arrive switched on.</summary>
         [DataMember] public bool FastInstancing;
+        /// <summary>Element-level instancing. Defaults TRUE for a profile written before it existed:
+        /// without it a many-part element writes one mapped item per fragment.</summary>
+        [DataMember] public bool MergeParts = true;
+
+        // DataContract deserialization runs no constructor or field initializer, so the default
+        // above only holds for a new profile. This makes it hold for an older one too.
+        [OnDeserializing] private void SetMergeDefault(StreamingContext _) { MergeParts = true; }
 
         // ── v6 file size. Zip and SkipEmptyProps default TRUE for a profile written before v6,
         // because they are pure wins; the two that change what a recipient sees default FALSE.

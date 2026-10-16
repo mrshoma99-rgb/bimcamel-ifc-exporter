@@ -27,7 +27,10 @@ export — BIMCamel fills that gap without the slowness and setup friction of th
 - **Streaming, memory-bounded engine.** Exports huge models without the out-of-memory crashes that
   plague naïve exporters — peak memory stays bounded (a few hundred MB) regardless of model size.
 - **Geometry instancing.** Repeated parts (bolts, fittings…) are written once as
-  `IfcRepresentationMap` + `IfcMappedItem`, so files stay small.
+  `IfcRepresentationMap` + `IfcMappedItem`, so files stay small. An element built from more than
+  16 parts is merged into one shape and identical elements share it ("Merge multi-part
+  elements", on by default): Autodesk's ice stadium sample went from 3,663,290 mapped items and
+  709 MB to 19,970 and 63 MB, with the same triangles.
 - **Dual-schema, every feature in both.** IFC4 (`IfcTriangulatedFaceSet`) and IFC2x3
   (`IfcFaceBasedSurfaceModel`), including the generic IFC2x3 MEP vocabulary
   (`IfcFlowSegment`/`IfcFlowController`/…).
