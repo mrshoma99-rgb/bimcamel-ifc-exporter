@@ -1730,6 +1730,9 @@ namespace BIMCamel.UI
             double other = ms - readSide; if (other < 0) other = 0;
             sb.AppendLine($"  COM convert : {com,10:N0} ms   ({ET.ComConverts:N0} conversion(s))");
             sb.AppendLine($"  Geometry rd : {rd,10:N0} ms   ({ET.Fragments:N0} fragments)");
+            if (ET.ForeignFragmentsSkipped > 0 || ET.OwnFragmentFallbacks > 0)
+                sb.AppendLine($"  Instances   : {ET.ForeignFragmentsSkipped:N0} fragment(s) of other instances left out" +
+                              (ET.OwnFragmentFallbacks > 0 ? $", {ET.OwnFragmentFallbacks:N0} path(s) kept all (no own match)" : ""));
             sb.AppendLine($"  Prop harvest: {hv,10:N0} ms");
             sb.AppendLine($"  Weld        : {wl,10:N0} ms");
             sb.AppendLine($"  Qty compute : {qc,10:N0} ms");

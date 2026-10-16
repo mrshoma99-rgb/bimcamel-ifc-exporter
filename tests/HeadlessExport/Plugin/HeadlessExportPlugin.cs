@@ -31,7 +31,7 @@ namespace BIMCamel.Tests
                 var schema = parameters.Length > 2 && parameters[2].Equals("IFC2X3", StringComparison.OrdinalIgnoreCase) ? IfcSchema.Ifc2x3 : IfcSchema.Ifc4;
                 double minMm = parameters.Length > 3 ? double.Parse(parameters[3], CultureInfo.InvariantCulture) : 0;
                 var doc = Autodesk.Navisworks.Api.Application.ActiveDocument;
-                ExportIssues.Reset();
+                ExportIssues.Reset(); ExportTiming.Reset();
                 var (unitScale, unitName) = ModelSurvey.UnitsToMetre(doc.Units);
                 var coords = new CoordOptions();
                 var names = new SpatialNames { LevelElevations = ModelSurvey.LevelElevations(doc, unitScale) };
@@ -58,6 +58,7 @@ namespace BIMCamel.Tests
                 sb.AppendLine($"instances   : {summary.InstanceCount}");
                 sb.AppendLine($"merged els  : {summary.MergedElements}");
                 sb.AppendLine($"merged shps : {summary.MergedShapes}");
+                sb.AppendLine($"fragments   : {ExportTiming.Fragments} read, {ExportTiming.ForeignFragmentsSkipped} foreign skipped, {ExportTiming.OwnFragmentFallbacks} fallback path(s)");
                 sb.AppendLine($"bytes       : {summary.FileSizeBytes}");
                 sb.AppendLine($"seconds     : {sw.Elapsed.TotalSeconds:0.0}");
                 sb.AppendLine($"validator   : {issues.Count} issue(s)");

@@ -27,6 +27,8 @@ namespace BIMCamel.Geometry
         public static long ComConverts;       // COM selection conversions performed
         public static long UiTicks;           // Dispatcher pump cost
         public static long UiPumps;           // number of pumps
+        public static long ForeignFragmentsSkipped; // other instances' fragments left out (ComScope.OwnFragments)
+        public static long OwnFragmentFallbacks;    // paths where no fragment matched, so all were kept
 
         // E1 (fast instancing): how well the pre-read identity guess held up.
         public static long GeomReadsSkipped;  // fragment reads avoided by a candidate-key hit
@@ -59,6 +61,7 @@ namespace BIMCamel.Geometry
             ComConvertTicks = ReadTicks = HarvestTicks = WeldTicks = QtyTicks = 0;
             Fragments = ComConverts = 0;
             UiTicks = 0; UiPumps = 0;
+            ForeignFragmentsSkipped = OwnFragmentFallbacks = 0;
             GeomReadsSkipped = GeomVerifications = GeomMismatches = GeomEvictions = 0;
             GeomWriteTicks = PropWriteTicks = QtyWriteTicks = 0;
             ValidateTicks = 0;
