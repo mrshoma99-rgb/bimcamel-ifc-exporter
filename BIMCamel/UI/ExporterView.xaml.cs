@@ -806,7 +806,8 @@ namespace BIMCamel.UI
                     Title = "Export IFC",
                     Filter = zip ? "Compressed IFC (*.ifczip)|*.ifczip|IFC file (*.ifc)|*.ifc"
                                  : "IFC file (*.ifc)|*.ifc|Compressed IFC (*.ifczip)|*.ifczip",
-                    FileName = $"{ModelBaseName(doc)}_{schemaName}.{ext}",
+                    FileName = $"{FileNameFor(ModelBaseName(doc), schemaName, null)}.{ext}",
+                    InitialDirectory = StartFolder(),
                     DefaultExt = ext
                 };
                 if (sfd.ShowDialog() != WF.DialogResult.OK) return;
@@ -858,9 +859,13 @@ namespace BIMCamel.UI
             }
             catch (Exception ex)
             {
+                // The plain message first, where the user is already looking; the stack trace goes
+                // below it in the report, for Copy or Save report, rather than in a modal dialog.
                 SetStatus("Export failed: " + ex.Message);
-                SetReport("Export FAILED\n──────────────────────────────\n" + ex.Message);
-                WF.MessageBox.Show(ex.ToString(), "BIMCamel export — error", WF.MessageBoxButtons.OK, WF.MessageBoxIcon.Error);
+                SetReport("Export FAILED\n──────────────────────────────\n" + ex.Message
+                          + "\n\nNo usable file was written. If this keeps happening, use Save report or Copy and send the details below with your issue.\n\n"
+                          + "Details\n──────────────────────────────\n" + ex);
+                ShowReport();
             }
             finally { EndBusy(); }
         }
@@ -873,7 +878,7 @@ namespace BIMCamel.UI
                 if (_batchItems[i].Checked) chosen.Add(_sets[i]);
             if (chosen.Count == 0) { SetStatus("Tick at least one set to export (batch scope)."); return; }
 
-            using var fbd = new WF.FolderBrowserDialog { Description = "Choose an output folder — one IFC per set" };
+            using var fbd = new WF.FolderBrowserDialog { Description = "Choose an output folder — one IFC per set", SelectedPath = StartFolder() };
             if (fbd.ShowDialog() != WF.DialogResult.OK) return;
             string folder = fbd.SelectedPath;
 
@@ -904,7 +909,7 @@ namespace BIMCamel.UI
                 if (items.Count == 0) { skipped++; continue; }
                 totalItems += items.Count;
                 // Batch honours the compression choice too (v6 Z1) — one archive per set.
-                string baseName = Sanitize(set.DisplayName ?? $"set{setNum}") + "_" + schemaName
+                string baseName = FileNameFor(ModelBaseName(doc), schemaName, set.DisplayName ?? $"set{setNum}")
                                   + (ChkZip.IsChecked == true ? BIMCamel.Ifc.IfcSource.ZipExtension : ".ifc");
                 RunOneExport(System.IO.Path.Combine(folder, baseName), schema, items, unitScale, coords, names, opts, weldTolMetres, coordDecimals, geomMin, splitLimit, summary, $"Set {setNum}/{chosen.Count}");
             }
@@ -1003,13 +1008,7 @@ namespace BIMCamel.UI
             SetReport(BuildReport(summary, schemaName, scopeLabel, unitName, scopeItemCount, scanMs, exportMs, ruleCount, validation, profile, baseHeap, _peakHeap));
             SetStatus($"Done · {summary.FileCount} file(s) · {summary.ElementCount:N0} elements · {summary.FileSizeBytes / 1024.0:N0} KB · {exportMs:N0} ms");
 
-            string? openTarget = summary.Files.Count == 1 ? summary.Files[0] : (summary.Files.Count > 0 ? System.IO.Path.GetDirectoryName(summary.Files[0]) : null);
-            if (openTarget != null && WF.MessageBox.Show($"Exported {summary.FileCount} file(s) · {summary.ElementCount:N0} elements ({summary.FileSizeBytes / 1024.0:N0} KB).\n\nOpen now?",
-                    "BIMCamel export complete", WF.MessageBoxButtons.YesNo, WF.MessageBoxIcon.Information) == WF.DialogResult.Yes)
-            {
-                try { Process.Start(new ProcessStartInfo(openTarget) { UseShellExecute = true }); }
-                catch { try { Process.Start("explorer.exe", $"\"{openTarget}\""); } catch { } }
-            }
+            ShowOutputs(summary.Files);
         }
 
         private string ScopeLabel() => ScopeIndex() switch
@@ -2028,7 +2027,8 @@ namespace BIMCamel.UI
             ClassificationEditionDate = (TxtClassEditionDate.Text ?? "").Trim(),
             ClassificationLocation = (TxtClassLocation.Text ?? "").Trim(),
             Split = ChkSplit.IsChecked == true, SplitMb = TxtSplitMb.Text ?? "200",
-            Groups = CmbGroups.SelectedIndex
+            Groups = CmbGroups.SelectedIndex,
+            FileNameTemplate = (TxtFileName.Text ?? "").Trim()
         };
         private void Apply(ExportProfile p)
         {
@@ -2058,6 +2058,7 @@ namespace BIMCamel.UI
             TxtClassLocation.Text = p.ClassificationLocation ?? "";
             ChkSplit.IsChecked = p.Split; if (!string.IsNullOrWhiteSpace(p.SplitMb)) TxtSplitMb.Text = p.SplitMb;
             CmbGroups.SelectedIndex = Clamp(p.Groups, CmbGroups.Items.Count);
+            TxtFileName.Text = string.IsNullOrWhiteSpace(p.FileNameTemplate) ? DefaultNameTemplate : p.FileNameTemplate;
             TextToRoles(p.Roles); TextToParamRules(p.ParamRules);
             TextToGrid(p.Mapping);
         }

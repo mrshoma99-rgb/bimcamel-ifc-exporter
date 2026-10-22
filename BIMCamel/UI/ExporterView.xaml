@@ -572,6 +572,9 @@
                     </StackPanel>
                   </Grid>
                   <CheckBox x:Name="ChkZip" Margin="0,11,0,0" Content="Write compressed .ifczip (recommended)" ToolTip="Write IFC's standard zipped form: an ordinary ZIP holding one .ifc, read directly by Revit, Solibri, ArchiCAD, Navisworks, xBim and IfcOpenShell with no unpacking step.&#x0a;&#x0a;STEP text compresses very well, so this is typically 6-12x smaller on disk. It also writes LESS data: the export streams straight into the archive, so the uncompressed file is never created at all.&#x0a;&#x0a;Turn it off if a downstream script expects a literal .ifc."/>
+                  <TextBlock Style="{StaticResource Lbl}" Text="File name" Margin="0,9,0,5"/>
+                  <TextBox x:Name="TxtFileName" Text="{}{model}_{schema}"
+                           ToolTip="Name for the exported file, without extension. Tokens: {model} the Navisworks file, {schema} IFC4 or IFC2x3, {set} the set name in a batch, {date} today (yyyy-MM-dd). A batch always includes {set}, so files never overwrite each other. Blank = {model}_{schema}."/>
                 </StackPanel>
               </Border>
 
@@ -684,14 +687,24 @@
 
               <Border Style="{StaticResource CardStyle}">
                 <StackPanel>
-                  <TextBlock Style="{StaticResource H3}" Text="REPORT" Margin="0,0,0,10"/>
+                  <TextBlock x:Name="LblReportHead" Style="{StaticResource H3}" Text="REPORT" Margin="0,0,0,10"/>
                   <Border CornerRadius="9" Background="{DynamicResource ConsoleBg}" Padding="11" MaxHeight="190">
                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
                       <TextBlock x:Name="TxtReport" Foreground="{DynamicResource ConsoleTx}" FontFamily="Consolas"
                                  FontSize="11" TextWrapping="NoWrap" Text="Configure and click Export IFC."/>
                     </ScrollViewer>
                   </Border>
-                  <Button Style="{StaticResource LinkBtn}" Content="⧉ Copy report" Click="OnCopyReport" ToolTip="Copy the report text to the clipboard."/>
+                  <!-- The output stays one click away after the export, instead of a
+                       modal "Open now?" that was gone once answered. -->
+                  <WrapPanel Margin="0,8,0,0">
+                    <Button x:Name="BtnOpenFile" Style="{StaticResource Btn}" Content="Open file" Click="OnOpenOutput" IsEnabled="False"
+                            ToolTip="Open the exported IFC in its default viewer."/>
+                    <Button x:Name="BtnOpenFolder" Style="{StaticResource Btn}" Content="Open folder" Click="OnOpenOutputFolder" IsEnabled="False"
+                            ToolTip="Show the exported file(s) in Explorer."/>
+                    <Button Style="{StaticResource Btn}" Content="Save report…" Click="OnSaveReport"
+                            ToolTip="Save this report as a text file, to keep a record of the export."/>
+                    <Button Style="{StaticResource Btn}" Content="Copy" Click="OnCopyReport" ToolTip="Copy the report text to the clipboard."/>
+                  </WrapPanel>
                 </StackPanel>
               </Border>
             </StackPanel>

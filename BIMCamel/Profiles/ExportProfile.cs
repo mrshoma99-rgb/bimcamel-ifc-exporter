@@ -81,6 +81,9 @@ namespace BIMCamel.Profiles
         [DataMember] public string SplitMb = "200";
         /// <summary>0 = none, 1 = IfcGroup, 2 = IfcSystem, 3 = IfcZone.</summary>
         [DataMember] public int Groups;
+        /// <summary>Output file name template ({model}, {schema}, {set}, {date}). Blank in an older
+        /// profile, which falls back to the name the exporter always used.</summary>
+        [DataMember] public string FileNameTemplate = "";
 
         public static void Save(ExportProfile p, string path)
         {
