@@ -46,6 +46,25 @@ namespace BIMCamel.Data
     public struct RoleValues { public string Type, Level, Material, Classification; }
 
     /// <summary>
+    /// Which tree nodes an element's properties are read from. Navisworks exports geometry, so
+    /// every element the exporter writes is a geometry LEAF — but most authoring tools hang the
+    /// meaningful data on the object ABOVE it: Revit's "Element" tab sits on the element node
+    /// whose children are the solids, SmartPlant 3D / E3D put theirs on the occurrence several
+    /// levels above the primitives. Reading the leaf alone exported almost none of it.
+    /// The numeric values are stored in profiles, so only ever append.
+    /// </summary>
+    public enum PropSource
+    {
+        /// <summary>The geometry node only — the behaviour before this option existed.</summary>
+        Geometry = 0,
+        /// <summary>The geometry node plus its parent object: the nearest composite object above it
+        /// (Navisworks' "Last Object"), or the immediate parent when there is none.</summary>
+        ParentObject = 1,
+        /// <summary>The geometry node plus every ancestor below the file node.</summary>
+        AllParents = 2
+    }
+
+    /// <summary>
     /// Harvests Navisworks properties and colour for an element (F4 / F8). Property loop is the
     /// proven pattern from NavisworksExporter.ElementCollector. Values are typed (real/int/bool/
     /// text) so the IFC carries proper IfcValue types. UI-thread only.
@@ -60,6 +79,43 @@ namespace BIMCamel.Data
         /// per export before the extractors run.
         /// </summary>
         public static bool SkipEmptyValues = true;
+
+        /// <summary>
+        /// Which nodes to read properties from. Static for the same reason as
+        /// <see cref="SkipEmptyValues"/>: one global reading preference, and the scans, the
+        /// pre-flight and both extractors must all see the same tree, or a category the scan offered
+        /// would silently export empty. On a name clash (same pset + property) the node NEAREST the
+        /// geometry wins, so the leaf's own values are never overwritten by a parent's.
+        /// </summary>
+        public static PropSource Source = PropSource.Geometry;
+
+        /// <summary>How far above the geometry to look for its composite object before giving up
+        /// and using the immediate parent. Deep enough for SP3D's Item → Aspects → primitive.</summary>
+        private const int MaxObjectDepth = 8;
+
+        /// <summary>
+        /// Ancestor reads, shared by every geometry leaf under them: a Revit element with six
+        /// solids, or an SP3D occurrence with forty primitives, is read from COM once instead of once
+        /// per child. Deliberately SMALL — items arrive in tree order, so siblings are consecutive and
+        /// a few dozen entries catch nearly every repeat, while an unbounded map would hold every
+        /// parent of a 674k-element model in memory for the whole export. Cleared when full.
+        /// </summary>
+        private const int AncestorCacheCap = 64;
+        private static readonly Dictionary<ModelItem, List<NodeProp>> _ancestorProps = new Dictionary<ModelItem, List<NodeProp>>();
+        /// <summary>immediate parent → the ancestors to read for any leaf under it.</summary>
+        private static readonly Dictionary<ModelItem, List<ModelItem>> _ancestorChains = new Dictionary<ModelItem, List<ModelItem>>();
+
+        /// <summary>Forget cached ancestor reads. Call at the start of each export or scan: user
+        /// data tabs can change between runs, and a reloaded document has new items anyway.</summary>
+        public static void ResetCache() { _ancestorProps.Clear(); _ancestorChains.Clear(); }
+
+        /// <summary>One cached ancestor property, unfiltered — the filters are applied on read so
+        /// one entry serves the export, the scans and the pre-flight alike.</summary>
+        private sealed class NodeProp
+        {
+            public string Pset = "", RoleCat = "";
+            public IfcProp Prop = new IfcProp();
+        }
 
         /// <summary>Harvest props; if <paramref name="include"/> is non-null, only those Pset (category) names.</summary>
         public static List<IfcProp> Harvest(ModelItem item, HashSet<string>? include = null)
@@ -85,6 +141,10 @@ namespace BIMCamel.Data
             rv = new RoleValues { Type = "", Level = "", Material = "", Classification = "" };
             bool wantRoles = roles != null && roles.Any;
             var list = new List<IfcProp>();
+            var ancestors = Ancestors(item);
+            // Only needed to resolve leaf-vs-parent clashes; the leaf's own list is written exactly
+            // as before, duplicates and all, so Geometry mode is byte-for-byte unchanged.
+            var seen = ancestors.Count > 0 ? new HashSet<(string, string)>() : null;
             try
             {
                 foreach (var cat in item.PropertyCategories)
@@ -117,22 +177,15 @@ namespace BIMCamel.Data
                             var prop = Typed(pset, name, p.Value);
                             text = prop.Value;
                             // A blank value is written as IFCTEXT(' ') — an entity that says
-                            // nothing the property's absence does not (v6 Z4).
-                            if (!SkipEmptyValues || !string.IsNullOrWhiteSpace(prop.Value)) list.Add(prop);
+                            // nothing the property's absence does not (v6 Z4). A skipped blank is
+                            // not "seen", so a parent's real value for the same property fills it.
+                            if (!SkipEmptyValues || !string.IsNullOrWhiteSpace(prop.Value)) { list.Add(prop); seen?.Add((pset, name)); }
                         }
 
                         if (!rolesHere) continue;
-                        // Same first-wins ordering as the old ReadRoles chain.
-                        bool filled = true;
-                        if (rv.Type == "" && Match(roles!.Type, roleCat, name)) rv.Type = text ??= ValueToString(p.Value);
-                        else if (rv.Level == "" && Match(roles!.Level, roleCat, name)) rv.Level = text ??= ValueToString(p.Value);
-                        else if (rv.Material == "" && Match(roles!.Material, roleCat, name)) rv.Material = text ??= ValueToString(p.Value);
-                        else if (rv.Classification == "" && Match(roles!.Classification, roleCat, name)) rv.Classification = text ??= ValueToString(p.Value);
-                        else filled = false;
-
                         // Once nothing left unfilled can come from this category, the rest of it is
                         // only worth reading for the property sets.
-                        if (filled && !RolesPending(roles!, rv, roleCat))
+                        if (TakeRole(roles!, roleCat, name, ref rv, ref text, p.Value) && !RolesPending(roles!, rv, roleCat))
                         {
                             if (!wantProps) break;
                             rolesHere = false;
@@ -141,23 +194,147 @@ namespace BIMCamel.Data
                 }
             }
             catch { /* tolerate odd nodes */ }
+
+            // Then the parents, nearest first, filling only what the nodes below did not have.
+            foreach (var a in ancestors)
+            {
+                bool rolesDone = !wantRoles || RolesComplete(roles!, rv);
+                if (include != null && include.Count == 0 && rolesDone) break;   // roles-only and nothing left to find
+                foreach (var np in AncestorProps(a))
+                {
+                    if (include == null || include.Contains(np.Pset))
+                    {
+                        var src = np.Prop;
+                        if ((!SkipEmptyValues || !string.IsNullOrWhiteSpace(src.Value)) && seen!.Add((src.Pset, src.Name)))
+                            // A copy: parameter mapping renames props in place, and this one is
+                            // shared with every sibling through the cache.
+                            list.Add(new IfcProp { Pset = src.Pset, Name = src.Name, Value = src.Value, Kind = src.Kind });
+                    }
+                    if (wantRoles && !rolesDone)
+                    {
+                        string? text = np.Prop.Value;
+                        TakeRole(roles!, np.RoleCat, np.Prop.Name, ref rv, ref text, null);
+                    }
+                }
+            }
             return list;
+        }
+
+        /// <summary>Same first-wins ordering as the old ReadRoles chain: one property feeds at most
+        /// one role, and a role already filled (by this node or one nearer the geometry) stays.
+        /// Returns true when this property filled a role.</summary>
+        private static bool TakeRole(PropertyRoles roles, string roleCat, string name, ref RoleValues rv, ref string? text, VariantData? value)
+        {
+            if (rv.Type == "" && Match(roles.Type, roleCat, name)) rv.Type = text ??= ValueToString(value!);
+            else if (rv.Level == "" && Match(roles.Level, roleCat, name)) rv.Level = text ??= ValueToString(value!);
+            else if (rv.Material == "" && Match(roles.Material, roleCat, name)) rv.Material = text ??= ValueToString(value!);
+            else if (rv.Classification == "" && Match(roles.Classification, roleCat, name)) rv.Classification = text ??= ValueToString(value!);
+            else return false;
+            return true;
+        }
+
+        private static bool RolesComplete(PropertyRoles r, RoleValues rv)
+            => (!r.Type.IsSet || rv.Type != "") && (!r.Level.IsSet || rv.Level != "")
+               && (!r.Material.IsSet || rv.Material != "") && (!r.Classification.IsSet || rv.Classification != "");
+
+        /// <summary>
+        /// The ancestors whose properties belong to <paramref name="item"/> under the current
+        /// <see cref="Source"/>, nearest first. Never the file node: it describes the NWC, not a
+        /// building element. Empty in Geometry mode, so that mode costs nothing extra.
+        /// </summary>
+        private static List<ModelItem> Ancestors(ModelItem item)
+        {
+            if (Source == PropSource.Geometry) return NoItems;
+            ModelItem? parent;
+            try { parent = item.Parent; } catch { return NoItems; }
+            if (parent == null) return NoItems;
+            if (_ancestorChains.TryGetValue(parent, out var cached)) return cached;
+
+            var ups = new List<ModelItem>();
+            try
+            {
+                bool found = false;
+                var a = parent;
+                for (int guard = 0; a != null && guard < 256; guard++)
+                {
+                    var up = a.Parent;
+                    if (up == null) break;                       // a is the file node
+                    if (Source == PropSource.ParentObject)
+                    {
+                        if (a.IsLayer) break;                    // a level/layer groups elements; it is never one
+                        ups.Add(a);
+                        if (a.IsComposite) { found = true; break; }
+                        if (ups.Count >= MaxObjectDepth) break;
+                    }
+                    else ups.Add(a);
+                    a = up;
+                }
+                // No composite object above the geometry: the immediate parent is the best guess at
+                // "the element", and is what Revit's tree has there whatever its flags say.
+                if (Source == PropSource.ParentObject && !found && ups.Count > 1) ups.RemoveRange(1, ups.Count - 1);
+            }
+            catch { /* tolerate odd nodes: keep what was reached */ }
+
+            if (_ancestorChains.Count >= AncestorCacheCap) _ancestorChains.Clear();
+            _ancestorChains[parent] = ups;
+            return ups;
+        }
+
+        private static readonly List<ModelItem> NoItems = new List<ModelItem>();
+
+        /// <summary>Every property of one ancestor, typed, read from COM at most once per run of siblings.</summary>
+        private static List<NodeProp> AncestorProps(ModelItem node)
+        {
+            if (_ancestorProps.TryGetValue(node, out var cached)) return cached;
+            var all = new List<NodeProp>();
+            try
+            {
+                foreach (var cat in node.PropertyCategories)
+                {
+                    string? dn = cat.DisplayName, cn = cat.Name;
+                    string pset = dn ?? cn ?? "Properties";
+                    string roleCat = dn ?? cn ?? "";
+                    foreach (var p in cat.Properties)
+                    {
+                        string name = p.DisplayName ?? p.Name ?? "";
+                        if (string.IsNullOrEmpty(name)) continue;
+                        all.Add(new NodeProp { Pset = pset, RoleCat = roleCat, Prop = Typed(pset, name, p.Value) });
+                    }
+                }
+            }
+            catch { /* tolerate odd nodes */ }
+            if (_ancestorProps.Count >= AncestorCacheCap) _ancestorProps.Clear();
+            _ancestorProps[node] = all;
+            return all;
+        }
+
+        /// <summary>
+        /// The nodes a scan should read for one item: the item, then its <see cref="Ancestors"/>
+        /// not already read by this scan. A parent shared by forty sampled leaves is read once.
+        /// </summary>
+        private static IEnumerable<ModelItem> ScanNodes(ModelItem item, HashSet<ModelItem> visited)
+        {
+            yield return item;
+            foreach (var a in Ancestors(item))
+                if (visited.Add(a)) yield return a;
         }
 
         /// <summary>Distinct property-category (Pset) names found across a sample of items.</summary>
         public static List<string> ScanCategories(IEnumerable<ModelItem> items, int cap = 4000, Action<int>? onProgress = null)
         {
             var set = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+            var visited = new HashSet<ModelItem>();
             int n = 0;
             foreach (var item in items)
             {
                 try
                 {
-                    foreach (var cat in item.PropertyCategories)
-                    {
-                        var name = cat.DisplayName ?? cat.Name;
-                        if (!string.IsNullOrEmpty(name)) set.Add(name!);
-                    }
+                    foreach (var node in ScanNodes(item, visited))
+                        foreach (var cat in node.PropertyCategories)
+                        {
+                            var name = cat.DisplayName ?? cat.Name;
+                            if (!string.IsNullOrEmpty(name)) set.Add(name!);
+                        }
                 }
                 catch { }
                 n++; onProgress?.Invoke(n);
@@ -171,6 +348,7 @@ namespace BIMCamel.Data
         public static List<string> ScanValues(IEnumerable<ModelItem> items, int itemCap = 4000, int valueCap = 4000, Action<int>? onProgress = null)
         {
             var set = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+            var visited = new HashSet<ModelItem>();
             int n = 0;
             foreach (var item in items)
             {
@@ -178,7 +356,8 @@ namespace BIMCamel.Data
                 {
                     if (!string.IsNullOrEmpty(item.DisplayName)) set.Add(item.DisplayName);
                     if (!string.IsNullOrEmpty(item.ClassDisplayName)) set.Add(item.ClassDisplayName);
-                    foreach (var cat in item.PropertyCategories)
+                    foreach (var node in ScanNodes(item, visited))
+                    foreach (var cat in node.PropertyCategories)
                         foreach (var p in cat.Properties)
                         {
                             var v = ValueToString(p.Value);
@@ -197,12 +376,14 @@ namespace BIMCamel.Data
         public static List<string> ScanPropertyNames(IEnumerable<ModelItem> items, int cap = 1000)
         {
             var set = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+            var visited = new HashSet<ModelItem>();
             int n = 0;
             foreach (var item in items)
             {
                 try
                 {
-                    foreach (var cat in item.PropertyCategories)
+                    foreach (var node in ScanNodes(item, visited))
+                    foreach (var cat in node.PropertyCategories)
                         foreach (var p in cat.Properties)
                         {
                             var name = p.DisplayName ?? p.Name;
@@ -225,12 +406,14 @@ namespace BIMCamel.Data
         public static Dictionary<string, List<string>> ScanCategoryParams(IEnumerable<ModelItem> items, int cap = 1000)
         {
             var map = new Dictionary<string, SortedSet<string>>(StringComparer.OrdinalIgnoreCase);
+            var visited = new HashSet<ModelItem>();
             int n = 0;
             foreach (var item in items)
             {
                 try
                 {
-                    foreach (var cat in item.PropertyCategories)
+                    foreach (var node in ScanNodes(item, visited))
+                    foreach (var cat in node.PropertyCategories)
                     {
                         var cn = cat.DisplayName ?? cat.Name;
                         if (string.IsNullOrEmpty(cn)) continue;
