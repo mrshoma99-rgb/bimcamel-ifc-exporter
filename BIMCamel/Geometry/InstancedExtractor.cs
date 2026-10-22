@@ -182,6 +182,10 @@ namespace BIMCamel.Geometry
             ExportIssues.CollapsedFragments += collapsedFrags;
             if (el.InstanceGuid == Guid.Empty) el.SourceKey = Collect.ItemCollector.ItemKey(item, o.KeyCache);
 
+            // Ground truth: the placed instances must fit in the box Navisworks gives this item
+            // (BoundsCheck). Also guards a cached shape that Fast instancing replayed wrongly.
+            CheckBounds(item, el, unitScale, 10 * o.WeldTol);
+
             // Harvest only now that we know the item is actually exported — skips property reads
             // for the (often ~half) of HasGeometry leaves that produce no triangles (v4).
             long th = ExportTiming.Now;
@@ -285,9 +289,87 @@ namespace BIMCamel.Geometry
                 inst.Rotation = new[] { m[0], m[1], m[2], m[4], m[5], m[6], m[8], m[9], m[10] };
                 inst.Translation = new[] { m[12] * unitScale, m[13] * unitScale, m[14] * unitScale };
             }
+
+            // IfcCartesianTransformationOperator3D carries ONE uniform scale, and the writer used
+            // to put the average of the three axis lengths there — a block stretched 2x along one
+            // axis came out uniformly 1.33x. Such a placement is baked into the vertices instead:
+            // the mesh then has its own key (identical stretched copies still share it) and is
+            // placed by translation alone.
+            if (!IsSimilarity(inst.Rotation))
+            {
+                lm = Bake(lm, inst.Rotation);
+                dk = Key(lm);
+                inst.Rotation = new double[] { 1, 0, 0, 0, 1, 0, 0, 0, 1 };
+                ExportIssues.BakedTransforms++;
+            }
             inst.Mesh = lm;
             inst.Key = dk;   // the exporter dedups by this key, per output file (option C)
             return inst;
+        }
+
+        /// <summary>True when the 3x3 is a rotation (or mirror) times one uniform scale — the only
+        /// kind of linear map IfcCartesianTransformationOperator3D can express.</summary>
+        private static bool IsSimilarity(double[] r)
+        {
+            double sx = Math.Sqrt(r[0] * r[0] + r[1] * r[1] + r[2] * r[2]);
+            double sy = Math.Sqrt(r[3] * r[3] + r[4] * r[4] + r[5] * r[5]);
+            double sz = Math.Sqrt(r[6] * r[6] + r[7] * r[7] + r[8] * r[8]);
+            double s = (sx + sy + sz) / 3.0;
+            if (!(s > 1e-12)) return false;
+            // Navisworks stores single-precision matrices; 1e-5 clears their rounding and is far
+            // below any stretch a person would see (10 µm per metre).
+            const double tol = 1e-5;
+            if (Math.Abs(sx - s) > tol * s || Math.Abs(sy - s) > tol * s || Math.Abs(sz - s) > tol * s) return false;
+            double s2 = s * s;
+            return Math.Abs(r[0] * r[3] + r[1] * r[4] + r[2] * r[5]) <= tol * s2
+                && Math.Abs(r[0] * r[6] + r[1] * r[7] + r[2] * r[8]) <= tol * s2
+                && Math.Abs(r[3] * r[6] + r[4] * r[7] + r[5] * r[8]) <= tol * s2;
+        }
+
+        /// <summary>The local mesh with a 3x3 (column-major) applied to every vertex. A mirroring
+        /// map turns triangles inside out, so their winding is reversed to keep normals outward.</summary>
+        private static LocalMesh Bake(LocalMesh lm, double[] r)
+        {
+            var v = lm.Vertices;
+            var nv = new List<double>(v.Count);
+            for (int i = 0; i + 2 < v.Count; i += 3)
+            {
+                double x = v[i], y = v[i + 1], z = v[i + 2];
+                nv.Add(r[0] * x + r[3] * y + r[6] * z);
+                nv.Add(r[1] * x + r[4] * y + r[7] * z);
+                nv.Add(r[2] * x + r[5] * y + r[8] * z);
+            }
+            double det = r[0] * (r[4] * r[8] - r[5] * r[7]) - r[3] * (r[1] * r[8] - r[2] * r[7]) + r[6] * (r[1] * r[5] - r[2] * r[4]);
+            var idx = lm.Indices;
+            if (det < 0)
+            {
+                idx = new List<int>(lm.Indices.Count);
+                for (int k = 0; k + 2 < lm.Indices.Count; k += 3)
+                { idx.Add(lm.Indices[k]); idx.Add(lm.Indices[k + 2]); idx.Add(lm.Indices[k + 1]); }
+            }
+            return new LocalMesh { Vertices = nv, Indices = idx, Material = lm.Material };
+        }
+
+        /// <summary>World box of everything this element places, checked against Navisworks'.</summary>
+        private static void CheckBounds(ModelItem item, InstancedElement el, double unitScale, double slack)
+        {
+            double x0 = double.MaxValue, y0 = double.MaxValue, z0 = double.MaxValue;
+            double x1 = double.MinValue, y1 = double.MinValue, z1 = double.MinValue;
+            foreach (var inst in el.Instances)
+            {
+                var r = inst.Rotation; var t = inst.Translation; var v = inst.Mesh.Vertices;
+                for (int i = 0; i + 2 < v.Count; i += 3)
+                {
+                    double x = v[i], y = v[i + 1], z = v[i + 2];
+                    double wx = r[0] * x + r[3] * y + r[6] * z + t[0];
+                    double wy = r[1] * x + r[4] * y + r[7] * z + t[1];
+                    double wz = r[2] * x + r[5] * y + r[8] * z + t[2];
+                    if (wx < x0) x0 = wx; if (wx > x1) x1 = wx;
+                    if (wy < y0) y0 = wy; if (wy > y1) y1 = wy;
+                    if (wz < z0) z0 = wz; if (wz > z1) z1 = wz;
+                }
+            }
+            BoundsCheck.Check(item, unitScale, slack, x0, y0, z0, x1, y1, z1);
         }
 
         /// <summary>

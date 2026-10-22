@@ -144,6 +144,10 @@ namespace BIMCamel.Geometry
 
             if (sink.TriangleCount == 0) { ExportIssues.NoTriangles++; return null; }
 
+            // Ground truth: what we read must fit in the box Navisworks gives this item. The sink
+            // tracked the world extents while reading, so only the item's box costs a call.
+            BoundsCheck.Check(item, 1.0, 10 * o.WeldTol, sink.MinX, sink.MinY, sink.MinZ, sink.MaxX, sink.MaxY, sink.MaxZ);
+
             // v6 Z7. PrimitiveSink accumulated the extents as it read, so this costs nothing.
             if (o.MinFragmentSize > 0 && sink.TriangleCount > 0)
             {
