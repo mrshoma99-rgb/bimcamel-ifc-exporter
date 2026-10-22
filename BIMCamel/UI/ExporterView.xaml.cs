@@ -1712,6 +1712,8 @@ namespace BIMCamel.UI
             sb.AppendLine($"Type objects: {s.TypeCount}   Materials: {s.MaterialCount}   Classifications: {s.ClassificationCount}");
             if (s.GroupCount > 0) sb.AppendLine($"Groups      : {s.GroupCount} (from Navisworks sets)");
             sb.AppendLine($"Property sets: {s.PsetUnique:N0} unique / {s.PsetRefs:N0} refs" + (s.PsetUnique > 0 ? $"  (×{(double)s.PsetRefs / s.PsetUnique:0.0} shared)" : ""));
+            if (s.PropValueReuses > 0)
+                sb.AppendLine($"Prop values : {s.PropValueReuses:N0} reused instead of written again");
             if (s.TypeSharedPsets > 0 || s.TypeShareNameMismatch > 0)
             {
                 sb.AppendLine($"  type-shared : {s.TypeSharedPsets:N0} pset(s) hoisted onto IfcElementType");
