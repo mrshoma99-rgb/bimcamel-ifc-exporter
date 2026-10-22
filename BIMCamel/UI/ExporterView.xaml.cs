@@ -278,9 +278,11 @@ namespace BIMCamel.UI
         {
             var border = new Border
             {
-                BorderBrush = (Brush)FindResource("Bd"), BorderThickness = new Thickness(1),
+                BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(9), Padding = new Thickness(10), Margin = new Thickness(0, 0, 0, 9)
             };
+            // A resource REFERENCE, not the brush resolved now, so the row follows a theme switch.
+            border.SetResourceReference(Border.BorderBrushProperty, "Bd");
             var sp = new StackPanel();
             sp.Children.Add(new TextBlock { Text = label, FontSize = 12, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 7) });
             var grid = new Grid();
@@ -306,7 +308,8 @@ namespace BIMCamel.UI
         private void ApplyTheme(bool dark)
         {
             _dark = dark;
-            BtnTheme.Content = _dark ? "☀" : "🌙";
+            // The button shows the theme a click switches TO.
+            IcoTheme.Data = Geometry.Parse(_dark ? "M12,7 A5,5 0 1 0 12.01,7 Z M12,1 L12,3 M12,21 L12,23 M1,12 L3,12 M21,12 L23,12 M4.2,4.2 L5.6,5.6 M18.4,18.4 L19.8,19.8 M4.2,19.8 L5.6,18.4 M18.4,5.6 L19.8,4.2" : "M20,14 A8,8 0 1 1 10,4 A6,6 0 0 0 20,14 Z");
             void Set(string key, string hex) => Resources[key] = new SolidColorBrush((System.Windows.Media.Color)ColorConverter.ConvertFromString(hex));
             if (_dark)
             {
@@ -317,6 +320,9 @@ namespace BIMCamel.UI
                 Set("Nav", "#1A1D22"); Set("NavActive", "#1F2D3D");
                 Set("AmberBg", "#3A2F12"); Set("AmberBd", "#5C4A1E"); Set("AmberTx", "#F0C66A");
                 Set("ConsoleBg", "#0A0C10"); Set("ConsoleTx", "#BFE0C8"); Set("Ok", "#46C97E");
+                Set("BadgeReqBg", "#16352A"); Set("BadgeReqTx", "#5FD394");
+                Set("BadgeOptBg", "#2C3138"); Set("BadgeOptTx", "#A7B0BA");
+                Set("BadgeAutoBg", "#173049"); Set("BadgeAutoTx", "#6DB8F5");
             }
             else
             {
@@ -327,6 +333,9 @@ namespace BIMCamel.UI
                 Set("Nav", "#F0F2F5"); Set("NavActive", "#E6F0FA");
                 Set("AmberBg", "#FFF7E6"); Set("AmberBd", "#FFE1A8"); Set("AmberTx", "#8A5A00");
                 Set("ConsoleBg", "#0E1116"); Set("ConsoleTx", "#CFE3D5"); Set("Ok", "#1A8F4C");
+                Set("BadgeReqBg", "#E4F6EC"); Set("BadgeReqTx", "#1A8F4C");
+                Set("BadgeOptBg", "#ECEFF3"); Set("BadgeOptTx", "#6B7480");
+                Set("BadgeAutoBg", "#E6F0FA"); Set("BadgeAutoTx", "#0070C0");
             }
             // The pre-flight rows are code-built with resolved brushes, so they
             // do not retint through DynamicResource — rebuild them.
@@ -458,7 +467,7 @@ namespace BIMCamel.UI
                 var digest = PreviewMapping(items);
                 sb.AppendLine(digest ?? "Full check     : did not run — see the status line for the reason");
 
-                sb.Append("Review the ✨ AUTO sections on Data and Mapping, then Export.");
+                sb.Append("Review the AUTO sections on Data and Mapping, then Export.");
                 TxtSmartSummary.Text = sb.ToString().Replace("\n", Environment.NewLine);
                 if (digest != null) SetStatus("Smart setup complete — review, then Export IFC.");
             }

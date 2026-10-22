@@ -30,6 +30,12 @@
     <SolidColorBrush x:Key="ConsoleBg"   Color="#0E1116"/>
     <SolidColorBrush x:Key="ConsoleTx"   Color="#CFE3D5"/>
     <SolidColorBrush x:Key="Ok"          Color="#1A8F4C"/>
+    <SolidColorBrush x:Key="BadgeReqBg"  Color="#E4F6EC"/>
+    <SolidColorBrush x:Key="BadgeReqTx"  Color="#1A8F4C"/>
+    <SolidColorBrush x:Key="BadgeOptBg"  Color="#ECEFF3"/>
+    <SolidColorBrush x:Key="BadgeOptTx"  Color="#6B7480"/>
+    <SolidColorBrush x:Key="BadgeAutoBg" Color="#E6F0FA"/>
+    <SolidColorBrush x:Key="BadgeAutoTx" Color="#0070C0"/>
 
     <!-- ════ Text styles ════ -->
     <Style x:Key="H3" TargetType="TextBlock">
@@ -54,20 +60,20 @@
 
     <!-- required / optional badges (shown on each section header) -->
     <Style x:Key="BadgeReq" TargetType="Border">
-      <Setter Property="Background" Value="#E4F6EC"/>
+      <Setter Property="Background" Value="{DynamicResource BadgeReqBg}"/>
       <Setter Property="CornerRadius" Value="7"/>
       <Setter Property="Padding" Value="7,1"/>
       <Setter Property="Margin" Value="8,0,0,0"/>
       <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
     <Style x:Key="BadgeOpt" TargetType="Border" BasedOn="{StaticResource BadgeReq}">
-      <Setter Property="Background" Value="#ECEFF3"/>
+      <Setter Property="Background" Value="{DynamicResource BadgeOptBg}"/>
     </Style>
     <!-- Marks a section that Smart setup fills automatically (and that stays
          hand-editable). The three chips together answer the three questions a
          tab has to answer at a glance: required? optional? automatic? -->
     <Style x:Key="BadgeAuto" TargetType="Border" BasedOn="{StaticResource BadgeReq}">
-      <Setter Property="Background" Value="#E6F0FA"/>
+      <Setter Property="Background" Value="{DynamicResource BadgeAutoBg}"/>
     </Style>
 
     <!-- ════ Card ════ -->
@@ -452,15 +458,15 @@
             <!-- Profiles live in the title bar: they capture the WHOLE pane, so
                  parking them inside one tab's card suggested a narrower reach
                  than they actually have. -->
-            <Button x:Name="BtnSaveProfile" Style="{StaticResource IconBtn}" Content="💾" Margin="0,0,6,0" Click="OnSaveProfile"
-                    ToolTip="Save the export settings — schema, scope, options, coordinates, roles, parameter rules and the set mapping — to a reusable .json profile. (List ticks and the theme are not stored.)"/>
+            <Button x:Name="BtnSaveProfile" Style="{StaticResource IconBtn}" Margin="0,0,6,0" Click="OnSaveProfile"
+                    ToolTip="Save the export settings — schema, scope, options, coordinates, roles, parameter rules and the set mapping — to a reusable .json profile. (List ticks and the theme are not stored.)"><Viewbox Width="15" Height="15"><Path x:Name="IcoSave" Data="M5,3 L16,3 L21,8 L21,21 L3,21 L3,3 Z M7,3 L7,9 L15,9 L15,3 M7,21 L7,14 L17,14 L17,21" Stroke="White" StrokeThickness="2" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Viewbox></Button>
             <!-- One menu for every way of replacing the current settings: a saved
                  profile, a built-in preset, or the defaults. Settings themselves are
                  remembered between sessions, so a profile is for sharing, not for
                  surviving a restart. -->
-            <Button x:Name="BtnLoadProfile" Style="{StaticResource IconBtn}" Content="📂" Margin="0,0,6,0" Click="OnProfileMenu"
-                    ToolTip="Load a saved profile, apply a built-in preset, or reset everything to defaults."/>
-            <Button x:Name="BtnTheme" Style="{StaticResource IconBtn}" Content="🌙" ToolTip="Switch between light and dark theme" Click="OnToggleTheme"/>
+            <Button x:Name="BtnLoadProfile" Style="{StaticResource IconBtn}" Margin="0,0,6,0" Click="OnProfileMenu"
+                    ToolTip="Load a saved profile, apply a built-in preset, or reset everything to defaults."><Viewbox Width="15" Height="15"><Path x:Name="IcoProfiles" Data="M3,6 L9,6 L11,8 L21,8 L21,19 L3,19 Z" Stroke="White" StrokeThickness="2" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Viewbox></Button>
+            <Button x:Name="BtnTheme" Style="{StaticResource IconBtn}" ToolTip="Switch between light and dark theme" Click="OnToggleTheme"><Viewbox Width="15" Height="15"><Path x:Name="IcoTheme" Data="M20,14 A8,8 0 1 1 10,4 A6,6 0 0 0 20,14 Z" Stroke="White" StrokeThickness="2" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Viewbox></Button>
           </StackPanel>
         </Grid>
       </Border>
@@ -513,7 +519,7 @@
                 <StackPanel>
                   <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
                     <TextBlock Style="{StaticResource H3}" Text="WHAT TO EXPORT"/>
-                    <Border Style="{StaticResource BadgeReq}"><TextBlock Text="REQUIRED" FontSize="9.5" FontWeight="SemiBold" Foreground="#1A8F4C"/></Border>
+                    <Border Style="{StaticResource BadgeReq}"><TextBlock Text="REQUIRED" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeReqTx}"/></Border>
                   </StackPanel>
                   <StackPanel x:Name="ScopeOptions"/>
                   <TextBlock x:Name="LblScopeHint" Style="{StaticResource Hint}" Foreground="{DynamicResource AmberTx}"/>
@@ -553,7 +559,7 @@
                 <StackPanel>
                   <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
                     <TextBlock Style="{StaticResource H3}" Text="FORMAT"/>
-                    <Border Style="{StaticResource BadgeReq}"><TextBlock Text="REQUIRED" FontSize="9.5" FontWeight="SemiBold" Foreground="#1A8F4C"/></Border>
+                    <Border Style="{StaticResource BadgeReq}"><TextBlock Text="REQUIRED" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeReqTx}"/></Border>
                   </StackPanel>
                   <Grid>
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -586,11 +592,11 @@
                 <StackPanel>
                   <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                     <TextBlock Style="{StaticResource H3}" Text="SMART SETUP"/>
-                    <Border Style="{StaticResource BadgeAuto}"><TextBlock Text="✨ AUTO" FontSize="9.5" FontWeight="SemiBold" Foreground="#0070C0"/></Border>
+                    <Border Style="{StaticResource BadgeAuto}"><TextBlock Text="AUTO" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeAutoTx}"/></Border>
                   </StackPanel>
                   <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,9"
                              Text="One scan of the scope above prepares the whole export: finds your saved sets, samples property sets, fills the semantic roles (Data tab), proposes set→class rules (Mapping tab), and fills the pre-flight checks below. Anything you already set by hand is left alone."/>
-                  <Button Style="{StaticResource Btn}" Content="✨ Smart setup — scan &amp; auto-fill" Click="OnSmartSetup" HorizontalAlignment="Left"
+                  <Button Style="{StaticResource Btn}" Content="Smart setup: scan &amp; auto-fill" Click="OnSmartSetup" HorizontalAlignment="Left"
                           ToolTip="Runs every auto-detect in sequence over the scope selected above. Takes roughly as long as collecting that scope once (geometry is not read); use Stop by the progress bar to interrupt it. Re-running only fills blanks — it never overwrites your entries. One nuance: a role or rule you deliberately blanked counts as blank, so it will be proposed again."/>
                   <TextBlock x:Name="TxtSmartSummary" Style="{StaticResource Hint}" FontFamily="Consolas" Text=""/>
                 </StackPanel>
@@ -642,7 +648,7 @@
                           <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                           <StackPanel Grid.Column="0" Orientation="Horizontal">
                             <TextBlock Style="{StaticResource H3}" Text="ADVANCED OPTIONS"/>
-                            <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
+                            <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeOptTx}"/></Border>
                           </StackPanel>
                           <TextBlock Grid.Column="1" Margin="10,0,0,0" FontSize="11" VerticalAlignment="Center"
                                      Foreground="{DynamicResource AmberTx}" Text="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}"/>
@@ -733,7 +739,7 @@
                 <StackPanel>
                   <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
                     <TextBlock Style="{StaticResource H3}" Text="WHAT TO EXPORT"/>
-                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
+                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeOptTx}"/></Border>
                   </StackPanel>
                   <CheckBox x:Name="ChkProps" Content="Export properties (property sets)" ToolTip="Write each element's property sets into the IFC."/>
                   <TextBlock Style="{StaticResource Lbl}" Text="Read properties from" Margin="18,6,0,2"/>
@@ -746,14 +752,14 @@
                 <StackPanel>
                   <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
                     <TextBlock Style="{StaticResource H3}" Text="PROPERTY SETS TO INCLUDE"/>
-                    <Border Style="{StaticResource BadgeAuto}"><TextBlock Text="✨ AUTO" FontSize="9.5" FontWeight="SemiBold" Foreground="#0070C0"/></Border>
+                    <Border Style="{StaticResource BadgeAuto}"><TextBlock Text="AUTO" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeAutoTx}"/></Border>
                   </StackPanel>
                   <WrapPanel Margin="0,0,0,9">
                     <!-- "Scan model (sample)" is gone: it was the same scan Smart
                          setup runs. Scan selection stays because it is genuinely
                          different — it reads the elements YOU picked, not a
                          model-wide sample. -->
-                    <Button Style="{StaticResource Btn}" Content="⚡ Scan selection instead" Click="OnScanSelection" ToolTip="Manual alternative: scan only the elements currently selected in Navisworks, whatever the export scope is set to. Useful when specific elements carry the property sets you care about but you are exporting something wider."/>
+                    <Button Style="{StaticResource Btn}" Content="Scan selection instead" Click="OnScanSelection" ToolTip="Manual alternative: scan only the elements currently selected in Navisworks, whatever the export scope is set to. Useful when specific elements carry the property sets you care about but you are exporting something wider."/>
                     <Button Style="{StaticResource Btn}" Content="All" Click="OnCatsAll" ToolTip="Tick every property set."/>
                     <Button Style="{StaticResource Btn}" Content="None" Click="OnCatsNone" ToolTip="Untick every property set."/>
                   </WrapPanel>
@@ -781,7 +787,7 @@
                 <StackPanel>
                   <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                     <TextBlock Style="{StaticResource H3}" Text="SEMANTIC ROLES"/>
-                    <Border Style="{StaticResource BadgeAuto}"><TextBlock Text="✨ AUTO" FontSize="9.5" FontWeight="SemiBold" Foreground="#0070C0"/></Border>
+                    <Border Style="{StaticResource BadgeAuto}"><TextBlock Text="AUTO" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeAutoTx}"/></Border>
                   </StackPanel>
                   <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,11"
                              Text="Which source property carries each IFC role. Smart setup fills blank rows from a best guess; edit freely — blank = role off. Storeys are built from the Level role."/>
@@ -793,7 +799,7 @@
                 <StackPanel>
                   <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
                     <TextBlock Style="{StaticResource H3}" Text="PARAMETER MAPPING"/>
-                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="MANUAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
+                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="MANUAL" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeOptTx}"/></Border>
                   </StackPanel>
                   <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,8" Text="Rename a source property or move it into a different IFC property set. Pick the category to disambiguate same-named parameters."/>
                   <DataGrid x:Name="GridParams" AutoGenerateColumns="False" HeadersVisibility="Column" CanUserAddRows="False"
@@ -855,7 +861,7 @@
               <StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                   <TextBlock Style="{StaticResource H3}" Text="MAP NAVISWORKS SETS → IFC CLASSES"/>
-                  <Border Style="{StaticResource BadgeAuto}"><TextBlock Text="✨ AUTO" FontSize="9.5" FontWeight="SemiBold" Foreground="#0070C0"/></Border>
+                  <Border Style="{StaticResource BadgeAuto}"><TextBlock Text="AUTO" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeAutoTx}"/></Border>
                 </StackPanel>
                 <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,11" TextWrapping="Wrap"
                            Text="Each rule assigns one saved set to an IFC class and, optionally, a classification code. Smart setup proposes rules from set names; edit them here. A search set is already an IF/THEN rule — build it in Find Items, save it, map it. Unmapped elements export as IfcBuildingElementProxy. The set list reloads automatically when you open this tab."/>
@@ -907,7 +913,7 @@
               <StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
                   <TextBlock Style="{StaticResource H3}" Text="CLASSIFICATION &amp; GROUPS"/>
-                  <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
+                  <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeOptTx}"/></Border>
                 </StackPanel>
                 <TextBlock Style="{StaticResource Lbl}" Text="Classification system name"/>
                 <TextBox x:Name="TxtClassSystem" ToolTip="Name of the classification system the codes in the grid belong to, e.g. “Uniclass 2015” or “OmniClass”. Written as IfcClassification.Name; blank falls back to a generic source label."/>
@@ -951,7 +957,7 @@
                 <StackPanel>
                   <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
                     <TextBlock Style="{StaticResource H3}" Text="PROJECT &amp; SPATIAL STRUCTURE"/>
-                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
+                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeOptTx}"/></Border>
                   </StackPanel>
                   <TextBlock Style="{StaticResource Lbl}" Text="Project name (blank = the model's file name)"/>
                   <TextBox x:Name="TxtProject" Text="" ToolTip="Name written to the IfcProject. Leave blank to use the Navisworks file's name, which is what most receivers expect to see."/>
@@ -985,7 +991,7 @@
                 <StackPanel>
                   <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
                     <TextBlock Style="{StaticResource H3}" Text="BASE POINT"/>
-                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
+                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeOptTx}"/></Border>
                   </StackPanel>
                   <ComboBox x:Name="CmbBasePoint" ToolTip="Where the IFC local origin sits. This only affects how large the stored coordinates are — the placement chain puts the model back at its world position either way. Real-world georeferencing is the survey point below."/>
                   <StackPanel x:Name="CoordRow" Margin="0,11,0,0" Visibility="Collapsed"
@@ -1015,7 +1021,7 @@
                 <StackPanel>
                   <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
                     <TextBlock Style="{StaticResource H3}" Text="GEOREFERENCING"/>
-                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
+                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeOptTx}"/></Border>
                   </StackPanel>
                   <CheckBox x:Name="ChkGeoref" Content="Write IFC4 georeferencing (IfcMapConversion)" ToolTip="Record where the model sits in a real-world projected CRS. IFC4 only. Written only when you supply a CRS or a survey point below — an empty map conversion is worse than none."/>
                   <StackPanel x:Name="GeorefRow" Margin="20,7,0,4">
