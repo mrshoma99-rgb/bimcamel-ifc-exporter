@@ -43,6 +43,7 @@ namespace BIMCamel.UI
         private readonly ObservableCollection<CheckItem> _batchItems = new ObservableCollection<CheckItem>();
         private readonly ObservableCollection<ParamRow> _paramRows = new ObservableCollection<ParamRow>();
         private readonly ObservableCollection<MapRow> _mapRows = new ObservableCollection<MapRow>();
+        private readonly ObservableCollection<PropRuleRow> _propRules = new ObservableCollection<PropRuleRow>();
 
         /// <summary>What the scan already worked out, so Smart setup → preview → export computes
         /// each item key and resolves each mapping set ONCE instead of three times (v5 S2).</summary>
@@ -216,6 +217,7 @@ namespace BIMCamel.UI
             LstBatch.ItemsSource = _batchItems;
             GridParams.ItemsSource = _paramRows;
             GridMap.ItemsSource = _mapRows;
+            GridPropRules.ItemsSource = _propRules;
 
             // shared catalogs for the grids
             ParamRow.SharedCategories.Clear(); ParamRow.SharedCategories.Add(AnyCat);
@@ -390,6 +392,18 @@ namespace BIMCamel.UI
             if (i < 0 || j < 0 || j >= _mapRows.Count) return;
             _mapRows.Move(i, j);
             GridMap.SelectedItem = r;
+        }
+        private void OnPropRuleAdd(object s, RoutedEventArgs e) => _propRules.Add(new PropRuleRow { Category = AnyCat });
+        private void OnPropRuleRemove(object s, RoutedEventArgs e) { if (GridPropRules.SelectedItem is PropRuleRow r) _propRules.Remove(r); }
+        private void OnPropRuleUp(object s, RoutedEventArgs e) => MovePropRule(-1);
+        private void OnPropRuleDown(object s, RoutedEventArgs e) => MovePropRule(+1);
+        private void MovePropRule(int delta)
+        {
+            if (!(GridPropRules.SelectedItem is PropRuleRow r)) { SetStatus("Select a rule to move."); return; }
+            int i = _propRules.IndexOf(r), j = i + delta;
+            if (i < 0 || j < 0 || j >= _propRules.Count) return;
+            _propRules.Move(i, j);
+            GridPropRules.SelectedItem = r;
         }
         private void OnPreviewMapping(object s, RoutedEventArgs e)
         {
@@ -578,6 +592,7 @@ namespace BIMCamel.UI
             // grid catalogs (categories + the property-name suggestion list)
             ParamRow.SharedCategories.Clear(); ParamRow.SharedCategories.Add(AnyCat); foreach (var c in cats) ParamRow.SharedCategories.Add(c);
             foreach (var row in _paramRows) row.Refresh();
+            foreach (var row in _propRules) row.Refresh();
 
             // Capture the user's role choices BEFORE touching _roleCats:
             // clearing that ItemsSource cascades SelectionChanged →
@@ -944,8 +959,28 @@ namespace BIMCamel.UI
             Props = ChkProps.IsChecked == true, Materials = ChkMaterials.IsChecked == true,
             PsetFilter = SelectedCategories(), ClassMap = maps.Class, ClassificationMap = maps.Classification,
             GroupMap = CmbGroups.SelectedIndex > 0 ? maps.Group : null,
-            ParamMap = BuildParamRules(), Roles = BuildRoles()
+            ParamMap = BuildParamRules(), Roles = BuildRoles(), PropRules = BuildPropRules()
         };
+
+        /// <summary>Complete property-rule rows, or null when there are none (the extractors skip
+        /// the whole step on null).</summary>
+        private List<PropertyRule>? BuildPropRules()
+        {
+            var rules = new List<PropertyRule>();
+            foreach (var r in _propRules)
+            {
+                var prop = (r.Property ?? "").Trim(); var cls = (r.IfcClass ?? "").Trim(); var code = (r.Classification ?? "").Trim();
+                bool hasClass = cls.Length > 0 && TypeMapping.Catalog.ContainsKey(cls);
+                if (prop.Length == 0 || (r.Value ?? "").Trim().Length == 0 || (!hasClass && code.Length == 0)) continue;
+                rules.Add(new PropertyRule
+                {
+                    Source = new PropRef(r.Category == AnyCat ? "" : (r.Category ?? "").Trim(), prop),
+                    Test = r.TestKind, Value = r.Value!.Trim(),
+                    ClassKey = hasClass ? TypeMapping.Encode(cls, r.Predefined) : "", Classification = code
+                });
+            }
+            return rules.Count > 0 ? rules : null;
+        }
 
         private void RunOneExport(string basePath, IfcSchema schema, List<ModelItem> items, double unitScale, CoordOptions coords, SpatialNames names,
             ExtractOptions opts, double weldTolMetres, int coordDecimals, (double x, double y, double z) geomMin, long splitLimit, ExportSummary summary, string verb)
@@ -1325,7 +1360,10 @@ namespace BIMCamel.UI
                 // No class or classification rule resolved to anything: every item is unmapped and
                 // unclassified by definition, and computing its key (a COM walk for GUID-less items)
                 // would only confirm that, once per element in the scope.
-                if (!maps.Any) unmapped = items.Count;
+                var propRules = BuildPropRules();
+                if (!PropertyRules.AnyClassRule(propRules)) propRules = null;
+                List<ModelItem>? leftOver = propRules != null ? new List<ModelItem>() : null;
+                if (!maps.Any) { unmapped = items.Count; leftOver = propRules != null ? items : null; }
                 else foreach (var it in items)
                 {
                     // ItemKey is an O(tree-depth) COM walk for GUID-less items;
@@ -1341,14 +1379,45 @@ namespace BIMCamel.UI
                         // The silent trap: a class the user mapped that 2x3 cannot represent.
                         if (schema == IfcSchema.Ifc2x3 && TypeMapping.Catalog.TryGetValue(friendly, out var c) && c.Ifc2x3.Length == 0) degraded++;
                     }
-                    else unmapped++;
+                    else { unmapped++; leftOver?.Add(it); }
+                }
+
+                // Property rules fill only what the set rules left empty, so they are tried on the
+                // leftovers alone. Reading properties is the slow part, so a large remainder is
+                // sampled and the counts scaled.
+                int byProp = 0;
+                if (propRules != null && leftOver != null && leftOver.Count > 0)
+                {
+                    SyncPropSource();
+                    const int MaxSample = 20000;
+                    int step = leftOver.Count > MaxSample ? leftOver.Count / MaxSample : 1, seen = 0;
+                    var propClass = new Dictionary<string, int>(StringComparer.Ordinal);
+                    int hits = 0, hitsDegraded = 0;
+                    for (int i = 0; i < leftOver.Count; i += step)
+                    {
+                        if ((++seen & 255) == 0) CollectTick(seen);
+                        string? ck = null, cc = null;
+                        PropertyRules.Apply(leftOver[i], propRules, ref ck, ref cc);
+                        if (string.IsNullOrEmpty(ck)) continue;
+                        hits++;
+                        string friendly = TypeMapping.Friendly(ck!);
+                        propClass.TryGetValue(friendly, out int n); propClass[friendly] = n + 1;
+                        if (schema == IfcSchema.Ifc2x3 && TypeMapping.Catalog.TryGetValue(friendly, out var c) && c.Ifc2x3.Length == 0) hitsDegraded++;
+                    }
+                    double scale = seen > 0 ? (double)leftOver.Count / seen : 0;
+                    byProp = (int)Math.Round(hits * scale);
+                    foreach (var kv in propClass)
+                    {
+                        byClass.TryGetValue(kv.Key, out int n); byClass[kv.Key] = n + (int)Math.Round(kv.Value * scale);
+                    }
+                    mapped += byProp; unmapped -= byProp; degraded += (int)Math.Round(hitsDegraded * scale);
                 }
 
                 var facts = new PreflightFacts
                 {
                     When = DateTime.Now, ScopeLabel = ScopeLabel(), Fingerprint = PreflightFingerprint(),
                     Items = items.Count, Mapped = mapped, Unmapped = unmapped, Degraded = degraded,
-                    Classified = classified, Rules = rules.Count,
+                    Classified = classified, Rules = rules.Count + (propRules?.Count ?? 0),
                     ByClass = new Dictionary<string, int>(byClass, StringComparer.Ordinal),
                     HiddenExcluded = ItemCollector.HiddenSkipped,
                 };
@@ -1356,9 +1425,10 @@ namespace BIMCamel.UI
                 var sb = new StringBuilder();
                 sb.AppendLine($"Scope       : {ScopeLabel()}   {items.Count:N0} items");
                 sb.AppendLine($"Schema      : {(schema == IfcSchema.Ifc4 ? "IFC4" : "IFC2x3")}");
-                sb.AppendLine($"Rules       : {rules.Count} set rule(s)");
+                sb.AppendLine($"Rules       : {rules.Count} set rule(s)" + (propRules != null ? $", {propRules.Count} property rule(s)" : ""));
                 sb.AppendLine();
                 sb.AppendLine($"Mapped      : {mapped:N0}" + (items.Count > 0 ? $"  ({100.0 * mapped / items.Count:0.#}%)" : ""));
+                if (byProp > 0) sb.AppendLine($"     · {byProp:N0} of them by property rules" + (leftOver!.Count > 20000 ? " (estimated from a sample)" : ""));
                 int proxy = unmapped + degraded;
                 if (proxy > 0)
                 {
@@ -1541,7 +1611,7 @@ namespace BIMCamel.UI
         private string PreflightFingerprint() =>
             ScopeIndex() + "|" + CmbSavedSet.SelectedIndex + "|" +
             string.Join(",", _batchItems.Where(b => b.Checked).Select(b => b.Name)) + "|" +
-            GridToText() + "|" + RolesToText() + "|" + CmbPropSource.SelectedIndex;
+            GridToText() + "|" + PropRulesToText() + "|" + RolesToText() + "|" + CmbPropSource.SelectedIndex;
 
         private void RenderPreflight()
         {
@@ -2028,7 +2098,7 @@ namespace BIMCamel.UI
             MinSize = ChkMinSize.IsChecked == true, MinSizeMm = (TxtMinSizeMm.Text ?? "").Trim(),
             Validate = ChkValidate.IsChecked == true, Quantities = ChkQuantities.IsChecked == true, Mapping = GridToText(),
             Crs = (TxtCrs.Text ?? "").Trim(), SurveyE = ParseD(TxtSurveyE.Text), SurveyN = ParseD(TxtSurveyN.Text), SurveyElev = ParseD(TxtSurveyElev.Text),
-            Roles = RolesToText(), ParamRules = ParamRulesToText(),
+            Roles = RolesToText(), ParamRules = ParamRulesToText(), PropRules = PropRulesToText(),
             ProjectName = TxtProject.Text ?? "", SiteName = TxtSite.Text ?? "", BuildingName = TxtBuilding.Text ?? "", StoreyName = TxtStorey.Text ?? "",
             ClassificationSystem = (TxtClassSystem.Text ?? "").Trim(),
             ClassificationSource = (TxtClassSource.Text ?? "").Trim(),
@@ -2070,6 +2140,7 @@ namespace BIMCamel.UI
             TxtFileName.Text = string.IsNullOrWhiteSpace(p.FileNameTemplate) ? DefaultNameTemplate : p.FileNameTemplate;
             TextToRoles(p.Roles); TextToParamRules(p.ParamRules);
             TextToGrid(p.Mapping);
+            TextToPropRules(p.PropRules);
         }
 
         // Mapping grid: "set => class :: predefined @@ classification". The class half is now
@@ -2162,6 +2233,40 @@ namespace BIMCamel.UI
                     SourceProperty = f[1].Trim(),
                     TargetPset = f.Length > 2 ? f[2].Trim() : "",
                     TargetName = f.Length > 3 ? f[3].Trim() : ""
+                });
+            }
+        }
+
+        // Property rules — "category|property|test|value|class|predefined|classification" per line.
+        private string PropRulesToText()
+        {
+            var sb = new StringBuilder();
+            foreach (var r in _propRules)
+            {
+                var prop = (r.Property ?? "").Trim();
+                if (prop.Length == 0) continue;
+                string cat = r.Category == AnyCat ? "" : (r.Category ?? "").Trim();
+                sb.AppendLine(string.Join("|", cat, prop, r.Test, (r.Value ?? "").Trim(), (r.IfcClass ?? "").Trim(),
+                    (r.Predefined ?? "").Trim(), (r.Classification ?? "").Trim()));
+            }
+            return sb.ToString();
+        }
+        private void TextToPropRules(string? text)
+        {
+            _propRules.Clear();
+            if (string.IsNullOrWhiteSpace(text)) return;
+            foreach (var line in text!.Replace("\r", "").Split('\n'))
+            {
+                var f = line.Split('|');
+                if (f.Length < 4 || f[1].Trim().Length == 0) continue;
+                string F(int i) => i < f.Length ? f[i].Trim() : "";
+                var cls = F(4);
+                if (cls.Length > 0 && !TypeMapping.Catalog.ContainsKey(cls)) cls = "";
+                _propRules.Add(new PropRuleRow
+                {
+                    Category = F(0).Length == 0 ? AnyCat : F(0), Property = F(1),
+                    Test = Array.IndexOf(PropRuleRow.SharedTests, F(2)) >= 0 ? F(2) : "equals",
+                    Value = F(3), IfcClass = cls, Predefined = F(5), Classification = F(6)
                 });
             }
         }

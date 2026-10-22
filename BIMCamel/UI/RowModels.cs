@@ -108,4 +108,61 @@ namespace BIMCamel.UI
         public event PropertyChangedEventHandler? PropertyChanged;
         private void OnChanged(string n) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
     }
+
+    /// <summary>
+    /// One row of the "rules by property value" grid: IF a property passes a test THEN a class
+    /// and/or classification code. The category and property pickers reuse the parameter grid's
+    /// scanned catalog, so a scan fills both.
+    /// </summary>
+    public sealed class PropRuleRow : INotifyPropertyChanged
+    {
+        public static readonly string[] SharedTests = { "equals", "contains", "starts with" };
+
+        public ObservableCollection<string> Categories => ParamRow.SharedCategories;
+        public ObservableCollection<string> Classes => MapRow.SharedClasses;
+        public string[] Tests => SharedTests;
+        public ObservableCollection<string> AvailableProps { get; } = new ObservableCollection<string>();
+        public ObservableCollection<string> PredefinedOptions { get; } = new ObservableCollection<string>();
+
+        private string _cat = "", _prop = "", _test = "equals", _value = "", _cls = "", _predef = "", _classif = "";
+
+        public string Category
+        {
+            get => _cat;
+            set
+            {
+                _cat = value ?? ""; OnChanged(nameof(Category));
+                AvailableProps.Clear();
+                foreach (var n in ParamRow.Resolver?.Invoke(_cat) ?? Enumerable.Empty<string>()) AvailableProps.Add(n);
+            }
+        }
+        public string Property { get => _prop; set { _prop = value ?? ""; OnChanged(nameof(Property)); } }
+        public string Test { get => _test; set { _test = value ?? "equals"; OnChanged(nameof(Test)); } }
+        public string Value { get => _value; set { _value = value ?? ""; OnChanged(nameof(Value)); } }
+        public string IfcClass
+        {
+            get => _cls;
+            set
+            {
+                _cls = value ?? ""; OnChanged(nameof(IfcClass));
+                PredefinedOptions.Clear();
+                foreach (var v in BIMCamel.Data.TypeMapping.PredefinedValues(_cls)) PredefinedOptions.Add(v);
+            }
+        }
+        public string Predefined { get => _predef; set { _predef = value ?? ""; OnChanged(nameof(Predefined)); } }
+        public string Classification { get => _classif; set { _classif = value ?? ""; OnChanged(nameof(Classification)); } }
+
+        public BIMCamel.Data.RuleTest TestKind => Array.IndexOf(SharedTests, _test) switch
+        {
+            1 => BIMCamel.Data.RuleTest.Contains,
+            2 => BIMCamel.Data.RuleTest.StartsWith,
+            _ => BIMCamel.Data.RuleTest.Equals
+        };
+
+        /// <summary>Recompute the property list (after a fresh scan).</summary>
+        public void Refresh() => Category = _cat;
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+        private void OnChanged(string n) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
+    }
 }

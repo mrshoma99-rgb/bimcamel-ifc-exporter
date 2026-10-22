@@ -191,6 +191,12 @@ namespace BIMCamel.Geometry
             // A set rule is an explicit decision by the user; it outranks whatever the source
             // property happened to contain.
             if (hasCode && o.ClassificationMap!.TryGetValue(key, out var cc)) el.ClassCode = cc;
+            if (o.PropRules != null)
+            {
+                string? pk = el.ClassKey, pc = hasCode && o.ClassificationMap!.ContainsKey(key) ? el.ClassCode : null;
+                Data.PropertyRules.Apply(item, o.PropRules, ref pk, ref pc);
+                el.ClassKey = pk; if (!string.IsNullOrEmpty(pc)) el.ClassCode = pc!;
+            }
             if (hasGroup && o.GroupMap!.TryGetValue(key, out var gn)) el.GroupName = gn;
             ExportTiming.HarvestTicks += ExportTiming.Now - th;
 

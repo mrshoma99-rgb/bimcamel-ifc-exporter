@@ -53,6 +53,9 @@ namespace BIMCamel.Geometry
         public Dictionary<string, string>? ClassificationMap; // itemKey → classification code (set rule)
         public Dictionary<string, string>? GroupMap;         // itemKey → set name (IfcGroup export)
         public List<ParamMapRule>? ParamMap;
+        /// <summary>Class / classification chosen by a property value; fills only what the set
+        /// rules left empty.</summary>
+        public List<PropertyRule>? PropRules;
         public PropertyRoles? Roles;
         /// <summary>Per-operation ItemKey memo, shared with BuildSetMaps so keys
         /// computed while resolving the rules are not recomputed per element.</summary>
@@ -195,6 +198,12 @@ namespace BIMCamel.Geometry
             // A set rule is an explicit decision by the user; it outranks whatever the source
             // property happened to contain.
             if (hasCode && o.ClassificationMap!.TryGetValue(key, out var cc)) em.ClassCode = cc;
+            if (o.PropRules != null)
+            {
+                string? pk = em.ClassKey, pc = hasCode && o.ClassificationMap!.ContainsKey(key) ? em.ClassCode : null;
+                PropertyRules.Apply(item, o.PropRules, ref pk, ref pc);
+                em.ClassKey = pk; if (!string.IsNullOrEmpty(pc)) em.ClassCode = pc!;
+            }
             if (hasGroup && o.GroupMap!.TryGetValue(key, out var gn)) em.GroupName = gn;
             ExportTiming.HarvestTicks += ExportTiming.Now - ts;
             return em;

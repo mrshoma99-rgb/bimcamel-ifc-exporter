@@ -909,6 +909,68 @@
               </StackPanel>
             </Border>
 
+            <!-- Rules by property value: the same IF/THEN as a search set, without having to
+                 build and save one in Navisworks first. -->
+            <Border Style="{StaticResource CardStyle}">
+              <StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                  <TextBlock Style="{StaticResource H3}" Text="RULES BY PROPERTY VALUE"/>
+                  <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeOptTx}"/></Border>
+                </StackPanel>
+                <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,11" TextWrapping="Wrap"
+                           Text="IF a property has a value THEN export as a class, with no search set needed. For example: Element / Category equals Walls → IfcWall. These rules only fill what the set rules above left empty, and the first matching rule wins. Scan on the Data tab to fill the property lists."/>
+                <DataGrid x:Name="GridPropRules" AutoGenerateColumns="False" HeadersVisibility="Column" CanUserAddRows="False"
+                          Background="Transparent" RowBackground="Transparent" BorderBrush="{DynamicResource FieldBd}" BorderThickness="1"
+                          GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource Bd}" RowHeight="40"
+                          Foreground="{DynamicResource Text}" FontSize="12">
+                  <DataGrid.Columns>
+                    <DataGridTemplateColumn Header="Category" Width="0.8*" MinWidth="80">
+                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                        <ComboBox ItemsSource="{Binding Categories}" SelectedItem="{Binding Category, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Property" Width="0.8*" MinWidth="80">
+                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                        <ComboBox IsEditable="True" ItemsSource="{Binding AvailableProps}" Text="{Binding Property, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Test" Width="0.6*" MinWidth="70">
+                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                        <ComboBox ItemsSource="{Binding Tests}" SelectedItem="{Binding Test, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"
+                                  ToolTip="How the value is compared. Never case-sensitive."/>
+                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Value" Width="0.8*" MinWidth="70">
+                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                        <TextBox Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="IFC class" Width="*" MinWidth="90">
+                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                        <ComboBox ItemsSource="{Binding Classes}" SelectedItem="{Binding IfcClass, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Predefined" Width="0.6*" MinWidth="70">
+                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                        <ComboBox IsEditable="True" ItemsSource="{Binding PredefinedOptions}" Text="{Binding Predefined, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Classification" Width="0.6*" MinWidth="70">
+                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                        <TextBox Text="{Binding Classification, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                  </DataGrid.Columns>
+                </DataGrid>
+                <WrapPanel Margin="0,10,0,0">
+                  <Button Style="{StaticResource Btn}" Content="+ Add rule" Click="OnPropRuleAdd" ToolTip="Add a rule that picks a class by a property value."/>
+                  <Button Style="{StaticResource Btn}" Content="Remove selected" Click="OnPropRuleRemove"/>
+                  <Button Style="{StaticResource Btn}" Content="↑" Click="OnPropRuleUp" ToolTip="Move up. When two rules match one element, the higher one wins."/>
+                  <Button Style="{StaticResource Btn}" Content="↓" Click="OnPropRuleDown" ToolTip="Move down. When two rules match one element, the higher one wins."/>
+                </WrapPanel>
+              </StackPanel>
+            </Border>
+
             <Border Style="{StaticResource CardStyle}">
               <StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,11">

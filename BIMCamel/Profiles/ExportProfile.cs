@@ -64,6 +64,9 @@ namespace BIMCamel.Profiles
         [DataMember] public string Roles = "";
         /// <summary>Parameter rules, one per line: "srcCategory | srcProperty | targetPset | targetName".</summary>
         [DataMember] public string ParamRules = "";
+        /// <summary>Rules by property value, one per line:
+        /// "category | property | test | value | class | predefined | classification".</summary>
+        [DataMember] public string PropRules = "";
         [DataMember] public string ProjectName = "";
         [DataMember] public string SiteName = "";
         [DataMember] public string BuildingName = "";
