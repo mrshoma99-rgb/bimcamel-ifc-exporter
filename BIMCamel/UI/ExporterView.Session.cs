@@ -39,6 +39,7 @@ namespace BIMCamel.UI
             if (_ui.WarningDismissed) WarnBanner.Visibility = Visibility.Collapsed;
             TglAdvanced.IsChecked = _ui.AdvancedOpen;
             UpdateProfileLabel();
+            UpdateExportLabel();
 
             // Every edit anywhere in the pane bubbles one of these. Listening at the root means a
             // control added later is remembered without anyone having to wire it up.
@@ -56,6 +57,7 @@ namespace BIMCamel.UI
         private void ScheduleSave()
         {
             if (_applying || _defaults == null) return;
+            UpdateExportLabel();
             _saveTimer.Stop(); _saveTimer.Start();
         }
 
@@ -95,7 +97,7 @@ namespace BIMCamel.UI
 
         private void AfterBulkChange()
         {
-            UpdateScopeHint(); PreviewBasePoint(); UpdateAdvancedSummary(); RenderPreflight();
+            UpdateScopeHint(); PreviewBasePoint(); UpdateAdvancedSummary(); RenderPreflight(); UpdateExportLabel();
             SaveSession();
         }
 

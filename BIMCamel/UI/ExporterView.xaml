@@ -1015,7 +1015,9 @@
               <Viewbox Width="17" Height="17" Margin="0,0,8,0">
                 <Path Data="M12,3 L12,15 M8,11 L12,15 L16,11 M4,17 L4,19 A2,2 0 0 0 6,21 L18,21 A2,2 0 0 0 20,19 L20,17" Stroke="White" StrokeThickness="2"/>
               </Viewbox>
-              <TextBlock Text="Export IFC"/>
+              <!-- Says what the click will do — schema, form, how many files — and is
+                   updated as those settings change. -->
+              <TextBlock x:Name="LblExportBtn" Text="Export IFC"/>
             </StackPanel>
           </Button>
         </StackPanel>

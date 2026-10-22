@@ -70,7 +70,8 @@ namespace BIMCamel.UI
             InitControls();
             InitGridsAndLists();
             InitSession();
-            Loaded += (_, _) => { UpdateScopeHint(); PreviewBasePoint(); RefreshModelStatus(); RefreshSets(); RenderPreflight(); };
+            Loaded += (_, _) => { AttachDocumentEvents(); UpdateScopeHint(); PreviewBasePoint(); RefreshModelStatus(); RefreshSets(); RenderPreflight(); };
+            Unloaded += (_, _) => DetachDocumentEvents();
             // The set list self-refreshes when the Mapping tab opens (replacing
             // the old per-tab Refresh buttons), and the pre-flight rows refresh
             // when the Export tab opens — they show live config state, and this
@@ -337,7 +338,10 @@ namespace BIMCamel.UI
             BatchRow.Visibility = idx == 4 ? Visibility.Visible : Visibility.Collapsed;
             switch (idx)
             {
-                case 1: LblScopeHint.Text = "→ select items in Navisworks first"; break;
+                case 1:
+                    int selected = SelectedCount();
+                    LblScopeHint.Text = selected > 0 ? $"{selected:N0} item(s) selected in Navisworks" : "→ select items in Navisworks first";
+                    break;
                 case 2: LblScopeHint.Text = "→ enable a section box in Navisworks first"; break;
                 case 3: LblScopeHint.Text = "→ pick a saved set below"; RefreshSets(); break;
                 case 4: LblScopeHint.Text = "→ tick sets below; each becomes its own IFC (choose an output folder)"; RefreshSets(); break;
@@ -348,7 +352,10 @@ namespace BIMCamel.UI
         private void RefreshModelStatus()
         {
             var doc = NavApp.ActiveDocument;
-            LblModel.Text = (doc != null && doc.Models.Count > 0) ? "● Model loaded" : "";
+            if (doc == null || doc.Models.Count == 0) { LblModel.Text = "No model open"; LblModel.SetResourceReference(TextBlock.ForegroundProperty, "Muted"); return; }
+            LblModel.SetResourceReference(TextBlock.ForegroundProperty, "Ok");
+            string name = ModelBaseName(doc);
+            LblModel.Text = "● " + name + (doc.Models.Count > 1 ? $" · {doc.Models.Count} models" : "");
         }
 
         // ── button handlers ───────────────────────────────────────────────────────
