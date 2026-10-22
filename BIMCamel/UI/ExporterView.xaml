@@ -646,6 +646,8 @@
                     <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
                   </StackPanel>
                   <CheckBox x:Name="ChkProps" Content="Export properties (property sets)" ToolTip="Write each element's property sets into the IFC."/>
+                  <TextBlock Style="{StaticResource Lbl}" Text="Read properties from" Margin="18,6,0,2"/>
+                  <ComboBox x:Name="CmbPropSource" Margin="18,0,0,6" ToolTip="Which level of the Navisworks selection tree each element's properties come from.&#x0a;&#x0a;Navisworks exports geometry, but most authoring tools put the useful data on the object ABOVE the geometry: Revit's Element tab sits on the element node, SmartPlant 3D and E3D on the occurrence several levels up. 'Geometry + parent object' adds the properties of the nearest composite object above each piece of geometry (Navisworks' Last Object) - the right choice for Revit models.&#x0a;&#x0a;Where the geometry and a parent both carry the same property, the geometry's value is kept.&#x0a;&#x0a;Re-run Smart setup or Scan after changing this, so the property set list and the roles see the new categories."/>
                   <CheckBox x:Name="ChkMaterials" Content="Export materials / colours" ToolTip="Write material names and colours."/>
                   <CheckBox x:Name="ChkQuantities" Content="Compute base quantities (volume / area / length)" ToolTip="Compute and write IfcElementQuantity base quantities."/>
                 </StackPanel>
