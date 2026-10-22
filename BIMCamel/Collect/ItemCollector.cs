@@ -229,21 +229,11 @@ namespace BIMCamel.Collect
 
         /// <summary>
         /// Stable per-item key for matching set membership to scope items across separate
-        /// traversals: InstanceGuid when present, else a tree path (display names). Must be
-        /// computed identically wherever it's used.
+        /// traversals: InstanceGuid when present, else a tree path (display names, root first).
+        /// Must be computed identically wherever it's used — the memoised overload below builds
+        /// exactly the same string, just without re-reading shared ancestors.
         /// </summary>
-        public static string ItemKey(ModelItem item)
-        {
-            try
-            {
-                if (item.InstanceGuid != Guid.Empty) return "G:" + item.InstanceGuid.ToString();
-                var parts = new List<string>();
-                foreach (var a in item.AncestorsAndSelf)
-                    parts.Add(a.DisplayName ?? a.ClassName ?? "");
-                return "P:" + string.Join("/", parts);
-            }
-            catch { return "P:" + (item.DisplayName ?? ""); }
-        }
+        public static string ItemKey(ModelItem item) => ItemKeyCore(item, null);
 
         /// <summary>
         /// Memoised <see cref="ItemKey"/>. The GUID-less fallback is an
@@ -254,12 +244,65 @@ namespace BIMCamel.Collect
         /// (the batch-scope union dedup relies on the same property), and a
         /// per-operation dictionary collapses those repeats. Null cache = plain computation; a miss is
         /// only ever a lost optimisation, never a wrong key.
+        ///
+        /// Passing an <see cref="ItemKeyCache"/> (what <see cref="ScanCache"/> hands out) also
+        /// memoises the ancestor PATHS, so a GUID-less leaf costs one Parent read and one name read
+        /// instead of a walk to the root: the siblings under one Revit element, or the thousands of
+        /// leaves under one level, share every path segment above them.
         /// </summary>
         public static string ItemKey(ModelItem item, Dictionary<ModelItem, string>? cache)
         {
             if (cache == null) return ItemKey(item);
             if (cache.TryGetValue(item, out var k)) return k;
-            return cache[item] = ItemKey(item);
+            return cache[item] = ItemKeyCore(item, (cache as ItemKeyCache)?.Paths);
+        }
+
+        private static string ItemKeyCore(ModelItem item, Dictionary<ModelItem, string>? paths)
+        {
+            try
+            {
+                if (item.InstanceGuid != Guid.Empty) return "G:" + item.InstanceGuid.ToString();
+                return "P:" + PathOf(item, paths);
+            }
+            catch { return "P:" + SafeDisplayName(item); }
+        }
+
+        /// <summary>Display-name path from the model root down to <paramref name="item"/>.</summary>
+        private static string PathOf(ModelItem item, Dictionary<ModelItem, string>? paths)
+        {
+            if (paths != null && paths.TryGetValue(item, out var known)) return known;
+
+            string self = item.DisplayName ?? item.ClassName ?? "";
+            var parent = item.Parent;
+            string path;
+            if (parent == null) path = self;
+            else if (paths != null) path = PathOf(parent, paths) + "/" + self;
+            else
+            {
+                // Uncached: one walk up, then join root-first — the same string as the memo builds.
+                var parts = new List<string> { self };
+                for (var a = parent; a != null; a = a.Parent) parts.Add(a.DisplayName ?? a.ClassName ?? "");
+                parts.Reverse();
+                path = string.Join("/", parts);
+            }
+            if (paths != null) paths[item] = path;
+            return path;
+        }
+
+        private static string SafeDisplayName(ModelItem item)
+        {
+            try { return item.DisplayName ?? ""; } catch { return ""; }
+        }
+
+        /// <summary>
+        /// The item-key memo plus a memo of ancestor paths for the GUID-less fallback. Still a
+        /// <c>Dictionary&lt;ModelItem,string&gt;</c> of final keys, so every existing caller keeps
+        /// its signature; <see cref="ItemKey(ModelItem, Dictionary{ModelItem, string})"/> notices the
+        /// subtype and uses the path memo. Same lifetime rules as the keys: valid for one document.
+        /// </summary>
+        public sealed class ItemKeyCache : Dictionary<ModelItem, string>
+        {
+            public readonly Dictionary<ModelItem, string> Paths = new Dictionary<ModelItem, string>();
         }
 
         /// <summary>One mapping-grid row resolved to its set: what class and classification it assigns.</summary>

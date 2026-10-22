@@ -157,7 +157,13 @@ namespace BIMCamel.Data
                     string roleCat = dn ?? cn ?? "";
 
                     bool wantProps = include == null || include.Contains(pset);
-                    if (!wantProps && !wantRoles) continue;
+                    // A category feeds the role scan only if some role that is still unfilled could
+                    // match it. Roles from Smart setup are always category-qualified, so on the
+                    // roles-only path (psets off, the preview's coverage sample, a narrow pset
+                    // filter) this skips almost every category before its Properties collection is
+                    // built — that collection, not the name compare, is the expensive part.
+                    bool rolesHere = wantRoles && RolesPending(roles!, rv, roleCat);
+                    if (!wantProps && !rolesHere) continue;
 
                     foreach (var p in cat.Properties)
                     {
@@ -176,8 +182,14 @@ namespace BIMCamel.Data
                             if (!SkipEmptyValues || !string.IsNullOrWhiteSpace(prop.Value)) { list.Add(prop); seen?.Add((pset, name)); }
                         }
 
-                        if (!wantRoles) continue;
-                        TakeRole(roles!, roleCat, name, ref rv, ref text, p.Value);
+                        if (!rolesHere) continue;
+                        // Once nothing left unfilled can come from this category, the rest of it is
+                        // only worth reading for the property sets.
+                        if (TakeRole(roles!, roleCat, name, ref rv, ref text, p.Value) && !RolesPending(roles!, rv, roleCat))
+                        {
+                            if (!wantProps) break;
+                            rolesHere = false;
+                        }
                     }
                 }
             }
@@ -209,13 +221,16 @@ namespace BIMCamel.Data
         }
 
         /// <summary>Same first-wins ordering as the old ReadRoles chain: one property feeds at most
-        /// one role, and a role already filled (by this node or one nearer the geometry) stays.</summary>
-        private static void TakeRole(PropertyRoles roles, string roleCat, string name, ref RoleValues rv, ref string? text, VariantData? value)
+        /// one role, and a role already filled (by this node or one nearer the geometry) stays.
+        /// Returns true when this property filled a role.</summary>
+        private static bool TakeRole(PropertyRoles roles, string roleCat, string name, ref RoleValues rv, ref string? text, VariantData? value)
         {
             if (rv.Type == "" && Match(roles.Type, roleCat, name)) rv.Type = text ??= ValueToString(value!);
             else if (rv.Level == "" && Match(roles.Level, roleCat, name)) rv.Level = text ??= ValueToString(value!);
             else if (rv.Material == "" && Match(roles.Material, roleCat, name)) rv.Material = text ??= ValueToString(value!);
             else if (rv.Classification == "" && Match(roles.Classification, roleCat, name)) rv.Classification = text ??= ValueToString(value!);
+            else return false;
+            return true;
         }
 
         private static bool RolesComplete(PropertyRoles r, RoleValues rv)
@@ -469,6 +484,21 @@ namespace BIMCamel.Data
             var props = HarvestWithRoles(item, wantProps ? include : NoCategories, roles, out rv);
             return wantProps ? props : null;
         }
+
+        /// <summary>
+        /// True while at least one configured role is still blank AND could be satisfied by a
+        /// property in <paramref name="categoryName"/> (its category is blank = any, or equal).
+        /// Skipping a category this returns false for cannot change the result: no property in it
+        /// could pass <see cref="Match"/> for a role that is still open.
+        /// </summary>
+        private static bool RolesPending(PropertyRoles roles, RoleValues rv, string categoryName)
+            => (rv.Type == "" && CategoryFits(roles.Type, categoryName))
+            || (rv.Level == "" && CategoryFits(roles.Level, categoryName))
+            || (rv.Material == "" && CategoryFits(roles.Material, categoryName))
+            || (rv.Classification == "" && CategoryFits(roles.Classification, categoryName));
+
+        private static bool CategoryFits(PropRef r, string categoryName)
+            => r.IsSet && (string.IsNullOrWhiteSpace(r.Category) || string.Equals(categoryName, r.Category, StringComparison.OrdinalIgnoreCase));
 
         private static bool Match(PropRef r, string categoryName, string propName)
             => r.IsSet && string.Equals(propName, r.Name, StringComparison.OrdinalIgnoreCase)

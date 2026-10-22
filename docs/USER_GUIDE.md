@@ -114,7 +114,8 @@ geometry quality and compressed .ifczip — all defaulted), **Smart setup**
 (section 6), **Advanced options** and the **Report** console.
 
 **Advanced options** is collapsed by default because its defaults suit most
-exports. It holds *File size & speed* (instancing, fast instancing, skip
+exports. It holds *File size & speed* (instancing, merge multi-part elements,
+fast instancing, skip
 empty property values, share type-level properties, skip small geometry,
 size splitting) and *Checks & diagnostics* (post-export validation, size &
 time breakdown). While collapsed, its header shows how many of these differ

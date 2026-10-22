@@ -80,7 +80,7 @@ namespace BIMCamel.Geometry
 
             foreach (InwOaPath3 path in comSel.Paths())
             {
-                foreach (InwOaFragment3 frag in path.Fragments())
+                foreach (InwOaFragment3 frag in ComScope.OwnFragments(path))
                 {
                     sink.CurrentTransform = ReadMatrix(frag);
                     // eNORMAL = also request per-vertex normals; we ignore them in the spike.

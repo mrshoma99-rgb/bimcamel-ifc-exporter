@@ -35,7 +35,7 @@ namespace BIMCamel.Collect
     public sealed class ScanCache
     {
         private string _docToken = "";
-        private Dictionary<ModelItem, string> _keys = new Dictionary<ModelItem, string>();
+        private ItemCollector.ItemKeyCache _keys = new ItemCollector.ItemKeyCache();
 
         private string _mapsSig = "";
         private ItemCollector.SetMaps? _maps;
@@ -53,7 +53,7 @@ namespace BIMCamel.Collect
             string token = TokenFor(doc);
             if (token == _docToken) return;
             _docToken = token;
-            _keys = new Dictionary<ModelItem, string>();
+            _keys = new ItemCollector.ItemKeyCache();
             DropMaps();
         }
 
