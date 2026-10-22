@@ -128,6 +128,7 @@ namespace BIMCamel.UI
             // v6. Compression is a pure win, so it defaults ON.
             ChkZip.IsChecked = true;
             ChkProps.IsChecked = true; ChkMaterials.IsChecked = true; ChkQuantities.IsChecked = true;
+            ChkAutoClassify.IsChecked = true;
             ApplyAdvancedDefaults();
             InitAdvancedCard();
             TxtE.Text = TxtN.Text = TxtElev.Text = TxtRot.Text = "0";
@@ -815,6 +816,7 @@ namespace BIMCamel.UI
                 if (doc == null || doc.Models.Count == 0) { SetStatus("Open a model first."); return; }
                 // Reset BEFORE scope collection — the collector counts recovered branch geometry.
                 BIMCamel.Geometry.ExportIssues.Reset();
+                RuleClassifier.Reset();
 
                 var schema = CmbSchema.SelectedIndex == 1 ? IfcSchema.Ifc2x3 : IfcSchema.Ifc4;
                 string schemaName = schema == IfcSchema.Ifc4 ? "IFC4" : "IFC2x3";
@@ -977,7 +979,9 @@ namespace BIMCamel.UI
             Props = ChkProps.IsChecked == true, Materials = ChkMaterials.IsChecked == true,
             PsetFilter = SelectedCategories(), ClassMap = maps.Class, ClassificationMap = maps.Classification,
             GroupMap = CmbGroups.SelectedIndex > 0 ? maps.Group : null,
-            ParamMap = BuildParamRules(), Roles = BuildRoles(), PropRules = BuildPropRules()
+            ParamMap = BuildParamRules(), Roles = BuildRoles(), PropRules = BuildPropRules(),
+            AutoClassify = ChkAutoClassify.IsChecked == true,
+            CategoryCache = new Dictionary<ModelItem, string?>()
         };
 
         /// <summary>Complete property-rule rows, or null when there are none (the extractors skip
@@ -1005,6 +1009,7 @@ namespace BIMCamel.UI
         {
             SwitchToDeterminate(items.Count);
             bool quantities = ChkQuantities.IsChecked == true;
+            opts.ClassifyUnitScale = unitScale;   // the rules' shape check reads item boxes in model units
             string author = Environment.UserName;
             bool shareTypeProps = ChkShareTypeProps.IsChecked == true;   // v6 Z3
             PropertyHarvester.SkipEmptyValues = ChkSkipEmptyProps.IsChecked == true;   // v6 Z4
@@ -1940,6 +1945,8 @@ namespace BIMCamel.UI
             sb.AppendLine($"Class rules : {ruleCount} set rule(s)");
             if (s.GuidCollisions > 0)
                 sb.AppendLine($"GlobalIds   : {s.GuidCollisions:N0} element(s) shared a GlobalId with another (model appended twice?) and got a derived one");
+            var auto = RuleClassifier.Report();
+            if (auto.Length > 0) sb.AppendLine(auto);
             sb.Append(MappingLines(s));
             if (s.Revision != null)
             {
@@ -2121,7 +2128,7 @@ namespace BIMCamel.UI
             SkipEmptyProps = ChkSkipEmptyProps.IsChecked == true,
             PropSource = CmbPropSource.SelectedIndex,
             MinSize = ChkMinSize.IsChecked == true, MinSizeMm = (TxtMinSizeMm.Text ?? "").Trim(),
-            Validate = ChkValidate.IsChecked == true, Quantities = ChkQuantities.IsChecked == true, Mapping = GridToText(),
+            Validate = ChkValidate.IsChecked == true, Quantities = ChkQuantities.IsChecked == true, NoAutoClassify = ChkAutoClassify.IsChecked != true, Mapping = GridToText(),
             Crs = (TxtCrs.Text ?? "").Trim(), SurveyE = ParseD(TxtSurveyE.Text), SurveyN = ParseD(TxtSurveyN.Text), SurveyElev = ParseD(TxtSurveyElev.Text),
             Roles = RolesToText(), ParamRules = ParamRulesToText(), PropRules = PropRulesToText(),
             ProjectName = TxtProject.Text ?? "", SiteName = TxtSite.Text ?? "", BuildingName = TxtBuilding.Text ?? "", StoreyName = TxtStorey.Text ?? "",
@@ -2143,7 +2150,7 @@ namespace BIMCamel.UI
             CmbBasePoint.SelectedIndex = Clamp(p.BasePoint, CmbBasePoint.Items.Count);
             TxtE.Text = Inv(p.CustomE); TxtN.Text = Inv(p.CustomN); TxtElev.Text = Inv(p.CustomElev); TxtRot.Text = Inv(p.Rotation);
             ChkGeoref.IsChecked = p.Georef; ChkProps.IsChecked = p.Props; ChkMaterials.IsChecked = p.Materials;
-            ChkInstancing.IsChecked = p.Instancing; ChkValidate.IsChecked = p.Validate; ChkQuantities.IsChecked = p.Quantities;
+            ChkInstancing.IsChecked = p.Instancing; ChkValidate.IsChecked = p.Validate; ChkQuantities.IsChecked = p.Quantities; ChkAutoClassify.IsChecked = !p.NoAutoClassify;
             ChkFastInstancing.IsChecked = p.FastInstancing; ChkMergeParts.IsChecked = p.MergeParts;
             ChkZip.IsChecked = p.Zip; ChkShareTypeProps.IsChecked = p.ShareTypeProps;
             ChkSkipEmptyProps.IsChecked = p.SkipEmptyProps;

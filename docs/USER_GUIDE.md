@@ -136,7 +136,8 @@ from the defaults (e.g. "2 changed"), and **↺ Reset** puts them all back.
 
 ### Data — what each element carries
 - **What to export:** properties, materials/colours, base quantities
-  (volume / area / length / width / height as `Qto_*BaseQuantities`).
+  (volume / area / length / width / height as `Qto_*BaseQuantities`), and
+  **Auto-classify unmapped elements** (on by default, see Mapping below).
 - **Read properties from:** which level of the selection tree each element's
   properties come from. Navisworks exports geometry, but Revit puts its
   **Element** tab on the element node *above* the geometry (SmartPlant 3D and
@@ -181,7 +182,22 @@ tab.
 property, with no search set needed: *Element / Category equals Walls →
 IfcWall*. Tests are *equals*, *contains* and *starts with*, never
 case-sensitive. They only fill what the set rules left empty, and the
-first matching one wins. A further card holds the classification
+first matching one wins.
+
+**Auto-classify unmapped elements** (Data tab, on by default) handles
+whatever no rule above claimed, before it would become a proxy. It uses
+fixed rules, no machine learning and no network, in this order: the IFC
+class an IFC-sourced model already states, then the Revit category
+(Walls, Floors, Pipes, Structural Framing and others with a clear IFC
+class), then whole words in the family, type and element names. It is
+cautious: a name naming two classes or a piece ("glazing", "elbow") is
+left alone, and the element's size can veto a name. Each element it
+classifies records the deciding rule in a `BIMCamel_Classification`
+property set, and the report has an `Auto-classify:` line with counts per
+rule. The pre-flight check counts only your rules, so auto-classified
+elements still show there as proxies.
+
+A further card holds the classification
 system name (written as `IfcClassification`) and "also export each mapped
 set as" `IfcGroup` / `IfcSystem` / `IfcZone`. Full detail in section 8.
 
@@ -406,7 +422,20 @@ bad enum tokens, dangling references, duplicate GUIDs.
 export of the same file reports NEW / DELETED / MODIFIED / UNCHANGED
 element counts against it — your "what changed since P02?" answer, for
 free. Deterministic GUIDs make diffs meaningful across revisions and
-split parts.
+split parts. Elements without a Navisworks instance GUID are keyed by
+their place in the tree, so their GlobalIds stay stable between exports;
+the first export after v0.12 gives them new ones once, so one diff will
+show them as replaced.
+
+The report also flags what an exporter should never hide: GlobalIds that
+collided (a model appended twice) and were re-derived, elements whose
+written shape falls outside their Navisworks bounding box, placements with
+stretch or shear that were baked into the vertices, and how often shared
+geometry reads were reused and re-checked.
+
+**Text in any language.** Names and values with accents, Arabic or CJK
+characters, and Windows paths are written with proper IFC escaping, so
+strict readers show them as they appear in Navisworks.
 
 ## 13. Performance
 

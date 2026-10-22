@@ -60,6 +60,14 @@ namespace BIMCamel.Geometry
         /// <summary>Per-operation ItemKey memo, shared with BuildSetMaps so keys
         /// computed while resolving the rules are not recomputed per element.</summary>
         public System.Collections.Generic.Dictionary<Autodesk.Navisworks.Api.ModelItem, string>? KeyCache;
+
+        /// <summary>Classify elements no set rule mapped by the fixed rules in
+        /// <see cref="RuleClassifier"/> instead of leaving them as proxies.</summary>
+        public bool AutoClassify;
+        /// <summary>Model units → metres, for the rules' shape check.</summary>
+        public double ClassifyUnitScale = 1;
+        /// <summary>Per-export memo of each node's Revit category (see RuleClassifier.ClassifyItem).</summary>
+        public System.Collections.Generic.Dictionary<Autodesk.Navisworks.Api.ModelItem, string?>? CategoryCache;
     }
 
     /// <summary>One element's world-space triangle mesh + semantic role values, ready for IFC.</summary>
@@ -216,6 +224,14 @@ namespace BIMCamel.Geometry
                 em.ClassKey = pk; if (!string.IsNullOrEmpty(pc)) em.ClassCode = pc!;
             }
             if (hasGroup && o.GroupMap!.TryGetValue(key, out var gn)) em.GroupName = gn;
+            // No set rule claimed it: try the fixed rules (category, IFC class, name words) before
+            // it falls to IfcBuildingElementProxy. Counted inside HarvestTicks — it is a property read.
+            if (o.AutoClassify && string.IsNullOrEmpty(em.ClassKey)
+                && RuleClassifier.ClassifyItem(item, o.ClassifyUnitScale, o.CategoryCache) is { } guess)
+            {
+                em.ClassKey = guess.ClassKey;
+                em.Properties = RuleClassifier.Apply(guess, em.Properties, o.Props);
+            }
             ExportTiming.HarvestTicks += ExportTiming.Now - ts;
             return em;
         }
