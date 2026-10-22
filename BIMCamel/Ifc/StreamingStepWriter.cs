@@ -103,20 +103,15 @@ namespace BIMCamel.Ifc
         public void RefTok(int id) { Emit('#'); WriteIntRaw(id); }
 
         /// <summary>
-        /// Stream a STEP string literal (quote, double embedded quotes, strip newlines) straight to
-        /// the buffered writer — no StringBuilder/string allocation, unlike <see cref="Str"/>. Empty
-        /// → "$". Used on the property hot path where there are millions of literals.
+        /// Stream a STEP string literal straight to the buffered writer. Empty → "$". Used on the
+        /// property hot path where there are millions of literals, so a string that needs no
+        /// escaping (the common case) is emitted as is, with no allocation.
         /// </summary>
         public void WriteStr(string? s)
         {
             if (string.IsNullOrEmpty(s)) { Emit('$'); return; }
             Emit('\'');
-            foreach (char ch in s!)
-            {
-                if (ch == '\'') Emit("''");
-                else if (ch == '\r' || ch == '\n') Emit(' ');
-                else Emit(ch);
-            }
+            Emit(IsPlain(s!) ? s! : Escape(s!));
             Emit('\'');
         }
 
@@ -225,19 +220,79 @@ namespace BIMCamel.Ifc
         public static string R6(double v) =>
             v.ToString("0.0#####", CultureInfo.InvariantCulture);
 
-        /// <summary>STEP string literal: wrap in quotes, double embedded quotes.</summary>
+        /// <summary>STEP string literal: wrap in quotes, escaped as <see cref="Escape"/> describes.</summary>
         public static string Str(string? s)
         {
             if (string.IsNullOrEmpty(s)) return "$";
-            var sb = new StringBuilder(s!.Length + 2);
-            sb.Append('\'');
-            foreach (var ch in s!)
+            return "'" + (IsPlain(s!) ? s! : Escape(s!)) + "'";
+        }
+
+        /// <summary>True when every character can be written as is inside a STEP string.</summary>
+        private static bool IsPlain(string s)
+        {
+            foreach (char c in s)
+                if (c < 0x20 || c > 0x7E || c == '\'' || c == '\\') return false;
+            return true;
+        }
+
+        /// <summary>
+        /// The body of a STEP string literal (ISO 10303-21 §6.4.3). Only printable ASCII may appear
+        /// raw. An apostrophe is doubled, and a backslash is doubled too, because a lone one opens a
+        /// control directive: a Windows path such as C:\Projects\X-ref\a.nwc used to come out as
+        /// "\P", "\X" and "\a" directives, which strict readers reject. Anything outside ASCII
+        /// (accented, Arabic, CJK text) is written as \X2\hhhh…\X0\ (UTF-16 code units), or as
+        /// \X4\hhhhhhhh…\X0\ when the run holds a character beyond the BMP; raw UTF-8 bytes are not
+        /// valid STEP and readers garble them. Control characters, CR and LF included, become a
+        /// space, as before. Everything written is ASCII, so BytesWritten stays exact.
+        /// </summary>
+        public static string Escape(string s)
+        {
+            var sb = new StringBuilder(s.Length + 16);
+            int i = 0;
+            while (i < s.Length)
             {
-                if (ch == '\'') sb.Append("''");
-                else if (ch == '\r' || ch == '\n') sb.Append(' ');
-                else sb.Append(ch);
+                char c = s[i];
+                if (c <= 0x7E)
+                {
+                    if (c == '\'') sb.Append("''");
+                    else if (c == '\\') sb.Append("\\\\");
+                    else sb.Append(c < 0x20 ? ' ' : c);
+                    i++;
+                    continue;
+                }
+
+                // A run of non-ASCII characters → one directive.
+                int end = i;
+                bool astral = false;
+                while (end < s.Length && s[end] > 0x7E)
+                {
+                    if (char.IsHighSurrogate(s[end]) && end + 1 < s.Length && char.IsLowSurrogate(s[end + 1])) { astral = true; end += 2; }
+                    else end++;
+                }
+                if (!astral)
+                {
+                    sb.Append("\\X2\\");
+                    for (int k = i; k < end; k++)
+                    {
+                        char u = s[k];
+                        if (char.IsSurrogate(u)) u = '\uFFFD';   // a lone half of a pair is not a character
+                        sb.Append(((int)u).ToString("X4", CultureInfo.InvariantCulture));
+                    }
+                }
+                else
+                {
+                    sb.Append("\\X4\\");
+                    for (int k = i; k < end; k++)
+                    {
+                        int cp;
+                        if (char.IsHighSurrogate(s[k]) && k + 1 < end && char.IsLowSurrogate(s[k + 1])) { cp = char.ConvertToUtf32(s[k], s[k + 1]); k++; }
+                        else cp = char.IsSurrogate(s[k]) ? 0xFFFD : s[k];
+                        sb.Append(cp.ToString("X8", CultureInfo.InvariantCulture));
+                    }
+                }
+                sb.Append("\\X0\\");
+                i = end;
             }
-            sb.Append('\'');
             return sb.ToString();
         }
 

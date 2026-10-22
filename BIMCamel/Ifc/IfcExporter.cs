@@ -29,6 +29,7 @@ namespace BIMCamel.Ifc
         public int StoreyCount, TypeCount, MaterialCount, ClassificationCount;
         public bool QuantitiesWritten;
         public int PsetUnique, PsetRefs; // F3 dedup: distinct property sets written vs element→pset assignments
+        public int PropValueReuses;      // property values pointed at instead of written again
         public int QtyUnique, QtyRefs;   // v6 Z2 dedup: the same, for base quantities
         /// <summary>v6 Z3: occurrences whose pset property NAMES differed from their type's, so the
         /// type-sharing could not express them. Zero means the export is exactly faithful.</summary>
@@ -49,6 +50,12 @@ namespace BIMCamel.Ifc
         /// file of proxies with no warning anywhere.
         /// </summary>
         public int ProxyDegraded2x3;
+        /// <summary>
+        /// Elements whose GlobalId was already taken in this export (the same NWC appended twice,
+        /// two leaves carrying one instance GUID) and were given a derived one instead. Writing the
+        /// duplicate made the whole file invalid; the validator only said so afterwards.
+        /// </summary>
+        public int GuidCollisions;
         /// <summary>Distinct IFC entity name → element count, for the report breakdown.</summary>
         public readonly Dictionary<string, int> ByEntity = new(StringComparer.Ordinal);
 
@@ -100,9 +107,10 @@ namespace BIMCamel.Ifc
             // One manifest per EXPORT, not per split part — the parts are one deliverable.
             var previous = RevisionManifest.Load(basePath);
             var manifest = new RevisionManifest { Schema = schema == IfcSchema.Ifc4 ? "IFC4" : "IFC2X3", Written = DateTime.Now.ToString("yyyy-MM-dd HH:mm") };
+            var guids = new HashSet<Guid>();
 
             int part = 1;
-            var doc = new Doc(PartPath(basePath, part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest, shareTypeProps);
+            var doc = new Doc(PartPath(basePath, part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest, shareTypeProps, guids);
             bool needRoll = false;
             int index = 0;
             foreach (var el in elements)
@@ -114,7 +122,7 @@ namespace BIMCamel.Ifc
                 if (needRoll)
                 {
                     doc.Finish(schema, computeQuantities, summary);
-                    doc = new Doc(PartPath(basePath, ++part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest, shareTypeProps);
+                    doc = new Doc(PartPath(basePath, ++part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest, shareTypeProps, guids);
                     needRoll = false;
                 }
                 WriteMeshElement(doc, schema, meshWriter, el, t, unitScale, computeQuantities, index);
@@ -143,9 +151,10 @@ namespace BIMCamel.Ifc
             // One manifest per EXPORT, not per split part — the parts are one deliverable.
             var previous = RevisionManifest.Load(basePath);
             var manifest = new RevisionManifest { Schema = schema == IfcSchema.Ifc4 ? "IFC4" : "IFC2X3", Written = DateTime.Now.ToString("yyyy-MM-dd HH:mm") };
+            var guids = new HashSet<Guid>();
 
             int part = 1;
-            var doc = new Doc(PartPath(basePath, part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest, shareTypeProps);
+            var doc = new Doc(PartPath(basePath, part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest, shareTypeProps, guids);
             bool needRoll = false;
             int index = 0;
             foreach (var el in elements)
@@ -155,7 +164,7 @@ namespace BIMCamel.Ifc
                 if (needRoll)
                 {
                     doc.Finish(schema, computeQuantities, summary);
-                    doc = new Doc(PartPath(basePath, ++part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest, shareTypeProps);
+                    doc = new Doc(PartPath(basePath, ++part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest, shareTypeProps, guids);
                     needRoll = false;
                 }
                 WriteInstancedElement(doc, schema, meshWriter, el, identity, minX, minY, minZ, computeQuantities, index, mergePartsAbove);
@@ -194,8 +203,12 @@ namespace BIMCamel.Ifc
             public readonly Dictionary<(long, long, long), int> DirCache = new();   // instanced: shared IfcDirection
             public readonly Dictionary<DedupKey, GeomDef> Geom = new();             // instanced: per-file dedup
             public readonly Dictionary<DedupKey, GeomDef> ElemGeom = new();         // element-level: merged shapes
+            public readonly Dictionary<(double, double, double, double), int> Styles = new(); // colour → shared style
+            /// <summary>Every GlobalId written so far in this EXPORT — shared by split parts, which
+            /// together are one deliverable. Guid, not its 22-char text, to keep it small.</summary>
+            public readonly HashSet<Guid> Guids;
             public int Elem, Tris, Insts, UniqueGeom, MergedElems, MergedShapes;
-            public int Mapped, ProxyUnmapped, ProxyDegraded;
+            public int Mapped, ProxyUnmapped, ProxyDegraded, GuidCollisions;
             public readonly Dictionary<string, int> ByEntity = new(StringComparer.Ordinal);
             private readonly string _path;
             private readonly string _classSystem;
@@ -207,9 +220,10 @@ namespace BIMCamel.Ifc
 
             public Doc(string path, int coordDecimals, IfcSchema schema, CoordOptions coords,
                        double minX, double minY, double minZ, bool georef, string author, SpatialNames names,
-                       RevisionManifest manifest, bool shareTypeProps)
+                       RevisionManifest manifest, bool shareTypeProps, HashSet<Guid> guids)
             {
                 Manifest = manifest;
+                Guids = guids;
                 // Type objects are IFC4-only in this exporter, so there is nowhere to hang shared
                 // property sets on 2x3 — the flag is simply inert there (v6 Z3).
                 Shared = new TypeShare(shareTypeProps && schema == IfcSchema.Ifc4);
@@ -251,6 +265,7 @@ namespace BIMCamel.Ifc
                 sum.InstanceCount += Insts; sum.UniqueGeometries += UniqueGeom;
                 sum.MergedElements += MergedElems; sum.MergedShapes += MergedShapes;
                 sum.MappedCount += Mapped; sum.ProxyUnmapped += ProxyUnmapped; sum.ProxyDegraded2x3 += ProxyDegraded;
+                sum.GuidCollisions += GuidCollisions;
                 foreach (var kv in ByEntity) { sum.ByEntity.TryGetValue(kv.Key, out int n); sum.ByEntity[kv.Key] = n + kv.Value; }
                 if (Storeys.Count > sum.StoreyCount) sum.StoreyCount = Storeys.Count;
                 if (computeQuantities && Elem > 0) sum.QuantitiesWritten = true;
@@ -265,13 +280,13 @@ namespace BIMCamel.Ifc
             long tg = ExportTiming.Now;
             int item = mw.WriteMesh(w, el, t);
             ExportTiming.GeomWriteTicks += ExportTiming.Now - tg;
-            if (el.Material != null) WriteStyle(w, schema, item, el.Material);
+            if (el.Material != null) WriteStyle(w, schema, d.Styles, item, el.Material);
             int rep = WriteShapeRep(w, d.S.Ctx, mw.RepresentationType, item);
             int prodShape = WriteProdShape(w, rep);
             // storeyAxis cancels the storey's own elevation, so raising a storey to its real height
             // repositions the storey without moving the geometry hanging off it.
             int place = WriteLocalPlacement(w, storeyPlace, storeyAxis);
-            string guid = StableGuid(el.InstanceGuid, el.Name, index);
+            string guid = StableGuid(d, el.InstanceGuid, el.SourceKey, el.Name, index);
             int id = WriteElement(d, w, schema, el.ClassKey, el.TypeName, guid, d.S.Owner, el.Name, place, prodShape);
             long tp = ExportTiming.Now;
             if (el.Properties != null && el.Properties.Count > 0) RegisterPropertySets(w, d.Id, d.S.Owner, id, el.Properties, d.Psets, d.Shared, TypeKeyOf(el.ClassKey, el.TypeName), el.TypeName);
@@ -329,10 +344,11 @@ namespace BIMCamel.Ifc
                     var lm = inst.Mesh;
                     long tg = ExportTiming.Now;
                     int item = mw.WriteMesh(w, new ElementMesh { Vertices = lm.Vertices, Indices = lm.Indices }, identity);
-                    if (lm.Material != null) WriteStyle(w, schema, item, lm.Material); // colour shared by all instances (v4 D)
+                    if (lm.Material != null) WriteStyle(w, schema, d.Styles, item, lm.Material); // colour shared by all instances (v4 D)
                     int rep0 = WriteShapeRep(w, d.S.Ctx, mw.RepresentationType, item);
-                    int mapOrigin = w.Begin("IFCAXIS2PLACEMENT3D");
-                    w.RefTok(d.S.OriginPt); w.Tok(",$,$"); w.End();
+                    // The world axis (origin, $, $) is exactly the mapping origin every map needs, so they share
+                    // it instead of writing one IfcAxis2Placement3D per unique geometry.
+                    int mapOrigin = d.S.Axis;
                     int repMap = w.Begin("IFCREPRESENTATIONMAP");
                     w.RefTok(mapOrigin); w.Sep(); w.RefTok(rep0); w.End();
                     ExportTiming.GeomWriteTicks += ExportTiming.Now - tg;
@@ -359,7 +375,7 @@ namespace BIMCamel.Ifc
             int rep = WriteMappedShapeRep(w, d.S.Ctx, mapped);
             int prodShape = WriteProdShape(w, rep);
             int place = WriteLocalPlacement(w, storeyPlace, storeyAxis);
-            string guid = StableGuid(el.InstanceGuid, el.Name, index);
+            string guid = StableGuid(d, el.InstanceGuid, el.SourceKey, el.Name, index);
             int id = WriteElement(d, w, schema, el.ClassKey, el.TypeName, guid, d.S.Owner, el.Name, place, prodShape);
             long tp = ExportTiming.Now;
             if (el.Properties != null && el.Properties.Count > 0) RegisterPropertySets(w, d.Id, d.S.Owner, id, el.Properties, d.Psets, d.Shared, TypeKeyOf(el.ClassKey, el.TypeName), el.TypeName);
@@ -442,12 +458,13 @@ namespace BIMCamel.Ifc
                 foreach (var g in byColour.Values)
                 {
                     int item = mw.WriteMesh(w, g.mesh, identity);
-                    if (g.mat != null) WriteStyle(w, schema, item, g.mat);
+                    if (g.mat != null) WriteStyle(w, schema, d.Styles, item, g.mat);
                     items.Add(item);
                 }
                 int rep0 = WriteShapeRepItems(w, d.S.Ctx, mw.RepresentationType, items);
-                int mapOrigin = w.Begin("IFCAXIS2PLACEMENT3D");
-                w.RefTok(d.S.OriginPt); w.Tok(",$,$"); w.End();
+                // The world axis (origin, $, $) is exactly the mapping origin every map needs, so they share
+                // it instead of writing one IfcAxis2Placement3D per unique geometry.
+                int mapOrigin = d.S.Axis;
                 int repMap = w.Begin("IFCREPRESENTATIONMAP");
                 w.RefTok(mapOrigin); w.Sep(); w.RefTok(rep0); w.End();
                 ExportTiming.GeomWriteTicks += ExportTiming.Now - tg;
@@ -1152,6 +1169,18 @@ namespace BIMCamel.Ifc
             public readonly Dictionary<int, long> HashOf = new();       // psetId → its content hash
             public readonly List<int> Scratch = new();                  // reused per-pset value ids
             public int Refs;
+
+            /// <summary>
+            /// (name, kind, value) → its IfcPropertySingleValue, so a value is written once per
+            /// file and every property set that holds it points at that one entity. Whole-set dedup
+            /// alone misses the usual Revit case: a set with one per-element value (Id, Mark) is
+            /// unique per element, so all its other values were written again for every element.
+            /// Capped so a model of all-distinct values cannot grow it without bound; past the cap
+            /// new values are simply written each time, as before.
+            /// </summary>
+            public readonly Dictionary<(ulong, ulong), int> Values = new();
+            public const int MaxValues = 2_000_000;
+            public int ValueReuses;
         }
 
         private static void RegisterPropertySets(StreamingStepWriter w, Ids ids, int owner, int objId, List<IfcProp> props, PsetDedup d,
@@ -1194,13 +1223,7 @@ namespace BIMCamel.Ifc
                     // Stream every entity token-by-token — no per-entity string interpolation,
                     // no Str()/Nominal() allocations (this path runs millions of times).
                     var valueIds = d.Scratch; valueIds.Clear();
-                    foreach (var p in list)
-                    {
-                        int pv = w.Begin("IFCPROPERTYSINGLEVALUE");
-                        w.WriteStr(p.Name); w.Sep(); w.Tok("$"); w.Sep(); WriteNominal(w, p); w.Sep(); w.Tok("$");
-                        w.End();
-                        valueIds.Add(pv);
-                    }
+                    foreach (var p in list) valueIds.Add(PropValue(w, d, p));
                     psetId = w.Begin("IFCPROPERTYSET");
                     w.Tok(ids.G("pset:" + pset + ":" + h.ToString("x"))); w.Sep(); w.RefTok(owner); w.Sep(); w.WriteStr(pset); w.Sep(); w.Tok("$"); w.Sep();
                     w.Tok("(");
@@ -1212,6 +1235,40 @@ namespace BIMCamel.Ifc
                 if (!d.Members.TryGetValue(psetId, out var mem)) { mem = new List<int>(); d.Members[psetId] = mem; }
                 mem.Add(objId);
                 d.Refs++;
+            }
+        }
+
+        /// <summary>The IfcPropertySingleValue for one property: reused when this file already holds
+        /// one with the same name, kind and value (<see cref="PsetDedup.Values"/>).</summary>
+        private static int PropValue(StreamingStepWriter w, PsetDedup d, IfcProp p)
+        {
+            var key = HashProp(p);
+            if (d.Values.TryGetValue(key, out int id)) { d.ValueReuses++; return id; }
+            id = w.Begin("IFCPROPERTYSINGLEVALUE");
+            w.WriteStr(p.Name); w.Sep(); w.Tok("$"); w.Sep(); WriteNominal(w, p); w.Sep(); w.Tok("$");
+            w.End();
+            if (d.Values.Count < PsetDedup.MaxValues) d.Values[key] = id;
+            return id;
+        }
+
+        /// <summary>Two independent 64-bit FNV-1a hashes over (name, kind, value): 128 bits, so a
+        /// collision — which would silently put one value where another belongs — is not a
+        /// practical concern even at the cap.</summary>
+        private static (ulong, ulong) HashProp(IfcProp p)
+        {
+            unchecked
+            {
+                const ulong P0 = 1099511628211UL, P1 = 1099511628219UL;
+                ulong h0 = 14695981039346656037UL, h1 = 1469598103934665600UL ^ 0x9E3779B97F4A7C15UL;
+                void Mix(string? str)
+                {
+                    if (str != null) foreach (char c in str) { h0 = (h0 ^ c) * P0; h1 = (h1 ^ c) * P1; }
+                    h0 = (h0 ^ 0x1FUL) * P0; h1 = (h1 ^ 0x1FUL) * P1;   // field separator
+                }
+                Mix(p.Name);
+                h0 = (h0 ^ (ulong)p.Kind) * P0; h1 = (h1 ^ (ulong)p.Kind) * P1;
+                Mix(p.Value);
+                return (h0, h1);
             }
         }
 
@@ -1233,6 +1290,7 @@ namespace BIMCamel.Ifc
                 w.Write($"IFCRELDEFINESBYPROPERTIES({ids.G("relpset:" + (d.HashOf.TryGetValue(kv.Key, out var ph) ? ph.ToString("x") : kv.Key.ToString()))},{Ref(owner)},$,$,({Join(kv.Value)}),{Ref(kv.Key)})");
             summary.PsetUnique += d.ByHash.Count;
             summary.PsetRefs += d.Refs;
+            summary.PropValueReuses += d.ValueReuses;
         }
 
         // FNV-1a 64-bit over the pset name + each property's (name, kind, value). A 64-bit collision
@@ -1254,13 +1312,25 @@ namespace BIMCamel.Ifc
         }
 
         // ── material colour style ──────────────────────────────────────────────────
-        private static void WriteStyle(StreamingStepWriter w, IfcSchema schema, int item, Material m)
+        /// <summary>
+        /// Styles one representation item with a colour. The colour itself (IfcColourRgb, its
+        /// rendering, the surface style and, on 2x3, the assignment) is written once per distinct
+        /// colour per file and shared; only the IfcStyledItem is per item. It used to be all four
+        /// or five entities per item: per unique mesh when instancing, per ELEMENT otherwise, for
+        /// a model that typically has a few dozen colours.
+        /// </summary>
+        private static void WriteStyle(StreamingStepWriter w, IfcSchema schema, Dictionary<(double, double, double, double), int> styles, int item, Material m)
         {
-            int col = w.Write($"IFCCOLOURRGB($,{R(m.R)},{R(m.G)},{R(m.B)})");
-            int rend = w.Write($"IFCSURFACESTYLERENDERING({Ref(col)},{R(m.Transparency)},$,$,$,$,$,$,.NOTDEFINED.)");
-            int style = w.Write($"IFCSURFACESTYLE('colour',.BOTH.,({Ref(rend)}))");
-            if (schema == IfcSchema.Ifc4) w.Write($"IFCSTYLEDITEM({Ref(item)},({Ref(style)}),$)");
-            else { int psa = w.Write($"IFCPRESENTATIONSTYLEASSIGNMENT(({Ref(style)}))"); w.Write($"IFCSTYLEDITEM({Ref(item)},({Ref(psa)}),$)"); }
+            var key = (m.R, m.G, m.B, m.Transparency);
+            if (!styles.TryGetValue(key, out int style))
+            {
+                int col = w.Write($"IFCCOLOURRGB($,{R(m.R)},{R(m.G)},{R(m.B)})");
+                int rend = w.Write($"IFCSURFACESTYLERENDERING({Ref(col)},{R(m.Transparency)},$,$,$,$,$,$,.NOTDEFINED.)");
+                style = w.Write($"IFCSURFACESTYLE('colour',.BOTH.,({Ref(rend)}))");
+                if (schema != IfcSchema.Ifc4) style = w.Write($"IFCPRESENTATIONSTYLEASSIGNMENT(({Ref(style)}))");
+                styles[key] = style;
+            }
+            w.Write($"IFCSTYLEDITEM({Ref(item)},({Ref(style)}),$)");
         }
 
         // ── instance transform ─────────────────────────────────────────────────────
@@ -1415,8 +1485,25 @@ namespace BIMCamel.Ifc
             l.Add(id);
         }
 
-        private static string StableGuid(Guid instanceGuid, string name, int index)
-            => instanceGuid != Guid.Empty ? IfcGuid.ToIfcGuid(instanceGuid) : IfcGuid.ToIfcGuid(DeterministicGuid($"{name}#{index}"));
+        /// <summary>
+        /// The element's GlobalId: its Navisworks instance GUID when it has one, else a hash of its
+        /// tree path (stable across exports, unlike its position in the stream, which shifts
+        /// whenever the scope does), else name#index as a last resort. A GlobalId already used in
+        /// this export is re-derived deterministically from itself, so the file stays valid and a
+        /// re-export assigns the same ids in the same order.
+        /// </summary>
+        private static string StableGuid(Doc d, Guid instanceGuid, string sourceKey, string name, int index)
+        {
+            Guid g = instanceGuid != Guid.Empty ? instanceGuid
+                   : DeterministicGuid(sourceKey.Length > 0 ? sourceKey : $"{name}#{index}");
+            if (!d.Guids.Add(g))
+            {
+                var first = g;
+                for (int n = 2; !d.Guids.Add(g = DeterministicGuid(first.ToString("N") + "#" + n)); n++) { }
+                d.GuidCollisions++;
+            }
+            return IfcGuid.ToIfcGuid(g);
+        }
         private static Guid DeterministicGuid(string key) { using var md5 = MD5.Create(); return new Guid(md5.ComputeHash(Encoding.UTF8.GetBytes(key))); }
 
         /// <summary>

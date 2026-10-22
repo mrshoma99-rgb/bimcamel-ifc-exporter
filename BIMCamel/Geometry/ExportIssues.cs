@@ -45,13 +45,26 @@ namespace BIMCamel.Geometry
         /// children are reference planes vanished entirely).</summary>
         public static int BranchGeometryRecovered;
 
+        /// <summary>Elements whose exported geometry sticks out of the box Navisworks gives the item
+        /// (<see cref="BoundsCheck"/>). Should always be zero; anything else is an extraction bug.</summary>
+        public static int OutsideNavisBox;
+
+        /// <summary>Instance placements with a stretch or shear that IFC's transformation operator
+        /// cannot carry (it holds one uniform scale), baked into the vertices instead.</summary>
+        public static int BakedTransforms;
+
+        /// <summary>First few elements that failed the box check, with how much larger they came out.</summary>
+        public static readonly List<string> OutsideSamples = new List<string>();
+
         /// <summary>First few failure messages, so the report is actionable.</summary>
         public static readonly List<string> FailureSamples = new List<string>();
 
         public static void Reset()
         {
             TooSmall = NoTriangles = CollapsedByWeld = CollapsedFragments = Failed = BranchGeometryRecovered = 0;
+            OutsideNavisBox = BakedTransforms = 0;
             FailureSamples.Clear();
+            OutsideSamples.Clear();
         }
 
         /// <summary>Records a per-item failure; the export continues with the next item.</summary>
@@ -60,6 +73,15 @@ namespace BIMCamel.Geometry
             Failed++;
             if (FailureSamples.Count < 5)
                 FailureSamples.Add((string.IsNullOrWhiteSpace(itemName) ? "(unnamed)" : itemName) + " — " + ex.Message);
+        }
+
+        /// <summary>Records an element that came out larger than Navisworks' own box for it.</summary>
+        public static void OutsideBox(string? itemName, double sizeRatio)
+        {
+            OutsideNavisBox++;
+            if (OutsideSamples.Count < 5)
+                OutsideSamples.Add((string.IsNullOrWhiteSpace(itemName) ? "(unnamed)" : itemName) +
+                                   (double.IsInfinity(sizeRatio) ? "" : $" — {sizeRatio:0.#}x the size of its Navisworks box"));
         }
 
         /// <summary>Report text. Empty string when nothing of note happened.</summary>
@@ -76,6 +98,14 @@ namespace BIMCamel.Geometry
                 foreach (var f in FailureSamples) sb.AppendLine("      " + f);
                 if (Failed > FailureSamples.Count) sb.AppendLine($"      … and {Failed - FailureSamples.Count:N0} more");
             }
+            if (OutsideNavisBox > 0)
+            {
+                sb.AppendLine($"  {OutsideNavisBox:N0} element(s) came out LARGER than Navisworks' own box for them — an extraction bug, please report it with the model:");
+                foreach (var f in OutsideSamples) sb.AppendLine("      " + f);
+                if (OutsideNavisBox > OutsideSamples.Count) sb.AppendLine($"      … and {OutsideNavisBox - OutsideSamples.Count:N0} more");
+            }
+            if (BakedTransforms > 0)
+                sb.AppendLine($"  {BakedTransforms:N0} placement(s) were stretched or sheared, which IFC instancing cannot express; their shape was baked into the geometry instead");
             if (TooSmall > 0)
                 sb.AppendLine($"  {TooSmall:N0} part(s) left out by the minimum-size filter — a deliberate removal, not a loss; untick \"Skip geometry smaller than\" to keep them");
             if (NoTriangles > 0)
