@@ -48,6 +48,9 @@ namespace BIMCamel.Profiles
         [DataMember] public string MinSizeMm = "5";
         [DataMember] public bool Validate;
         [DataMember] public bool Quantities = true;
+        /// <summary>Stored inverted so a profile saved before the option existed (no member, so
+        /// false) loads with auto-classify ON, its default.</summary>
+        [DataMember] public bool NoAutoClassify;
         [DataMember] public string Mapping = "";
 
         // ── real-world georeferencing (kept apart from the base point above) ──────────────

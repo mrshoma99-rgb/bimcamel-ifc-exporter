@@ -192,6 +192,14 @@ namespace BIMCamel.Geometry
             // property happened to contain.
             if (hasCode && o.ClassificationMap!.TryGetValue(key, out var cc)) el.ClassCode = cc;
             if (hasGroup && o.GroupMap!.TryGetValue(key, out var gn)) el.GroupName = gn;
+            // No set rule claimed it: try the fixed rules (category, IFC class, name words) before
+            // it falls to IfcBuildingElementProxy. Counted inside HarvestTicks — it is a property read.
+            if (o.AutoClassify && string.IsNullOrEmpty(el.ClassKey)
+                && Data.RuleClassifier.ClassifyItem(item, o.ClassifyUnitScale, o.CategoryCache) is { } guess)
+            {
+                el.ClassKey = guess.ClassKey;
+                el.Properties = Data.RuleClassifier.Apply(guess, el.Properties, o.Props);
+            }
             ExportTiming.HarvestTicks += ExportTiming.Now - th;
 
             return el;
