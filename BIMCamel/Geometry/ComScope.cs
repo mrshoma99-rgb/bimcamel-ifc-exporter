@@ -102,5 +102,55 @@ namespace BIMCamel.Geometry
 
             foreach (InwOaPath3 path in sel.Paths()) yield return path;
         }
+
+        /// <summary>
+        /// The fragments that belong to THIS path. <c>InwOaPath3.Fragments()</c> lists the
+        /// fragments of the path's geometry node, and when that node is instanced (one geometry
+        /// placed at many paths — <c>GetNextInstance</c>) the list holds every instance's fragment,
+        /// each with its own path and world matrix. Taking them all wrote every instance into every
+        /// element: in the ice stadium sample one seat-row element carried all 561 rows, 95 m
+        /// across, and the file held each of those triangles 561 times over.
+        ///
+        /// A fragment is ours when its <c>path.ArrayData</c> equals the path's. If the comparison
+        /// cannot be made, or keeps nothing although there were fragments, all of them are returned
+        /// as before: an element must never lose its geometry to this filter.
+        /// </summary>
+        public static List<InwOaFragment3> OwnFragments(InwOaPath3 path)
+        {
+            var all = new List<InwOaFragment3>();
+            foreach (InwOaFragment3 frag in path.Fragments()) all.Add(frag);
+            if (all.Count < 2) return all;   // nothing to choose between
+
+            int[]? mine = PathKey(path.ArrayData);
+            if (mine == null) return all;
+            var own = new List<InwOaFragment3>(all.Count);
+            foreach (var frag in all)
+            {
+                int[]? theirs;
+                try { theirs = PathKey(frag.path.ArrayData); }
+                catch { return all; }
+                if (theirs == null) return all;
+                if (Same(mine, theirs)) own.Add(frag);
+            }
+            if (own.Count == 0) { ExportTiming.OwnFragmentFallbacks++; return all; }
+            ExportTiming.ForeignFragmentsSkipped += all.Count - own.Count;
+            return own;
+        }
+
+        private static int[]? PathKey(object? arrayData)
+        {
+            if (arrayData is not Array a) return null;
+            var k = new int[a.Length];
+            int i = 0;
+            foreach (var o in a) k[i++] = System.Convert.ToInt32(o);
+            return k;
+        }
+
+        private static bool Same(int[] a, int[] b)
+        {
+            if (a.Length != b.Length) return false;
+            for (int i = 0; i < a.Length; i++) if (a[i] != b[i]) return false;
+            return true;
+        }
     }
 }

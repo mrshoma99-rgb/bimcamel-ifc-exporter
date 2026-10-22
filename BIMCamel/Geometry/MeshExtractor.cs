@@ -129,7 +129,7 @@ namespace BIMCamel.Geometry
             long ts = ExportTiming.Now;
             var sink = new PrimitiveSink();
             foreach (InwOaPath3 path in comPaths)
-                foreach (InwOaFragment3 frag in path.Fragments())
+                foreach (InwOaFragment3 frag in ComScope.OwnFragments(path))   // not the other instances'
                 {
                     sink.CurrentTransform = ReadMatrix(frag);
                     // eNONE: PrimitiveSink reads only v.coord, so asking for normals made

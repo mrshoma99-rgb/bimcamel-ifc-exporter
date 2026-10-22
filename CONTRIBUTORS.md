@@ -16,6 +16,9 @@ Thanks to everyone who has contributed to BIMCamel.
 - **Leandro Assis dos Santos** ([@leandroassis](https://github.com/leandroassis)) — reading properties
   from parent tree nodes (SmartPlant 3D), the basis of the "Read properties from" option.
 - **Hamada** ([@themodmin](https://github.com/themodmin)) — testing & QA.
+- **Vilhelm Hjert** ([@VilhelmH-git](https://github.com/VilhelmH-git)) — instanced-fragment fix (each element
+  takes only its own fragments), element-level instancing for many-part elements, and the headless
+  export test harness.
 
 ## AI assistance
 

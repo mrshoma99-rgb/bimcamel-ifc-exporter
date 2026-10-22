@@ -125,6 +125,9 @@ namespace BIMCamel.UI
             ChkGeoref.IsChecked = true; ChkInstancing.IsChecked = true; ChkValidate.IsChecked = true; ChkProfile.IsChecked = true;
             // Fast instancing stays OFF until a run proves the guess holds on this model (v5 E1).
             ChkFastInstancing.IsChecked = false;
+            // Element-level instancing defaults ON: a many-part element otherwise becomes one
+            // placed copy per fragment, which viewers cannot load at stadium scale.
+            ChkMergeParts.IsChecked = true;
             // v6. Compression and dropping blank properties are pure wins, so they default ON.
             // Type-level sharing MOVES data to where a simpler reader may not look, and the size
             // filter REMOVES objects — both change what a recipient sees, so both default OFF.
@@ -845,6 +848,11 @@ namespace BIMCamel.UI
                 ? (long)(mb * 1024 * 1024) : 0;
         }
 
+        /// <summary>Elements with more parts than this are merged into one shape when
+        /// "Merge multi-part elements" is on. Small assemblies keep per-part instancing, which is
+        /// what shares a bolt between different elements.</summary>
+        private const int MergePartsAbove = 16;
+
         private ExtractOptions BuildExtractOptions(ItemCollector.SetMaps maps) => new ExtractOptions
         {
             Props = ChkProps.IsChecked == true, Materials = ChkMaterials.IsChecked == true,
@@ -880,9 +888,10 @@ namespace BIMCamel.UI
                 opts.QtyScale = 0;
                 opts.FastInstancing = ChkFastInstancing.IsChecked == true;
                 opts.MinFragmentSize = minSizeMetres;
+                int mergeAbove = ChkMergeParts.IsChecked == true ? MergePartsAbove : 0;
                 var stream = InstancedExtractor.ExtractStream(items, unitScale, opts, p => Tick(p, items.Count, verb));
                 ExportPipeline.Run(stream, s =>
-                    IfcExporter.ExportInstanced(basePath, schema, s, author, unitScale, coords, quantities, coordDecimals, geomMin, names, splitLimit, summary, shareTypeProps));
+                    IfcExporter.ExportInstanced(basePath, schema, s, author, unitScale, coords, quantities, coordDecimals, geomMin, names, splitLimit, summary, shareTypeProps, mergeAbove));
             }
             else
             {
@@ -1680,6 +1689,8 @@ namespace BIMCamel.UI
             sb.AppendLine(s.Instanced
                 ? $"Instancing  : ON · {s.UniqueGeometries:N0} unique / {s.InstanceCount:N0} instances" + (s.UniqueGeometries > 0 ? $"  (×{(double)s.InstanceCount / s.UniqueGeometries:0.0})" : "")
                 : "Instancing  : off");
+            if (s.MergedElements > 0)
+                sb.AppendLine($"Merged parts: {s.MergedElements:N0} element(s) as one shape each · {s.MergedShapes:N0} distinct");
             sb.AppendLine($"Class rules : {ruleCount} set rule(s)");
             sb.Append(MappingLines(s));
             if (s.Revision != null)
@@ -1740,6 +1751,9 @@ namespace BIMCamel.UI
             double other = ms - readSide; if (other < 0) other = 0;
             sb.AppendLine($"  COM convert : {com,10:N0} ms   ({ET.ComConverts:N0} conversion(s))");
             sb.AppendLine($"  Geometry rd : {rd,10:N0} ms   ({ET.Fragments:N0} fragments)");
+            if (ET.ForeignFragmentsSkipped > 0 || ET.OwnFragmentFallbacks > 0)
+                sb.AppendLine($"  Instances   : {ET.ForeignFragmentsSkipped:N0} fragment(s) of other instances left out" +
+                              (ET.OwnFragmentFallbacks > 0 ? $", {ET.OwnFragmentFallbacks:N0} path(s) kept all (no own match)" : ""));
             sb.AppendLine($"  Prop harvest: {hv,10:N0} ms");
             sb.AppendLine($"  Weld        : {wl,10:N0} ms");
             sb.AppendLine($"  Qty compute : {qc,10:N0} ms");
@@ -1854,7 +1868,7 @@ namespace BIMCamel.UI
             Quality = CmbQuality.SelectedIndex, BasePoint = CmbBasePoint.SelectedIndex,
             CustomE = ParseD(TxtE.Text), CustomN = ParseD(TxtN.Text), CustomElev = ParseD(TxtElev.Text), Rotation = ParseD(TxtRot.Text),
             Georef = ChkGeoref.IsChecked == true, Props = ChkProps.IsChecked == true, Materials = ChkMaterials.IsChecked == true, Instancing = ChkInstancing.IsChecked == true,
-            FastInstancing = ChkFastInstancing.IsChecked == true,
+            FastInstancing = ChkFastInstancing.IsChecked == true, MergeParts = ChkMergeParts.IsChecked == true,
             Zip = ChkZip.IsChecked == true, ShareTypeProps = ChkShareTypeProps.IsChecked == true,
             SkipEmptyProps = ChkSkipEmptyProps.IsChecked == true,
             PropSource = CmbPropSource.SelectedIndex,
@@ -1881,7 +1895,7 @@ namespace BIMCamel.UI
             TxtE.Text = Inv(p.CustomE); TxtN.Text = Inv(p.CustomN); TxtElev.Text = Inv(p.CustomElev); TxtRot.Text = Inv(p.Rotation);
             ChkGeoref.IsChecked = p.Georef; ChkProps.IsChecked = p.Props; ChkMaterials.IsChecked = p.Materials;
             ChkInstancing.IsChecked = p.Instancing; ChkValidate.IsChecked = p.Validate; ChkQuantities.IsChecked = p.Quantities;
-            ChkFastInstancing.IsChecked = p.FastInstancing;
+            ChkFastInstancing.IsChecked = p.FastInstancing; ChkMergeParts.IsChecked = p.MergeParts;
             ChkZip.IsChecked = p.Zip; ChkShareTypeProps.IsChecked = p.ShareTypeProps;
             ChkSkipEmptyProps.IsChecked = p.SkipEmptyProps;
             CmbPropSource.SelectedIndex = Clamp(p.PropSource, CmbPropSource.Items.Count);

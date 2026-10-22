@@ -27,7 +27,12 @@ export — BIMCamel fills that gap without the slowness and setup friction of th
 - **Streaming, memory-bounded engine.** Exports huge models without the out-of-memory crashes that
   plague naïve exporters — peak memory stays bounded (a few hundred MB) regardless of model size.
 - **Geometry instancing.** Repeated parts (bolts, fittings…) are written once as
-  `IfcRepresentationMap` + `IfcMappedItem`, so files stay small.
+  `IfcRepresentationMap` + `IfcMappedItem`, so files stay small. An element built from more than
+  16 parts is merged into one shape and identical elements share it ("Merge multi-part
+  elements", on by default). Each element takes only its own path's fragments: Navisworks lists
+  every instance's fragments on an instanced node, and taking them all once wrote Autodesk's ice
+  stadium sample as 149 M triangles in 709 MB. It is 1.44 M triangles, 21,256 mapped items and
+  27 MB (IFC4, Balanced).
 - **Dual-schema, every feature in both.** IFC4 (`IfcTriangulatedFaceSet`) and IFC2x3
   (`IfcFaceBasedSurfaceModel`), including the generic IFC2x3 MEP vocabulary
   (`IfcFlowSegment`/`IfcFlowController`/…).

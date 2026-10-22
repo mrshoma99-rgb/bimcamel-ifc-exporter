@@ -130,9 +130,9 @@ namespace BIMCamel.Geometry
             // The fragments, gathered once. Enumerating them costs nothing near a triangle read,
             // and the count is part of the shape identity below (v5 E1).
             var frags = new List<InwOaFragment3>();
+            // Only this path's own fragments: an instanced node lists every instance's.
             foreach (InwOaPath3 path in comPaths)
-                foreach (InwOaFragment3 frag in path.Fragments())
-                    frags.Add(frag);
+                frags.AddRange(ComScope.OwnFragments(path));
 
             string? shapeKey = cache?.KeyFor(item, frags.Count, itemMat);
             CachedShape? hit = shapeKey != null ? cache!.Get(shapeKey) : null;
