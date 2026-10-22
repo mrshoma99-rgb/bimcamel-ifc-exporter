@@ -106,12 +106,19 @@ Every card in the pane wears one of three chips, so a glance answers
 | **✨ AUTO** | Smart setup fills it. Everything stays hand-editable. |
 
 ### Export — run it
-The landing tab. **Smart setup** (one button, section 5), **Output**
-(IFC schema, source units — both REQUIRED, both defaulted), **Scope**
+The landing tab, laid out in the order you use it: **What to export**
 (REQUIRED: whole model / current selection / active section box / one
-saved set / multiple sets batch), **File options** (geometry quality,
-size splitting, instancing, post-export validation, size & time breakdown),
-**Pre-flight** (section 6) and the **Report** console.
+saved set / multiple sets batch), **Format** (IFC schema, source units,
+geometry quality and compressed .ifczip — all defaulted), **Smart setup**
+(one button, section 5, which scans the scope above it), **Pre-flight**
+(section 6), **Advanced options** and the **Report** console.
+
+**Advanced options** is collapsed by default because its defaults suit most
+exports. It holds *File size & speed* (instancing, fast instancing, skip
+empty property values, share type-level properties, skip small geometry,
+size splitting) and *Checks & diagnostics* (post-export validation, size &
+time breakdown). While collapsed, its header shows how many of these differ
+from the defaults (e.g. "2 changed"), and **↺ Reset** puts them all back.
 
 ### Data — what each element carries
 - **What to export:** properties, materials/colours, base quantities
@@ -312,7 +319,7 @@ per-zone package cut. File names come from set names (sanitised); the
 pre-flight warns when two would collide. Preview under batch measures the
 union of the ticked sets.
 
-**Size splitting** (File options): cap file size (default 200 MB) and
+**Size splitting** (Advanced options): cap file size (default 200 MB) and
 larger exports roll into `name_001.ifc`, `name_002.ifc`, … — each a
 complete, standalone IFC. Composes with batch. Split parts share
 deterministic identity: the project/site/building GUIDs stay stable, so

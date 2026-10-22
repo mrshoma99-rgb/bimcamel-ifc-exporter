@@ -114,17 +114,12 @@ namespace BIMCamel.UI
             AddItems(CmbQuality, new[] { "Balanced", "Small file", "High detail" }); CmbQuality.SelectedIndex = 0;
             AddItems(CmbBasePoint, new[] { "Geometry origin — recommended (real coords kept in georeferencing)", "Model origin (no offset — keeps world coords)", "Custom base point" }); CmbBasePoint.SelectedIndex = 0;
 
-            // Validation defaults ON: it exists to catch the mistakes this exporter can make, and
-            // silently shipping an invalid file is worse than the second it costs to check.
-            ChkGeoref.IsChecked = true; ChkInstancing.IsChecked = true; ChkValidate.IsChecked = true; ChkProfile.IsChecked = true;
-            // Fast instancing stays OFF until a run proves the guess holds on this model (v5 E1).
-            ChkFastInstancing.IsChecked = false;
-            // v6. Compression and dropping blank properties are pure wins, so they default ON.
-            // Type-level sharing MOVES data to where a simpler reader may not look, and the size
-            // filter REMOVES objects — both change what a recipient sees, so both default OFF.
-            ChkZip.IsChecked = true; ChkSkipEmptyProps.IsChecked = true;
-            ChkShareTypeProps.IsChecked = false; ChkMinSize.IsChecked = false;
-            ChkProps.IsChecked = true; ChkMaterials.IsChecked = true; ChkQuantities.IsChecked = true; ChkSplit.IsChecked = false;
+            ChkGeoref.IsChecked = true;
+            // v6. Compression is a pure win, so it defaults ON.
+            ChkZip.IsChecked = true;
+            ChkProps.IsChecked = true; ChkMaterials.IsChecked = true; ChkQuantities.IsChecked = true;
+            ApplyAdvancedDefaults();
+            InitAdvancedCard();
             TxtE.Text = TxtN.Text = TxtElev.Text = TxtRot.Text = "0";
             TxtSurveyE.Text = TxtSurveyN.Text = TxtSurveyElev.Text = "0";
 
@@ -136,6 +131,60 @@ namespace BIMCamel.UI
             ChkProps.Checked += (_, _) => SyncProps(); ChkProps.Unchecked += (_, _) => SyncProps(); SyncProps();
             void SyncGeoref() => GeorefRow.Visibility = ChkGeoref.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
             ChkGeoref.Checked += (_, _) => SyncGeoref(); ChkGeoref.Unchecked += (_, _) => SyncGeoref(); SyncGeoref();
+        }
+
+        // ── Advanced options card ───────────────────────────────────────────────
+        // Every option in the collapsed Advanced card, with its default. One table
+        // drives the defaults, the Reset link and the "N changed" header count, so
+        // the three can never disagree.
+        private (CheckBox box, bool def)[] AdvancedDefaults() => new[]
+        {
+            // Validation defaults ON: it exists to catch the mistakes this exporter can make, and
+            // silently shipping an invalid file is worse than the second it costs to check.
+            (ChkInstancing, true), (ChkValidate, true), (ChkProfile, true),
+            // Fast instancing stays OFF until a run proves the guess holds on this model (v5 E1).
+            (ChkFastInstancing, false),
+            // v6. Dropping blank properties is a pure win, so it defaults ON.
+            // Type-level sharing MOVES data to where a simpler reader may not look, and the size
+            // filter REMOVES objects — both change what a recipient sees, so both default OFF.
+            (ChkSkipEmptyProps, true), (ChkShareTypeProps, false), (ChkMinSize, false),
+            (ChkSplit, false),
+        };
+
+        private void ApplyAdvancedDefaults()
+        {
+            foreach (var (box, def) in AdvancedDefaults()) box.IsChecked = def;
+        }
+
+        private void InitAdvancedCard()
+        {
+            void SyncBody() => AdvancedBody.Visibility = TglAdvanced.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+            TglAdvanced.Checked += (_, _) => SyncBody(); TglAdvanced.Unchecked += (_, _) => SyncBody(); SyncBody();
+
+            // Fast instancing only means anything inside instancing (the export reads it there),
+            // so grey it out rather than let it look active when instancing is off.
+            void SyncFast() => ChkFastInstancing.IsEnabled = ChkInstancing.IsChecked == true;
+            ChkInstancing.Checked += (_, _) => SyncFast(); ChkInstancing.Unchecked += (_, _) => SyncFast(); SyncFast();
+
+            foreach (var (box, _) in AdvancedDefaults())
+            {
+                box.Checked += (_, _) => UpdateAdvancedSummary();
+                box.Unchecked += (_, _) => UpdateAdvancedSummary();
+            }
+            UpdateAdvancedSummary();
+        }
+
+        private void UpdateAdvancedSummary()
+        {
+            int changed = AdvancedDefaults().Count(x => (x.box.IsChecked == true) != x.def);
+            TglAdvanced.Tag = changed == 0 ? "" : changed == 1 ? "1 changed" : changed + " changed";
+        }
+
+        private void OnResetAdvanced(object sender, RoutedEventArgs e)
+        {
+            ApplyAdvancedDefaults();
+            TxtMinSizeMm.Text = "5"; TxtSplitMb.Text = "200";
+            SetStatus("Advanced options reset to defaults.");
         }
 
         private void InitGridsAndLists()

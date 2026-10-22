@@ -485,48 +485,15 @@
                 </Grid>
               </Border>
 
-              <!-- One button for every auto-detect the pane has. These used to be
-                   five buttons on three tabs (Detect from model, Scan model,
-                   Auto-map, Refresh sets ×2) that partly called the same code —
-                   nobody could tell what ran what. -->
-              <Border Style="{StaticResource CardStyle}">
-                <StackPanel>
-                  <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                    <TextBlock Style="{StaticResource H3}" Text="SMART SETUP"/>
-                    <Border Style="{StaticResource BadgeAuto}"><TextBlock Text="✨ AUTO" FontSize="9.5" FontWeight="SemiBold" Foreground="#0070C0"/></Border>
-                  </StackPanel>
-                  <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,9"
-                             Text="One scan prepares the whole export: finds your saved sets, samples YOUR EXPORT SCOPE for property sets, fills the semantic roles (Data tab), proposes set→class rules (Mapping tab), and previews the result. Set the scope above first — with Current selection it reads only your selection, not the model. Anything you already set by hand is left alone."/>
-                  <Button Style="{StaticResource Btn}" Content="✨ Smart setup — scan &amp; auto-fill" Click="OnSmartSetup" HorizontalAlignment="Left"
-                          ToolTip="Runs every auto-detect in sequence over the scope selected above. Takes roughly as long as collecting that scope once (geometry is not read); use Stop by the progress bar to interrupt it. Re-running only fills blanks — it never overwrites your entries. One nuance: a role or rule you deliberately blanked counts as blank, so it will be proposed again."/>
-                  <TextBlock x:Name="TxtSmartSummary" Style="{StaticResource Hint}" FontFamily="Consolas" Text=""/>
-                </StackPanel>
-              </Border>
-
+              <!-- Top to bottom the tab now reads choose → scan → check → export:
+                   scope first (Smart setup and Pre-flight both read it), then the
+                   handful of format choices most exports touch, then the scan.
+                   Everything that only tunes size, speed or diagnostics lives in
+                   the collapsed Advanced card below. -->
               <Border Style="{StaticResource CardStyle}">
                 <StackPanel>
                   <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
-                    <TextBlock Style="{StaticResource H3}" Text="OUTPUT"/>
-                    <Border Style="{StaticResource BadgeReq}"><TextBlock Text="REQUIRED" FontSize="9.5" FontWeight="SemiBold" Foreground="#1A8F4C"/></Border>
-                  </StackPanel>
-                  <Grid>
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0">
-                      <TextBlock Style="{StaticResource Lbl}" Text="IFC schema"/>
-                      <ComboBox x:Name="CmbSchema" ToolTip="IFC version to write. IFC4 is recommended; choose IFC2x3 only if the receiving software requires it."/>
-                    </StackPanel>
-                    <StackPanel Grid.Column="2">
-                      <TextBlock Style="{StaticResource Lbl}" Text="Source units"/>
-                      <ComboBox x:Name="CmbUnits" ToolTip="Length unit of the source model. 'Auto' reads it from the model — only override if the model's units are wrong."/>
-                    </StackPanel>
-                  </Grid>
-                </StackPanel>
-              </Border>
-
-              <Border Style="{StaticResource CardStyle}">
-                <StackPanel>
-                  <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
-                    <TextBlock Style="{StaticResource H3}" Text="SCOPE"/>
+                    <TextBlock Style="{StaticResource H3}" Text="WHAT TO EXPORT"/>
                     <Border Style="{StaticResource BadgeReq}"><TextBlock Text="REQUIRED" FontSize="9.5" FontWeight="SemiBold" Foreground="#1A8F4C"/></Border>
                   </StackPanel>
                   <StackPanel x:Name="ScopeOptions"/>
@@ -560,36 +527,50 @@
                 </StackPanel>
               </Border>
 
-              <!-- File-shaping options only. Base point and georeferencing moved to
-                   the Coordinates tab — they are about WHERE the model sits, not
-                   about the file, and burying the survey point in a checkbox
-                   reveal here is how it kept getting missed. -->
+              <!-- The four choices nearly every export makes. Base point and
+                   georeferencing stay on the Coordinates tab — they are about WHERE
+                   the model sits, not about the file. -->
               <Border Style="{StaticResource CardStyle}">
                 <StackPanel>
                   <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
-                    <TextBlock Style="{StaticResource H3}" Text="FILE OPTIONS"/>
-                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
+                    <TextBlock Style="{StaticResource H3}" Text="FORMAT"/>
+                    <Border Style="{StaticResource BadgeReq}"><TextBlock Text="REQUIRED" FontSize="9.5" FontWeight="SemiBold" Foreground="#1A8F4C"/></Border>
                   </StackPanel>
-                  <TextBlock Style="{StaticResource Lbl}" Text="Geometry quality"/>
-                  <ComboBox x:Name="CmbQuality" ToolTip="Vertex welding tolerance and stored coordinate precision. 'Balanced' suits most models; 'Small file' welds more coarsely, 'High detail' preserves finer detail and writes larger files. Navisworks fixes the mesh tessellation when the NWC is made, so this cannot add detail that is not already there."/>
-                  <StackPanel Orientation="Horizontal" Margin="0,9,0,0"
-                              ToolTip="Split the output into multiple files once it grows past this size.">
-                    <CheckBox x:Name="ChkSplit" Content="Split when larger than" VerticalAlignment="Center"/>
-                    <TextBox x:Name="TxtSplitMb" Text="200" Width="58" Margin="8,0,6,0"/>
-                    <TextBlock Text="MB" VerticalAlignment="Center" Foreground="{DynamicResource Muted}"/>
+                  <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="10"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <StackPanel Grid.Row="0" Grid.Column="0">
+                      <TextBlock Style="{StaticResource Lbl}" Text="IFC schema"/>
+                      <ComboBox x:Name="CmbSchema" ToolTip="IFC version to write. IFC4 is recommended; choose IFC2x3 only if the receiving software requires it."/>
+                    </StackPanel>
+                    <StackPanel Grid.Row="0" Grid.Column="2">
+                      <TextBlock Style="{StaticResource Lbl}" Text="Source units"/>
+                      <ComboBox x:Name="CmbUnits" ToolTip="Length unit of the source model. 'Auto' reads it from the model — only override if the model's units are wrong."/>
+                    </StackPanel>
+                    <StackPanel Grid.Row="2" Grid.Column="0">
+                      <TextBlock Style="{StaticResource Lbl}" Text="Geometry quality"/>
+                      <ComboBox x:Name="CmbQuality" ToolTip="Vertex welding tolerance and stored coordinate precision. 'Balanced' suits most models; 'Small file' welds more coarsely, 'High detail' preserves finer detail and writes larger files. Navisworks fixes the mesh tessellation when the NWC is made, so this cannot add detail that is not already there."/>
+                    </StackPanel>
+                  </Grid>
+                  <CheckBox x:Name="ChkZip" Margin="0,11,0,0" Content="Write compressed .ifczip (recommended)" ToolTip="Write IFC's standard zipped form: an ordinary ZIP holding one .ifc, read directly by Revit, Solibri, ArchiCAD, Navisworks, xBim and IfcOpenShell with no unpacking step.&#x0a;&#x0a;STEP text compresses very well, so this is typically 6-12x smaller on disk. It also writes LESS data: the export streams straight into the archive, so the uncompressed file is never created at all.&#x0a;&#x0a;Turn it off if a downstream script expects a literal .ifc."/>
+                </StackPanel>
+              </Border>
+
+              <!-- One button for every auto-detect the pane has. These used to be
+                   five buttons on three tabs (Detect from model, Scan model,
+                   Auto-map, Refresh sets ×2) that partly called the same code —
+                   nobody could tell what ran what. -->
+              <Border Style="{StaticResource CardStyle}">
+                <StackPanel>
+                  <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <TextBlock Style="{StaticResource H3}" Text="SMART SETUP"/>
+                    <Border Style="{StaticResource BadgeAuto}"><TextBlock Text="✨ AUTO" FontSize="9.5" FontWeight="SemiBold" Foreground="#0070C0"/></Border>
                   </StackPanel>
-                  <CheckBox x:Name="ChkInstancing" Content="Optimize repeated geometry (instancing)" ToolTip="Reuse identical geometry across elements to shrink the file and speed up export."/>
-                  <CheckBox x:Name="ChkFastInstancing" Margin="18,0,0,0" Content="Fast instancing — trust type + size (experimental)" ToolTip="Skip re-reading the geometry of elements that look like a repeat of one already read (same tree type, size, fragment count and colour). Reading triangles is 80-90% of the export, and most models repeat their shapes many times, so this can be several times faster.&#x0a;&#x0a;It is a GUESS about the model, so it checks itself: every 20th repeat is read for real and compared. Any disagreement is reported, that shape is dropped, and the file stays correct. Turn this on only after a run reports zero mismatches on YOUR model."/>
-                  <CheckBox x:Name="ChkZip" Content="Write compressed .ifczip" ToolTip="Write IFC's standard zipped form: an ordinary ZIP holding one .ifc, read directly by Revit, Solibri, ArchiCAD, Navisworks, xBim and IfcOpenShell with no unpacking step.&#x0a;&#x0a;STEP text compresses very well, so this is typically 6-12x smaller on disk. It also writes LESS data: the export streams straight into the archive, so the uncompressed file is never created at all.&#x0a;&#x0a;Turn it off if a downstream script expects a literal .ifc."/>
-                  <CheckBox x:Name="ChkShareTypeProps" Content="Share type-level properties (IFC4, needs a Type role)" ToolTip="Put the properties that are the same for every element of a type onto the IfcElementType, and write only what differs on each element - the standard IFC arrangement (type Psets shared, occurrence Psets override).&#x0a;&#x0a;This is the biggest remaining saving for property-heavy models, because a set with one per-element value (an Id or Mark) currently forces ALL its properties to be repeated per element.&#x0a;&#x0a;Off by default because it moves data to where a simpler IFC reader may not look. The report says how many elements it could not express exactly - zero means the export is faithful."/>
-                  <CheckBox x:Name="ChkSkipEmptyProps" Content="Skip empty property values" ToolTip="Do not write properties whose value is blank. Each one costs a full entity carrying a single space, and blanks also stop otherwise-identical property sets from being shared."/>
-                  <StackPanel Orientation="Horizontal">
-                    <CheckBox x:Name="ChkMinSize" Content="Skip geometry smaller than" VerticalAlignment="Center" ToolTip="Leave out parts below this size - washers, fasteners, screen-only detail. These are a large share of the triangle count on plant models and add nothing to a coordination deliverable.&#x0a;&#x0a;This REMOVES objects rather than simplifying them, so everything dropped is counted in the report."/>
-                    <TextBox x:Name="TxtMinSizeMm" Text="5" Width="46" Margin="8,0,6,0"/>
-                    <TextBlock Text="mm" VerticalAlignment="Center" Foreground="{DynamicResource Muted}"/>
-                  </StackPanel>
-                  <CheckBox x:Name="ChkValidate" Content="Validate output after export" ToolTip="Check the written IFC for structural damage and for the mistakes this exporter can make — bad PredefinedType values, wrong attribute counts, dangling references."/>
-                  <CheckBox x:Name="ChkProfile" Content="Size &amp; time breakdown in report (slower)" ToolTip="Break down where the file size and the export time went, in the report below. Adds a little overhead."/>
+                  <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,9"
+                             Text="One scan of the scope above prepares the whole export: finds your saved sets, samples property sets, fills the semantic roles (Data tab), proposes set→class rules (Mapping tab), and fills the pre-flight checks below. Anything you already set by hand is left alone."/>
+                  <Button Style="{StaticResource Btn}" Content="✨ Smart setup — scan &amp; auto-fill" Click="OnSmartSetup" HorizontalAlignment="Left"
+                          ToolTip="Runs every auto-detect in sequence over the scope selected above. Takes roughly as long as collecting that scope once (geometry is not read); use Stop by the progress bar to interrupt it. Re-running only fills blanks — it never overwrites your entries. One nuance: a role or rule you deliberately blanked counts as blank, so it will be proposed again."/>
+                  <TextBlock x:Name="TxtSmartSummary" Style="{StaticResource Hint}" FontFamily="Consolas" Text=""/>
                 </StackPanel>
               </Border>
 
@@ -607,6 +588,62 @@
                   <TextBlock x:Name="LblPreflightWhen" Style="{StaticResource Hint}" Margin="0,0,0,7"
                              Text="Checks that need a scan fill in after ✨ Smart setup (above) or 🔍 Preview (Mapping tab)."/>
                   <StackPanel x:Name="PreflightHost"/>
+                </StackPanel>
+              </Border>
+
+              <!-- Size, speed and diagnostics. Collapsed by default because the
+                   defaults are right for most exports; the header counts settings
+                   that differ from those defaults, so a loaded profile can never
+                   hide a change behind the fold. -->
+              <Border Style="{StaticResource CardStyle}">
+                <StackPanel>
+                  <ToggleButton x:Name="TglAdvanced" Cursor="Hand" Focusable="True"
+                                ToolTip="Show or hide the size, speed and diagnostics options.">
+                    <ToggleButton.Template>
+                      <ControlTemplate TargetType="ToggleButton">
+                        <Grid Background="Transparent">
+                          <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                          <StackPanel Grid.Column="0" Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource H3}" Text="ADVANCED OPTIONS"/>
+                            <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
+                          </StackPanel>
+                          <TextBlock Grid.Column="1" Margin="10,0,0,0" FontSize="11" VerticalAlignment="Center"
+                                     Foreground="{DynamicResource AmberTx}" Text="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}"/>
+                          <TextBlock Grid.Column="2" x:Name="chev" Text="▸" FontSize="13" Foreground="{DynamicResource Muted}" VerticalAlignment="Center"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                          <Trigger Property="IsChecked" Value="True"><Setter TargetName="chev" Property="Text" Value="▾"/></Trigger>
+                          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="chev" Property="Foreground" Value="{DynamicResource Accent}"/></Trigger>
+                        </ControlTemplate.Triggers>
+                      </ControlTemplate>
+                    </ToggleButton.Template>
+                  </ToggleButton>
+
+                  <StackPanel x:Name="AdvancedBody" Visibility="Collapsed" Margin="0,10,0,0">
+                    <TextBlock Style="{StaticResource Lbl}" Text="File size &amp; speed" FontWeight="SemiBold" Margin="0,0,0,2"/>
+                    <CheckBox x:Name="ChkInstancing" Content="Optimize repeated geometry (instancing)" ToolTip="Reuse identical geometry across elements to shrink the file and speed up export."/>
+                    <CheckBox x:Name="ChkFastInstancing" Margin="26,0,0,5" Content="Fast instancing — trust type + size (experimental)" ToolTip="Skip re-reading the geometry of elements that look like a repeat of one already read (same tree type, size, fragment count and colour). Reading triangles is 80-90% of the export, and most models repeat their shapes many times, so this can be several times faster.&#x0a;&#x0a;It is a GUESS about the model, so it checks itself: every 20th repeat is read for real and compared. Any disagreement is reported, that shape is dropped, and the file stays correct. Turn this on only after a run reports zero mismatches on YOUR model.&#x0a;&#x0a;Needs instancing to be on."/>
+                    <CheckBox x:Name="ChkSkipEmptyProps" Content="Skip empty property values" ToolTip="Do not write properties whose value is blank. Each one costs a full entity carrying a single space, and blanks also stop otherwise-identical property sets from being shared."/>
+                    <CheckBox x:Name="ChkShareTypeProps" Content="Share type-level properties (IFC4, needs a Type role)" ToolTip="Put the properties that are the same for every element of a type onto the IfcElementType, and write only what differs on each element - the standard IFC arrangement (type Psets shared, occurrence Psets override).&#x0a;&#x0a;This is the biggest remaining saving for property-heavy models, because a set with one per-element value (an Id or Mark) currently forces ALL its properties to be repeated per element.&#x0a;&#x0a;Off by default because it moves data to where a simpler IFC reader may not look. The report says how many elements it could not express exactly - zero means the export is faithful."/>
+                    <StackPanel Orientation="Horizontal">
+                      <CheckBox x:Name="ChkMinSize" Content="Skip geometry smaller than" VerticalAlignment="Center" ToolTip="Leave out parts below this size - washers, fasteners, screen-only detail. These are a large share of the triangle count on plant models and add nothing to a coordination deliverable.&#x0a;&#x0a;This REMOVES objects rather than simplifying them, so everything dropped is counted in the report."/>
+                      <TextBox x:Name="TxtMinSizeMm" Text="5" Width="46" Margin="8,0,6,0"/>
+                      <TextBlock Text="mm" VerticalAlignment="Center" Foreground="{DynamicResource Muted}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0"
+                                ToolTip="Split the output into multiple files once it grows past this size.">
+                      <CheckBox x:Name="ChkSplit" Content="Split into files larger than" VerticalAlignment="Center"/>
+                      <TextBox x:Name="TxtSplitMb" Text="200" Width="58" Margin="8,0,6,0"/>
+                      <TextBlock Text="MB" VerticalAlignment="Center" Foreground="{DynamicResource Muted}"/>
+                    </StackPanel>
+
+                    <TextBlock Style="{StaticResource Lbl}" Text="Checks &amp; diagnostics" FontWeight="SemiBold" Margin="0,12,0,2"/>
+                    <CheckBox x:Name="ChkValidate" Content="Validate output after export" ToolTip="Check the written IFC for structural damage and for the mistakes this exporter can make — bad PredefinedType values, wrong attribute counts, dangling references."/>
+                    <CheckBox x:Name="ChkProfile" Content="Size &amp; time breakdown in report (adds a little time)" ToolTip="Break down where the file size and the export time went, in the report below. Adds a little overhead."/>
+
+                    <Button Style="{StaticResource LinkBtn}" Content="↺ Reset advanced options to defaults" Click="OnResetAdvanced" Margin="0,8,0,0"
+                            ToolTip="Put every option in this card back to its default. Scope, format and the other tabs are not touched."/>
+                  </StackPanel>
                 </StackPanel>
               </Border>
 
