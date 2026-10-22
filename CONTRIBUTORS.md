@@ -14,6 +14,9 @@ Thanks to everyone who has contributed to BIMCamel.
   support (API v24 / series Nw24): NuGet package mapping, `PackageContents.xml` entries, installer
   detection and manifest generation.
 - **Hamada** ([@themodmin](https://github.com/themodmin)) — testing & QA.
+- **Vilhelm Hjert** ([@VilhelmH-git](https://github.com/VilhelmH-git)) — instanced-fragment fix (each element
+  takes only its own fragments), element-level instancing for many-part elements, and the headless
+  export test harness.
 
 ## AI assistance
 
