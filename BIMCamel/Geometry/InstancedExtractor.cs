@@ -33,6 +33,9 @@ namespace BIMCamel.Geometry
     {
         public string Name = "";
         public Guid InstanceGuid;
+        /// <summary>Tree-path key, set only when <see cref="InstanceGuid"/> is empty, so the
+        /// GlobalId fallback is stable across exports.</summary>
+        public string SourceKey = "";
         public List<MeshInstance> Instances = new List<MeshInstance>();
         public List<Data.IfcProp>? Properties;
         public string? ClassKey;
@@ -177,6 +180,7 @@ namespace BIMCamel.Geometry
             // Some parts of this element were welded away but others survived, so no element
             // was lost — counted separately so the report cannot imply phantom data loss.
             ExportIssues.CollapsedFragments += collapsedFrags;
+            if (el.InstanceGuid == Guid.Empty) el.SourceKey = Collect.ItemCollector.ItemKey(item, o.KeyCache);
 
             // Harvest only now that we know the item is actually exported — skips property reads
             // for the (often ~half) of HasGeometry leaves that produce no triangles (v4).

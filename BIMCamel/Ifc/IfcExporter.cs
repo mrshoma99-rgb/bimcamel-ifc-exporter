@@ -49,6 +49,12 @@ namespace BIMCamel.Ifc
         /// file of proxies with no warning anywhere.
         /// </summary>
         public int ProxyDegraded2x3;
+        /// <summary>
+        /// Elements whose GlobalId was already taken in this export (the same NWC appended twice,
+        /// two leaves carrying one instance GUID) and were given a derived one instead. Writing the
+        /// duplicate made the whole file invalid; the validator only said so afterwards.
+        /// </summary>
+        public int GuidCollisions;
         /// <summary>Distinct IFC entity name → element count, for the report breakdown.</summary>
         public readonly Dictionary<string, int> ByEntity = new(StringComparer.Ordinal);
 
@@ -100,9 +106,10 @@ namespace BIMCamel.Ifc
             // One manifest per EXPORT, not per split part — the parts are one deliverable.
             var previous = RevisionManifest.Load(basePath);
             var manifest = new RevisionManifest { Schema = schema == IfcSchema.Ifc4 ? "IFC4" : "IFC2X3", Written = DateTime.Now.ToString("yyyy-MM-dd HH:mm") };
+            var guids = new HashSet<Guid>();
 
             int part = 1;
-            var doc = new Doc(PartPath(basePath, part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest, shareTypeProps);
+            var doc = new Doc(PartPath(basePath, part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest, shareTypeProps, guids);
             bool needRoll = false;
             int index = 0;
             foreach (var el in elements)
@@ -114,7 +121,7 @@ namespace BIMCamel.Ifc
                 if (needRoll)
                 {
                     doc.Finish(schema, computeQuantities, summary);
-                    doc = new Doc(PartPath(basePath, ++part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest, shareTypeProps);
+                    doc = new Doc(PartPath(basePath, ++part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest, shareTypeProps, guids);
                     needRoll = false;
                 }
                 WriteMeshElement(doc, schema, meshWriter, el, t, unitScale, computeQuantities, index);
@@ -143,9 +150,10 @@ namespace BIMCamel.Ifc
             // One manifest per EXPORT, not per split part — the parts are one deliverable.
             var previous = RevisionManifest.Load(basePath);
             var manifest = new RevisionManifest { Schema = schema == IfcSchema.Ifc4 ? "IFC4" : "IFC2X3", Written = DateTime.Now.ToString("yyyy-MM-dd HH:mm") };
+            var guids = new HashSet<Guid>();
 
             int part = 1;
-            var doc = new Doc(PartPath(basePath, part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest, shareTypeProps);
+            var doc = new Doc(PartPath(basePath, part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest, shareTypeProps, guids);
             bool needRoll = false;
             int index = 0;
             foreach (var el in elements)
@@ -155,7 +163,7 @@ namespace BIMCamel.Ifc
                 if (needRoll)
                 {
                     doc.Finish(schema, computeQuantities, summary);
-                    doc = new Doc(PartPath(basePath, ++part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest, shareTypeProps);
+                    doc = new Doc(PartPath(basePath, ++part, split), coordDecimals, schema, coords, minX, minY, minZ, georef, author, names, manifest, shareTypeProps, guids);
                     needRoll = false;
                 }
                 WriteInstancedElement(doc, schema, meshWriter, el, identity, minX, minY, minZ, computeQuantities, index, mergePartsAbove);
@@ -194,8 +202,11 @@ namespace BIMCamel.Ifc
             public readonly Dictionary<(long, long, long), int> DirCache = new();   // instanced: shared IfcDirection
             public readonly Dictionary<DedupKey, GeomDef> Geom = new();             // instanced: per-file dedup
             public readonly Dictionary<DedupKey, GeomDef> ElemGeom = new();         // element-level: merged shapes
+            /// <summary>Every GlobalId written so far in this EXPORT — shared by split parts, which
+            /// together are one deliverable. Guid, not its 22-char text, to keep it small.</summary>
+            public readonly HashSet<Guid> Guids;
             public int Elem, Tris, Insts, UniqueGeom, MergedElems, MergedShapes;
-            public int Mapped, ProxyUnmapped, ProxyDegraded;
+            public int Mapped, ProxyUnmapped, ProxyDegraded, GuidCollisions;
             public readonly Dictionary<string, int> ByEntity = new(StringComparer.Ordinal);
             private readonly string _path;
             private readonly string _classSystem;
@@ -207,9 +218,10 @@ namespace BIMCamel.Ifc
 
             public Doc(string path, int coordDecimals, IfcSchema schema, CoordOptions coords,
                        double minX, double minY, double minZ, bool georef, string author, SpatialNames names,
-                       RevisionManifest manifest, bool shareTypeProps)
+                       RevisionManifest manifest, bool shareTypeProps, HashSet<Guid> guids)
             {
                 Manifest = manifest;
+                Guids = guids;
                 // Type objects are IFC4-only in this exporter, so there is nowhere to hang shared
                 // property sets on 2x3 — the flag is simply inert there (v6 Z3).
                 Shared = new TypeShare(shareTypeProps && schema == IfcSchema.Ifc4);
@@ -251,6 +263,7 @@ namespace BIMCamel.Ifc
                 sum.InstanceCount += Insts; sum.UniqueGeometries += UniqueGeom;
                 sum.MergedElements += MergedElems; sum.MergedShapes += MergedShapes;
                 sum.MappedCount += Mapped; sum.ProxyUnmapped += ProxyUnmapped; sum.ProxyDegraded2x3 += ProxyDegraded;
+                sum.GuidCollisions += GuidCollisions;
                 foreach (var kv in ByEntity) { sum.ByEntity.TryGetValue(kv.Key, out int n); sum.ByEntity[kv.Key] = n + kv.Value; }
                 if (Storeys.Count > sum.StoreyCount) sum.StoreyCount = Storeys.Count;
                 if (computeQuantities && Elem > 0) sum.QuantitiesWritten = true;
@@ -271,7 +284,7 @@ namespace BIMCamel.Ifc
             // storeyAxis cancels the storey's own elevation, so raising a storey to its real height
             // repositions the storey without moving the geometry hanging off it.
             int place = WriteLocalPlacement(w, storeyPlace, storeyAxis);
-            string guid = StableGuid(el.InstanceGuid, el.Name, index);
+            string guid = StableGuid(d, el.InstanceGuid, el.SourceKey, el.Name, index);
             int id = WriteElement(d, w, schema, el.ClassKey, el.TypeName, guid, d.S.Owner, el.Name, place, prodShape);
             long tp = ExportTiming.Now;
             if (el.Properties != null && el.Properties.Count > 0) RegisterPropertySets(w, d.Id, d.S.Owner, id, el.Properties, d.Psets, d.Shared, TypeKeyOf(el.ClassKey, el.TypeName), el.TypeName);
@@ -359,7 +372,7 @@ namespace BIMCamel.Ifc
             int rep = WriteMappedShapeRep(w, d.S.Ctx, mapped);
             int prodShape = WriteProdShape(w, rep);
             int place = WriteLocalPlacement(w, storeyPlace, storeyAxis);
-            string guid = StableGuid(el.InstanceGuid, el.Name, index);
+            string guid = StableGuid(d, el.InstanceGuid, el.SourceKey, el.Name, index);
             int id = WriteElement(d, w, schema, el.ClassKey, el.TypeName, guid, d.S.Owner, el.Name, place, prodShape);
             long tp = ExportTiming.Now;
             if (el.Properties != null && el.Properties.Count > 0) RegisterPropertySets(w, d.Id, d.S.Owner, id, el.Properties, d.Psets, d.Shared, TypeKeyOf(el.ClassKey, el.TypeName), el.TypeName);
@@ -1415,8 +1428,25 @@ namespace BIMCamel.Ifc
             l.Add(id);
         }
 
-        private static string StableGuid(Guid instanceGuid, string name, int index)
-            => instanceGuid != Guid.Empty ? IfcGuid.ToIfcGuid(instanceGuid) : IfcGuid.ToIfcGuid(DeterministicGuid($"{name}#{index}"));
+        /// <summary>
+        /// The element's GlobalId: its Navisworks instance GUID when it has one, else a hash of its
+        /// tree path (stable across exports, unlike its position in the stream, which shifts
+        /// whenever the scope does), else name#index as a last resort. A GlobalId already used in
+        /// this export is re-derived deterministically from itself, so the file stays valid and a
+        /// re-export assigns the same ids in the same order.
+        /// </summary>
+        private static string StableGuid(Doc d, Guid instanceGuid, string sourceKey, string name, int index)
+        {
+            Guid g = instanceGuid != Guid.Empty ? instanceGuid
+                   : DeterministicGuid(sourceKey.Length > 0 ? sourceKey : $"{name}#{index}");
+            if (!d.Guids.Add(g))
+            {
+                var first = g;
+                for (int n = 2; !d.Guids.Add(g = DeterministicGuid(first.ToString("N") + "#" + n)); n++) { }
+                d.GuidCollisions++;
+            }
+            return IfcGuid.ToIfcGuid(g);
+        }
         private static Guid DeterministicGuid(string key) { using var md5 = MD5.Create(); return new Guid(md5.ComputeHash(Encoding.UTF8.GetBytes(key))); }
 
         /// <summary>

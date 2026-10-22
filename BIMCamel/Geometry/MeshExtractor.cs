@@ -64,6 +64,9 @@ namespace BIMCamel.Geometry
     {
         public string Name = "";
         public Guid InstanceGuid;
+        /// <summary>Tree-path key (<see cref="ItemCollector.ItemKey(ModelItem)"/>), set only when
+        /// <see cref="InstanceGuid"/> is empty, so the GlobalId fallback is stable across exports.</summary>
+        public string SourceKey = "";
         public List<double> Vertices = new List<double>();
         public List<int> Indices = new List<int>();
         public List<IfcProp>? Properties;
@@ -184,6 +187,7 @@ namespace BIMCamel.Geometry
                 ClassKey = hasClass && o.ClassMap!.TryGetValue(key, out var ck) ? ck : null,
                 Quantities = measuredOk ? measured : (MeshQty?)null
             };
+            if (em.InstanceGuid == Guid.Empty) em.SourceKey = ItemCollector.ItemKey(item, o.KeyCache);
             ts = ExportTiming.Now;
             // ONE pass over this item's properties for both the psets and the roles (v5 E2).
             em.Properties = PropertyHarvester.HarvestAndRoles(item, o.Props, o.PsetFilter, hasRoles ? o.Roles : null, out var rv);

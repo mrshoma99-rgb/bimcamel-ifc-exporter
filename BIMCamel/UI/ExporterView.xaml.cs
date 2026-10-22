@@ -1692,6 +1692,8 @@ namespace BIMCamel.UI
             if (s.MergedElements > 0)
                 sb.AppendLine($"Merged parts: {s.MergedElements:N0} element(s) as one shape each · {s.MergedShapes:N0} distinct");
             sb.AppendLine($"Class rules : {ruleCount} set rule(s)");
+            if (s.GuidCollisions > 0)
+                sb.AppendLine($"GlobalIds   : {s.GuidCollisions:N0} element(s) shared a GlobalId with another (model appended twice?) and got a derived one");
             sb.Append(MappingLines(s));
             if (s.Revision != null)
             {
