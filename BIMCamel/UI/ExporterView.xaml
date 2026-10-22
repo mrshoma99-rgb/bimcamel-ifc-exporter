@@ -431,7 +431,8 @@
           </Border>
           <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0,0,0">
             <TextBlock Text="BIMCamel" Foreground="White" FontWeight="SemiBold" FontSize="14.5"/>
-            <TextBlock Text="IFC Exporter" Foreground="#DDFFFFFF" FontSize="10.5"/>
+            <TextBlock x:Name="LblSubtitle" Text="IFC Exporter" Foreground="#DDFFFFFF" FontSize="10.5" TextTrimming="CharacterEllipsis"
+                       ToolTip="The profile these settings came from. A dot means they were changed after it was loaded."/>
           </StackPanel>
           <StackPanel Grid.Column="2" Orientation="Horizontal">
             <!-- Profiles live in the title bar: they capture the WHOLE pane, so
@@ -439,8 +440,12 @@
                  than they actually have. -->
             <Button x:Name="BtnSaveProfile" Style="{StaticResource IconBtn}" Content="💾" Margin="0,0,6,0" Click="OnSaveProfile"
                     ToolTip="Save the export settings — schema, scope, options, coordinates, roles, parameter rules and the set mapping — to a reusable .json profile. (List ticks and the theme are not stored.)"/>
-            <Button x:Name="BtnLoadProfile" Style="{StaticResource IconBtn}" Content="📂" Margin="0,0,6,0" Click="OnLoadProfile"
-                    ToolTip="Load a previously saved .json profile into every tab."/>
+            <!-- One menu for every way of replacing the current settings: a saved
+                 profile, a built-in preset, or the defaults. Settings themselves are
+                 remembered between sessions, so a profile is for sharing, not for
+                 surviving a restart. -->
+            <Button x:Name="BtnLoadProfile" Style="{StaticResource IconBtn}" Content="📂" Margin="0,0,6,0" Click="OnProfileMenu"
+                    ToolTip="Load a saved profile, apply a built-in preset, or reset everything to defaults."/>
             <Button x:Name="BtnTheme" Style="{StaticResource IconBtn}" Content="🌙" ToolTip="Switch between light and dark theme" Click="OnToggleTheme"/>
           </StackPanel>
         </Grid>

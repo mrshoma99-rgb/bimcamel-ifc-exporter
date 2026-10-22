@@ -69,6 +69,7 @@ namespace BIMCamel.UI
             BuildRoleRows();
             InitControls();
             InitGridsAndLists();
+            InitSession();
             Loaded += (_, _) => { UpdateScopeHint(); PreviewBasePoint(); RefreshModelStatus(); RefreshSets(); RenderPreflight(); };
             // The set list self-refreshes when the Mapping tab opens (replacing
             // the old per-tab Refresh buttons), and the pre-flight rows refresh
@@ -296,9 +297,11 @@ namespace BIMCamel.UI
         private static void AddItems(ComboBox cmb, IEnumerable<string> items) { foreach (var i in items) cmb.Items.Add(i); }
 
         // ── theme toggle ──────────────────────────────────────────────────────────
-        private void OnToggleTheme(object sender, RoutedEventArgs e)
+        private void OnToggleTheme(object sender, RoutedEventArgs e) => ApplyTheme(!_dark);
+
+        private void ApplyTheme(bool dark)
         {
-            _dark = !_dark;
+            _dark = dark;
             BtnTheme.Content = _dark ? "☀" : "🌙";
             void Set(string key, string hex) => Resources[key] = new SolidColorBrush((System.Windows.Media.Color)ColorConverter.ConvertFromString(hex));
             if (_dark)
@@ -1897,17 +1900,12 @@ namespace BIMCamel.UI
             {
                 using var sfd = new WF.SaveFileDialog { Title = "Save BIMCamel profile", Filter = "BIMCamel profile (*.json)|*.json", FileName = "bimcamel_profile.json", DefaultExt = "json" };
                 if (sfd.ShowDialog() != WF.DialogResult.OK) return;
-                ExportProfile.Save(Capture(), sfd.FileName); SetStatus("Profile saved.");
-            }
-            catch (Exception ex) { WF.MessageBox.Show(ex.Message, "BIMCamel", WF.MessageBoxButtons.OK, WF.MessageBoxIcon.Error); }
-        }
-        private void OnLoadProfile(object s, RoutedEventArgs e)
-        {
-            try
-            {
-                using var ofd = new WF.OpenFileDialog { Title = "Load BIMCamel profile", Filter = "BIMCamel profile (*.json)|*.json" };
-                if (ofd.ShowDialog() != WF.DialogResult.OK) return;
-                Apply(ExportProfile.Load(ofd.FileName)); SetStatus("Profile loaded.");
+                var p = Capture();
+                ExportProfile.Save(p, sfd.FileName);
+                _ui.ProfileName = System.IO.Path.GetFileNameWithoutExtension(sfd.FileName);
+                _profileJson = ExportProfile.ToJson(p);
+                SaveSession();
+                SetStatus("Profile saved.");
             }
             catch (Exception ex) { WF.MessageBox.Show(ex.Message, "BIMCamel", WF.MessageBoxButtons.OK, WF.MessageBoxIcon.Error); }
         }

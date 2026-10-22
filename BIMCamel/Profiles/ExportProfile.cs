@@ -89,6 +89,16 @@ namespace BIMCamel.Profiles
             ser.WriteObject(fs, p);
         }
 
+        /// <summary>The same JSON <see cref="Save"/> writes, as a string — for the auto-saved last
+        /// settings and for telling whether the pane still matches the profile it loaded.</summary>
+        public static string ToJson(ExportProfile p)
+        {
+            var ser = new DataContractJsonSerializer(typeof(ExportProfile));
+            using var ms = new MemoryStream();
+            ser.WriteObject(ms, p);
+            return System.Text.Encoding.UTF8.GetString(ms.ToArray());
+        }
+
         public static ExportProfile Load(string path)
         {
             var ser = new DataContractJsonSerializer(typeof(ExportProfile));
