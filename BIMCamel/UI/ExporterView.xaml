@@ -763,6 +763,11 @@
                     <Button Style="{StaticResource Btn}" Content="All" Click="OnCatsAll" ToolTip="Tick every property set."/>
                     <Button Style="{StaticResource Btn}" Content="None" Click="OnCatsNone" ToolTip="Untick every property set."/>
                   </WrapPanel>
+                  <Grid Margin="0,0,0,6">
+                    <TextBox x:Name="TxtCatFilter" TextChanged="OnCatFilter" ToolTip="Show only the property sets whose name contains this text. All and None then act on the ones shown."/>
+                    <TextBlock x:Name="LblCatFilterHint" Text="Search property sets…" IsHitTestVisible="False" Margin="10,0,0,0" VerticalAlignment="Center"
+                               FontSize="12" Foreground="{DynamicResource Faint}"/>
+                  </Grid>
                   <Border BorderBrush="{DynamicResource FieldBd}" BorderThickness="1" CornerRadius="9" Background="{DynamicResource Field}" Padding="4" MaxHeight="160"
                           ToolTip="Property sets to include. If you never scan, all are exported.">
                     <ListBox x:Name="LstCategories" BorderThickness="0" Background="Transparent" ScrollViewer.VerticalScrollBarVisibility="Auto">
@@ -832,6 +837,8 @@
                   <WrapPanel Margin="0,9,0,0">
                     <Button Style="{StaticResource Btn}" Content="+ Add mapping" Click="OnParamAdd" ToolTip="Add a new mapping row."/>
                     <Button Style="{StaticResource Btn}" Content="Remove selected" Click="OnParamRemove" ToolTip="Remove the selected mapping row."/>
+                    <Button Style="{StaticResource Btn}" Content="Import CSV…" Click="OnParamImportCsv" ToolTip="Add mapping rows from a CSV file with the columns: source category, source property, target pset, target name. A header row is skipped. Edit the list in Excel and bring it back."/>
+                    <Button Style="{StaticResource Btn}" Content="Export CSV…" Click="OnParamExportCsv" ToolTip="Save these mapping rows as a CSV file, to edit in Excel or reuse on another project."/>
                   </WrapPanel>
                 </StackPanel>
               </Border>

@@ -195,7 +195,7 @@ namespace BIMCamel.UI
                 TxtProject.Text = _defaults.ProjectName; TxtSite.Text = _defaults.SiteName;
                 TxtBuilding.Text = _defaults.BuildingName; TxtStorey.Text = _defaults.StoreyName;
                 _paramRows.Clear();
-                foreach (var (cat, par) in new[] { (_catType, _parType), (_catLevel, _parLevel), (_catMat, _parMat), (_catCls, _parCls) })
+                foreach (var (cat, par) in new[] { (_catType, _parType), (_catLevel, _parLevel), (_catMat, _parMat), (_catCls, _parCls), (_catName, _parName) })
                 { cat.Text = ""; par.Text = ""; }
             }
             finally { _applying = false; }

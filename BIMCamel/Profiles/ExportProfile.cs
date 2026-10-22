@@ -60,7 +60,8 @@ namespace BIMCamel.Profiles
         // Property roles, parameter rules and the spatial names drive IfcBuildingStorey,
         // IfcElementType, IfcMaterial and IfcClassificationReference — arguably the most valuable
         // configuration in the tool, and none of it survived a save/load round trip before.
-        /// <summary>Roles as "cat|prop" per line: Type, Level, Material, Classification.</summary>
+        /// <summary>Roles as "cat|prop" per line: Type, Level, Material, Classification, Name
+        /// (the fifth line is absent in older profiles).</summary>
         [DataMember] public string Roles = "";
         /// <summary>Parameter rules, one per line: "srcCategory | srcProperty | targetPset | targetName".</summary>
         [DataMember] public string ParamRules = "";

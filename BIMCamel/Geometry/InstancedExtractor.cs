@@ -187,6 +187,7 @@ namespace BIMCamel.Geometry
             if (hasRoles)
             {
                 el.TypeName = rv.Type; el.Level = rv.Level; el.MaterialName = rv.Material; el.ClassCode = rv.Classification;
+                if (!string.IsNullOrWhiteSpace(rv.Name)) el.Name = rv.Name.Trim();
             }
             // A set rule is an explicit decision by the user; it outranks whatever the source
             // property happened to contain.

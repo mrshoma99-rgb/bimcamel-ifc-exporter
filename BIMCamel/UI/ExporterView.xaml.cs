@@ -54,7 +54,8 @@ namespace BIMCamel.UI
         private readonly List<RadioButton> _scopeRadios = new List<RadioButton>();
         private readonly ObservableCollection<string> _roleCats = new ObservableCollection<string> { AnyCat };
         private ComboBox _catType = null!, _parType = null!, _catLevel = null!, _parLevel = null!,
-                         _catMat = null!, _parMat = null!, _catCls = null!, _parCls = null!;
+                         _catMat = null!, _parMat = null!, _catCls = null!, _parCls = null!,
+                         _catName = null!, _parName = null!;
 
         // progress
         private readonly Stopwatch _tickClock = new Stopwatch();
@@ -274,6 +275,7 @@ namespace BIMCamel.UI
             (_catLevel, _parLevel) = AddRoleRow("Level → IfcBuildingStorey");
             (_catMat, _parMat) = AddRoleRow("Material → IfcMaterial");
             (_catCls, _parCls) = AddRoleRow("Classification → IfcClassificationReference");
+            (_catName, _parName) = AddRoleRow("Element name → IFC Name (blank = the Navisworks name)");
         }
 
         private (ComboBox cat, ComboBox par) AddRoleRow(string label)
@@ -311,7 +313,7 @@ namespace BIMCamel.UI
         {
             _dark = dark;
             // The button shows the theme a click switches TO.
-            IcoTheme.Data = Geometry.Parse(_dark ? "M12,7 A5,5 0 1 0 12.01,7 Z M12,1 L12,3 M12,21 L12,23 M1,12 L3,12 M21,12 L23,12 M4.2,4.2 L5.6,5.6 M18.4,18.4 L19.8,19.8 M4.2,19.8 L5.6,18.4 M18.4,5.6 L19.8,4.2" : "M20,14 A8,8 0 1 1 10,4 A6,6 0 0 0 20,14 Z");
+            IcoTheme.Data = System.Windows.Media.Geometry.Parse(_dark ? "M12,7 A5,5 0 1 0 12.01,7 Z M12,1 L12,3 M12,21 L12,23 M1,12 L3,12 M21,12 L23,12 M4.2,4.2 L5.6,5.6 M18.4,18.4 L19.8,19.8 M4.2,19.8 L5.6,18.4 M18.4,5.6 L19.8,4.2" : "M20,14 A8,8 0 1 1 10,4 A6,6 0 0 0 20,14 Z");
             void Set(string key, string hex) => Resources[key] = new SolidColorBrush((System.Windows.Media.Color)ColorConverter.ConvertFromString(hex));
             if (_dark)
             {
@@ -376,8 +378,20 @@ namespace BIMCamel.UI
         private void OnBatchAll(object s, RoutedEventArgs e) { foreach (var c in _batchItems) c.Checked = true; }
         private void OnBatchNone(object s, RoutedEventArgs e) { foreach (var c in _batchItems) c.Checked = false; }
         private void OnScanSelection(object s, RoutedEventArgs e) { _cancelRequested = false; ScanSelection(); }
-        private void OnCatsAll(object s, RoutedEventArgs e) { foreach (var c in _cats) c.Checked = true; }
-        private void OnCatsNone(object s, RoutedEventArgs e) { foreach (var c in _cats) c.Checked = false; }
+        private void OnCatsAll(object s, RoutedEventArgs e) { foreach (var c in VisibleCats()) c.Checked = true; }
+        private void OnCatsNone(object s, RoutedEventArgs e) { foreach (var c in VisibleCats()) c.Checked = false; }
+        private IEnumerable<CheckItem> VisibleCats()
+        {
+            var f = (TxtCatFilter.Text ?? "").Trim();
+            return f.Length == 0 ? _cats : _cats.Where(c => c.Name.IndexOf(f, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+        }
+        private void OnCatFilter(object s, TextChangedEventArgs e)
+        {
+            var f = (TxtCatFilter.Text ?? "").Trim();
+            LblCatFilterHint.Visibility = f.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+            var view = System.Windows.Data.CollectionViewSource.GetDefaultView(_cats);
+            view.Filter = f.Length == 0 ? null : (Predicate<object>)(o => o is CheckItem c && c.Name.IndexOf(f, StringComparison.OrdinalIgnoreCase) >= 0);
+        }
         private void OnParamAdd(object s, RoutedEventArgs e) => _paramRows.Add(new ParamRow { SourceCategory = AnyCat });
         private void OnParamRemove(object s, RoutedEventArgs e) { if (GridParams.SelectedItem is ParamRow r) _paramRows.Remove(r); }
         private void OnMapAdd(object s, RoutedEventArgs e) => _mapRows.Add(new MapRow());
@@ -604,6 +618,7 @@ namespace BIMCamel.UI
             var priorLevel = (_catLevel.Text, _parLevel.Text);
             var priorMat = (_catMat.Text, _parMat.Text);
             var priorCls = (_catCls.Text, _parCls.Text);
+            var priorName = (_catName.Text, _parName.Text);
 
             // role category combos
             _roleCats.Clear(); _roleCats.Add(AnyCat); foreach (var c in cats) _roleCats.Add(c);
@@ -617,6 +632,8 @@ namespace BIMCamel.UI
             FillRole(_catLevel, _parLevel, priorLevel.Item1, priorLevel.Item2, g.Level);
             FillRole(_catMat, _parMat, priorMat.Item1, priorMat.Item2, g.Material);
             FillRole(_catCls, _parCls, priorCls.Item1, priorCls.Item2, g.Classification);
+            // Never guessed: the Navisworks name is a fine default, so this stays the user's call.
+            FillRole(_catName, _parName, priorName.Item1, priorName.Item2, default);
 
             string read = sample.Count < items.Count
                 ? $"a sample of {sample.Count:N0} of {items.Count:N0} {sourceLabel} elements"
@@ -685,7 +702,8 @@ namespace BIMCamel.UI
             Type = MakeRef(_catType, _parType),
             Level = MakeRef(_catLevel, _parLevel),
             Material = MakeRef(_catMat, _parMat),
-            Classification = MakeRef(_catCls, _parCls)
+            Classification = MakeRef(_catCls, _parCls),
+            Name = MakeRef(_catName, _parName)
         };
         private static PropRef MakeRef(ComboBox cat, ComboBox par)
         {
@@ -2187,7 +2205,7 @@ namespace BIMCamel.UI
         {
             var sb = new StringBuilder();
             void Line(ComboBox cat, ComboBox par) => sb.AppendLine(((cat.Text == AnyCat ? "" : cat.Text) ?? "") + "|" + (par.Text ?? ""));
-            Line(_catType, _parType); Line(_catLevel, _parLevel); Line(_catMat, _parMat); Line(_catCls, _parCls);
+            Line(_catType, _parType); Line(_catLevel, _parLevel); Line(_catMat, _parMat); Line(_catCls, _parCls); Line(_catName, _parName);
             return sb.ToString();
         }
         private void TextToRoles(string? text)
@@ -2203,7 +2221,9 @@ namespace BIMCamel.UI
                 cat.Text = c.Length == 0 ? AnyCat : c;
                 par.Text = lines[i].Substring(bar + 1).Trim();
             }
-            Set(0, _catType, _parType); Set(1, _catLevel, _parLevel); Set(2, _catMat, _parMat); Set(3, _catCls, _parCls);
+            // A profile from before the name role has four lines; it means "the Navisworks name".
+            _catName.Text = AnyCat; _parName.Text = "";
+            Set(0, _catType, _parType); Set(1, _catLevel, _parLevel); Set(2, _catMat, _parMat); Set(3, _catCls, _parCls); Set(4, _catName, _parName);
         }
 
         // Parameter rules — one "srcCategory | srcProperty | targetPset | targetName" per line.
