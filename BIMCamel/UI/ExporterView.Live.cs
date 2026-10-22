@@ -69,6 +69,7 @@ namespace BIMCamel.UI
         {
             if (!Tabs.IsEnabled) return;   // mid-export: the export owns the pane until it ends
             _preflight = null;
+            TxtStoreys.Text = "Run Smart setup or Run full check (Export tab) to list them.";
             RefreshModelStatus(); RefreshSets(); UpdateScopeHint(); PreviewBasePoint(); RenderPreflight();
         }
 

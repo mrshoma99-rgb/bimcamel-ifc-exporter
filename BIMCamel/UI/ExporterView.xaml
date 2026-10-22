@@ -914,17 +914,19 @@
           </ScrollViewer>
         </TabItem>
 
-        <!-- ===== COORDINATES (was buried inside the Export tab) ===== -->
+        <!-- ===== PROJECT & LOCATION (the old Coordinates and Structure tabs) =====
+             Structure was a whole tab for four text boxes, and both tabs answer the
+             same question: what is this model and where is it. -->
         <TabItem x:Name="TabCoords">
           <TabItem.Header>
-            <StackPanel ToolTip="Where the model sits: local base point and real-world georeferencing. Optional — defaults keep the model at its world position.">
+            <StackPanel ToolTip="What the model is called and where it sits: project, site, building and storey names, the base point and real-world georeferencing. All optional.">
               <Viewbox Width="18" Height="18" HorizontalAlignment="Center">
                 <Path Data="M12,2 L12,6 M12,18 L12,22 M2,12 L6,12 M18,12 L22,12 M12,12 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0" StrokeThickness="2"
                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}"/>
               </Viewbox>
               <!-- The dot appears when pre-flight has a warning this tab fixes. -->
               <Grid HorizontalAlignment="Center" Margin="0,4,0,0">
-                <TextBlock Text="Coordinates" FontSize="11"/>
+                <TextBlock Text="Project" FontSize="11"/>
                 <Ellipse x:Name="DotCoords" Width="6" Height="6" Fill="{DynamicResource AmberTx}" Visibility="Collapsed"
                          HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-2,-8,0"/>
               </Grid>
@@ -932,6 +934,40 @@
           </TabItem.Header>
           <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="14,14,14,8">
             <StackPanel>
+              <Border Style="{StaticResource CardStyle}">
+                <StackPanel>
+                  <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
+                    <TextBlock Style="{StaticResource H3}" Text="PROJECT &amp; SPATIAL STRUCTURE"/>
+                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
+                  </StackPanel>
+                  <TextBlock Style="{StaticResource Lbl}" Text="Project name (blank = the model's file name)"/>
+                  <TextBox x:Name="TxtProject" Text="" ToolTip="Name written to the IfcProject. Leave blank to use the Navisworks file's name, which is what most receivers expect to see."/>
+                  <Grid Margin="0,11,0,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                      <TextBlock Style="{StaticResource Lbl}" Text="Site name"/>
+                      <TextBox x:Name="TxtSite" Text="Site" ToolTip="Name written to the IfcSite."/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                      <TextBlock Style="{StaticResource Lbl}" Text="Building name"/>
+                      <TextBox x:Name="TxtBuilding" Text="Building" ToolTip="Name written to the IfcBuilding."/>
+                    </StackPanel>
+                  </Grid>
+                  <TextBlock Style="{StaticResource Lbl}" Text="Fallback storey (items with no level)" Margin="0,11,0,5"/>
+                  <TextBox x:Name="TxtStorey" Text="Storey" ToolTip="Storey for elements whose Level role is empty."/>
+                  <TextBlock Style="{StaticResource Hint}" Text="Storeys come from the Level role on the Data tab."/>
+                  <!-- What the storeys will actually be, from the last check: before
+                       this, nobody saw them until the IFC was open in another tool. -->
+                  <TextBlock Style="{StaticResource Lbl}" Text="Storeys found by the last check" Margin="0,11,0,5"/>
+                  <Border Background="{DynamicResource ConsoleBg}" CornerRadius="9" Padding="11" MaxHeight="160">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                      <TextBlock x:Name="TxtStoreys" Foreground="{DynamicResource ConsoleTx}" FontFamily="Consolas" FontSize="11"
+                                 Text="Run Smart setup or Run full check (Export tab) to list them."/>
+                    </ScrollViewer>
+                  </Border>
+                </StackPanel>
+              </Border>
+
               <Border Style="{StaticResource CardStyle}">
                 <StackPanel>
                   <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
@@ -987,37 +1023,6 @@
           </ScrollViewer>
         </TabItem>
 
-        <!-- ===== STRUCTURE ===== -->
-        <TabItem x:Name="TabStructure">
-          <TabItem.Header>
-            <StackPanel ToolTip="Names for the IFC spatial structure (project / site / building / storey)">
-              <Viewbox Width="18" Height="18" HorizontalAlignment="Center">
-                <Path Data="M5,21 L5,4 A1,1 0 0 1 6,3 L18,3 A1,1 0 0 1 19,4 L19,21 M5,9 L19,9 M5,15 L19,15" StrokeThickness="2"
-                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}"/>
-              </Viewbox>
-              <TextBlock Text="Structure" FontSize="11" HorizontalAlignment="Center" Margin="0,4,0,0"/>
-            </StackPanel>
-          </TabItem.Header>
-          <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="14,14,14,8">
-            <Border Style="{StaticResource CardStyle}">
-              <StackPanel>
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
-                  <TextBlock Style="{StaticResource H3}" Text="SPATIAL STRUCTURE"/>
-                  <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
-                </StackPanel>
-                <TextBlock Style="{StaticResource Lbl}" Text="Project name"/>
-                <TextBox x:Name="TxtProject" Text="BIMCamel Export" ToolTip="Name written to the IfcProject."/>
-                <TextBlock Style="{StaticResource Lbl}" Text="Site name" Margin="0,11,0,5"/>
-                <TextBox x:Name="TxtSite" Text="Site" ToolTip="Name written to the IfcSite."/>
-                <TextBlock Style="{StaticResource Lbl}" Text="Building name" Margin="0,11,0,5"/>
-                <TextBox x:Name="TxtBuilding" Text="Building" ToolTip="Name written to the IfcBuilding."/>
-                <TextBlock Style="{StaticResource Lbl}" Text="Default storey (items with no Level)" Margin="0,11,0,5"/>
-                <TextBox x:Name="TxtStorey" Text="Storey" ToolTip="Fallback storey name for elements that have no Level property."/>
-                <TextBlock Style="{StaticResource Hint}" Text="Storeys come from the Level role on the Data tab. The name above is only the fallback storey for items without a level."/>
-              </StackPanel>
-            </Border>
-          </ScrollViewer>
-        </TabItem>
       </TabControl>
 
       <!-- Action bar -->

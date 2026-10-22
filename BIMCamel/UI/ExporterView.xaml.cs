@@ -782,7 +782,7 @@ namespace BIMCamel.UI
                 var coords = BuildCoords();
                 var names = new SpatialNames
                 {
-                    Project = Def(TxtProject.Text, "BIMCamel Export"), Site = Def(TxtSite.Text, "Site"),
+                    Project = Def(TxtProject.Text, ModelBaseName(doc)), Site = Def(TxtSite.Text, "Site"),
                     Building = Def(TxtBuilding.Text, "Building"), Storey = Def(TxtStorey.Text, "Storey"),
                     // Real storey elevations, when the model's grids name the levels.
                     LevelElevations = ModelSurvey.LevelElevations(doc, unitScale),
@@ -1379,6 +1379,7 @@ namespace BIMCamel.UI
                 LblMapSummary.Text = $"Last check {DateTime.Now:HH:mm}: {mapped:N0} of {items.Count:N0} elements matched a rule, {proxy:N0} will export as proxy. Full breakdown: Export tab, Pre-flight.";
                 _preflight = facts;
                 RenderPreflight();
+                RenderStoreys(doc, facts);
                 double pct = items.Count > 0 ? 100.0 * mapped / items.Count : 0;
                 return $"Full check     : {mapped:N0} of {items.Count:N0} elements map ({pct:0.#}%), {proxy:N0} proxy — details under Pre-flight";
             }
@@ -1415,7 +1416,7 @@ namespace BIMCamel.UI
             // Distinct level VALUES, not just presence: a wrong Level role often
             // still "has a value" on every element — one bogus storey. The count
             // of distinct storeys is the number that exposes it instantly.
-            var levels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var levels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < items.Count; i += step)
             {
                 try
@@ -1423,7 +1424,12 @@ namespace BIMCamel.UI
                     var rv = PropertyHarvester.ReadRoles(items[i], roles);
                     n++;
                     if (!string.IsNullOrWhiteSpace(rv.Type)) type++;
-                    if (!string.IsNullOrWhiteSpace(rv.Level)) { level++; levels.Add(rv.Level.Trim()); }
+                    if (!string.IsNullOrWhiteSpace(rv.Level))
+                    {
+                        level++;
+                        string lv = rv.Level.Trim();
+                        levels.TryGetValue(lv, out int seen); levels[lv] = seen + 1;
+                    }
                     if (!string.IsNullOrWhiteSpace(rv.Material)) mat++;
                     if (!string.IsNullOrWhiteSpace(rv.Classification)) cls++;
                 }
@@ -1435,6 +1441,7 @@ namespace BIMCamel.UI
                 facts.TypePct = 100 * type / n; facts.LevelPct = 100 * level / n;
                 facts.MatPct = 100 * mat / n; facts.ClsPct = 100 * cls / n;
                 facts.DistinctLevels = levels.Count;
+                facts.LevelCounts = levels;
                 facts.RolesConfigured = true;
             }
             if (n == 0) return "";
@@ -1516,6 +1523,8 @@ namespace BIMCamel.UI
             /// degradation can be RE-derived against the schema selected NOW —
             /// baking it at preview time made the row lie after a schema flip.</summary>
             public Dictionary<string, int>? ByClass;
+            /// <summary>Storey name → elements carrying it in the role sample.</summary>
+            public Dictionary<string, int>? LevelCounts;
         }
         private PreflightFacts? _preflight;
 
@@ -1614,13 +1623,13 @@ namespace BIMCamel.UI
             // CONTRADICTIONS: data that will silently not be written.
             var coords = BuildCoords();
             if (ChkGeoref.IsChecked != true && coords.HasGeorefData)
-                PreflightRow(warn, "Georeferencing — CRS/survey point filled in, but writing is OFF: nothing will be written", "→ Coordinates");
+                PreflightRow(warn, "Georeferencing — CRS/survey point filled in, but writing is OFF: nothing will be written", "→ Project");
             else if (ChkGeoref.IsChecked != true)
                 PreflightRow(info, "Georeferencing — off (placement still carries the world position)");
             else if (schema2x3 && coords.HasGeorefData)
-                PreflightRow(warn, "Georeferencing — configured, but IfcMapConversion does not exist in IFC2x3: it will not be written. Export IFC4 to keep it.", "→ Coordinates");
+                PreflightRow(warn, "Georeferencing — configured, but IfcMapConversion does not exist in IFC2x3: it will not be written. Export IFC4 to keep it.", "→ Project");
             else if (!coords.HasGeorefData)
-                PreflightRow(info, "Georeferencing — on, but no CRS or survey point set: nothing to write (fine on a local grid)", "→ Coordinates");
+                PreflightRow(info, "Georeferencing — on, but no CRS or survey point set: nothing to write (fine on a local grid)", "→ Project");
             else
                 PreflightRow(ok, $"Georeferencing — IfcMapConversion · {(string.IsNullOrWhiteSpace(coords.CrsName) ? "local CRS" : coords.CrsName)}");
 
@@ -1662,11 +1671,11 @@ namespace BIMCamel.UI
                         // One unitScale is applied to EVERY model at export
                         // (ResolveUnits) — mixed declared units means at least
                         // one discipline exports at the wrong size.
-                        PreflightRow(warn, $"Federation — {models.Count} models with MIXED declared units; one scale ({unitName}) is applied to all", "→ Coordinates (origins report)");
+                        PreflightRow(warn, $"Federation — {models.Count} models with MIXED declared units; one scale ({unitName}) is applied to all", "→ Project (origins report)");
                     else if (models.Count > 1 && !sameOrigin)
                         // Different origins are how correct federation positions
                         // disciplines — informational, not a warning.
-                        PreflightRow(info, $"Federation — {models.Count} models, differing origins (normal) · units {unitName}", "→ Coordinates (origins report)");
+                        PreflightRow(info, $"Federation — {models.Count} models, differing origins (normal) · units {unitName}", "→ Project (origins report)");
                     else
                         PreflightRow(ok, models.Count > 1
                             ? $"Federation — {models.Count} models agree on origin and units · {unitName}"
@@ -1724,7 +1733,7 @@ namespace BIMCamel.UI
         {
             if (jump.Contains("Mapping")) return TabMapping;
             if (jump.Contains("Data")) return TabData;
-            if (jump.Contains("Coordinates")) return TabCoords;
+            if (jump.Contains("Project")) return TabCoords;
             if (jump.Contains("Export")) return TabExport;
             return null;
         }
@@ -1749,6 +1758,29 @@ namespace BIMCamel.UI
             DotData.Visibility = _warnTabs.Contains(TabData) ? Visibility.Visible : Visibility.Collapsed;
             DotMapping.Visibility = _warnTabs.Contains(TabMapping) ? Visibility.Visible : Visibility.Collapsed;
             DotCoords.Visibility = _warnTabs.Contains(TabCoords) ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        /// <summary>The storeys the export will create, as the last check saw them, with the
+        /// elevation the model's grids give each one.</summary>
+        private void RenderStoreys(Document doc, PreflightFacts f)
+        {
+            if (f.LevelCounts == null || f.LevelCounts.Count == 0)
+            {
+                TxtStoreys.Text = f.RolesConfigured
+                    ? "No element in the sample has a level. Check the Level role on the Data tab."
+                    : "No Level role is set, so every element goes on the fallback storey.";
+                return;
+            }
+            Dictionary<string, double>? elev = null;
+            try { elev = ModelSurvey.LevelElevations(doc, ResolveUnits(doc).scale); } catch { }
+            var sb = new StringBuilder();
+            sb.AppendLine(f.SamplePartial ? $"From a sample of {f.RoleSample:N0} elements:" : $"From all {f.RoleSample:N0} elements:");
+            foreach (var kv in f.LevelCounts.OrderBy(k => elev != null && elev.TryGetValue(k.Key, out var kz) ? kz : double.MaxValue).ThenBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                string zs = elev != null && elev.TryGetValue(kv.Key, out var e) ? $"{e,9:0.000} m" : "  (no grid level)";
+                sb.AppendLine($"{kv.Key,-28} {zs}   {kv.Value,7:N0} el.");
+            }
+            TxtStoreys.Text = sb.ToString().TrimEnd().Replace("\n", Environment.NewLine);
         }
 
         // ── base point preview ────────────────────────────────────────────────────
