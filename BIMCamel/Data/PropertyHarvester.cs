@@ -39,11 +39,12 @@ namespace BIMCamel.Data
         public PropRef Level;         // → IfcBuildingStorey
         public PropRef Material;      // → IfcMaterial
         public PropRef Classification;// → IfcClassificationReference
-        public bool Any => Type.IsSet || Level.IsSet || Material.IsSet || Classification.IsSet;
+        public PropRef Name;          // → the element's IFC Name (blank = the Navisworks display name)
+        public bool Any => Type.IsSet || Level.IsSet || Material.IsSet || Classification.IsSet || Name.IsSet;
     }
 
     /// <summary>Role values read from one element.</summary>
-    public struct RoleValues { public string Type, Level, Material, Classification; }
+    public struct RoleValues { public string Type, Level, Material, Classification, Name; }
 
     /// <summary>
     /// Which tree nodes an element's properties are read from. Navisworks exports geometry, so
@@ -138,7 +139,7 @@ namespace BIMCamel.Data
         /// </summary>
         public static List<IfcProp> HarvestWithRoles(ModelItem item, HashSet<string>? include, PropertyRoles? roles, out RoleValues rv)
         {
-            rv = new RoleValues { Type = "", Level = "", Material = "", Classification = "" };
+            rv = new RoleValues { Type = "", Level = "", Material = "", Classification = "", Name = "" };
             bool wantRoles = roles != null && roles.Any;
             var list = new List<IfcProp>();
             var ancestors = Ancestors(item);
@@ -225,17 +226,21 @@ namespace BIMCamel.Data
         /// Returns true when this property filled a role.</summary>
         private static bool TakeRole(PropertyRoles roles, string roleCat, string name, ref RoleValues rv, ref string? text, VariantData? value)
         {
+            // The name is independent of the chain: "Mark" may well be both the name and the type.
+            bool tookName = false;
+            if (rv.Name == "" && Match(roles.Name, roleCat, name)) { rv.Name = text ??= ValueToString(value!); tookName = true; }
             if (rv.Type == "" && Match(roles.Type, roleCat, name)) rv.Type = text ??= ValueToString(value!);
             else if (rv.Level == "" && Match(roles.Level, roleCat, name)) rv.Level = text ??= ValueToString(value!);
             else if (rv.Material == "" && Match(roles.Material, roleCat, name)) rv.Material = text ??= ValueToString(value!);
             else if (rv.Classification == "" && Match(roles.Classification, roleCat, name)) rv.Classification = text ??= ValueToString(value!);
-            else return false;
+            else return tookName;
             return true;
         }
 
         private static bool RolesComplete(PropertyRoles r, RoleValues rv)
             => (!r.Type.IsSet || rv.Type != "") && (!r.Level.IsSet || rv.Level != "")
-               && (!r.Material.IsSet || rv.Material != "") && (!r.Classification.IsSet || rv.Classification != "");
+               && (!r.Material.IsSet || rv.Material != "") && (!r.Classification.IsSet || rv.Classification != "")
+               && (!r.Name.IsSet || rv.Name != "");
 
         /// <summary>
         /// The ancestors whose properties belong to <paramref name="item"/> under the current
@@ -460,7 +465,7 @@ namespace BIMCamel.Data
         public static RoleValues ReadRoles(ModelItem item, PropertyRoles roles)
         {
             if (roles == null || !roles.Any)
-                return new RoleValues { Type = "", Level = "", Material = "", Classification = "" };
+                return new RoleValues { Type = "", Level = "", Material = "", Classification = "", Name = "" };
             HarvestWithRoles(item, NoCategories, roles, out var rv);
             return rv;
         }
@@ -478,7 +483,7 @@ namespace BIMCamel.Data
             bool wantRoles = roles != null && roles.Any;
             if (!wantProps && !wantRoles)
             {
-                rv = new RoleValues { Type = "", Level = "", Material = "", Classification = "" };
+                rv = new RoleValues { Type = "", Level = "", Material = "", Classification = "", Name = "" };
                 return null;
             }
             var props = HarvestWithRoles(item, wantProps ? include : NoCategories, roles, out rv);
@@ -495,7 +500,8 @@ namespace BIMCamel.Data
             => (rv.Type == "" && CategoryFits(roles.Type, categoryName))
             || (rv.Level == "" && CategoryFits(roles.Level, categoryName))
             || (rv.Material == "" && CategoryFits(roles.Material, categoryName))
-            || (rv.Classification == "" && CategoryFits(roles.Classification, categoryName));
+            || (rv.Classification == "" && CategoryFits(roles.Classification, categoryName))
+            || (rv.Name == "" && CategoryFits(roles.Name, categoryName));
 
         private static bool CategoryFits(PropRef r, string categoryName)
             => r.IsSet && (string.IsNullOrWhiteSpace(r.Category) || string.Equals(categoryName, r.Category, StringComparison.OrdinalIgnoreCase));

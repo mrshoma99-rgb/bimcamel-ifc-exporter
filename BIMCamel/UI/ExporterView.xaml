@@ -30,6 +30,12 @@
     <SolidColorBrush x:Key="ConsoleBg"   Color="#0E1116"/>
     <SolidColorBrush x:Key="ConsoleTx"   Color="#CFE3D5"/>
     <SolidColorBrush x:Key="Ok"          Color="#1A8F4C"/>
+    <SolidColorBrush x:Key="BadgeReqBg"  Color="#E4F6EC"/>
+    <SolidColorBrush x:Key="BadgeReqTx"  Color="#1A8F4C"/>
+    <SolidColorBrush x:Key="BadgeOptBg"  Color="#ECEFF3"/>
+    <SolidColorBrush x:Key="BadgeOptTx"  Color="#6B7480"/>
+    <SolidColorBrush x:Key="BadgeAutoBg" Color="#E6F0FA"/>
+    <SolidColorBrush x:Key="BadgeAutoTx" Color="#0070C0"/>
 
     <!-- ════ Text styles ════ -->
     <Style x:Key="H3" TargetType="TextBlock">
@@ -54,20 +60,20 @@
 
     <!-- required / optional badges (shown on each section header) -->
     <Style x:Key="BadgeReq" TargetType="Border">
-      <Setter Property="Background" Value="#E4F6EC"/>
+      <Setter Property="Background" Value="{DynamicResource BadgeReqBg}"/>
       <Setter Property="CornerRadius" Value="7"/>
       <Setter Property="Padding" Value="7,1"/>
       <Setter Property="Margin" Value="8,0,0,0"/>
       <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
     <Style x:Key="BadgeOpt" TargetType="Border" BasedOn="{StaticResource BadgeReq}">
-      <Setter Property="Background" Value="#ECEFF3"/>
+      <Setter Property="Background" Value="{DynamicResource BadgeOptBg}"/>
     </Style>
     <!-- Marks a section that Smart setup fills automatically (and that stays
          hand-editable). The three chips together answer the three questions a
          tab has to answer at a glance: required? optional? automatic? -->
     <Style x:Key="BadgeAuto" TargetType="Border" BasedOn="{StaticResource BadgeReq}">
-      <Setter Property="Background" Value="#E6F0FA"/>
+      <Setter Property="Background" Value="{DynamicResource BadgeAutoBg}"/>
     </Style>
 
     <!-- ════ Card ════ -->
@@ -143,6 +149,20 @@
         <Setter.Value>
           <ControlTemplate TargetType="Button">
             <TextBlock Text="{TemplateBinding Content}"/>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- ════ Link-style toggle (show / hide a detail block) ════ -->
+    <Style x:Key="LinkToggle" TargetType="ToggleButton">
+      <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ToggleButton">
+            <TextBlock Background="Transparent" Text="{TemplateBinding Content}"/>
           </ControlTemplate>
         </Setter.Value>
       </Setter>
@@ -431,17 +451,22 @@
           </Border>
           <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0,0,0">
             <TextBlock Text="BIMCamel" Foreground="White" FontWeight="SemiBold" FontSize="14.5"/>
-            <TextBlock Text="IFC Exporter" Foreground="#DDFFFFFF" FontSize="10.5"/>
+            <TextBlock x:Name="LblSubtitle" Text="IFC Exporter" Foreground="#DDFFFFFF" FontSize="10.5" TextTrimming="CharacterEllipsis"
+                       ToolTip="The profile these settings came from. A dot means they were changed after it was loaded."/>
           </StackPanel>
           <StackPanel Grid.Column="2" Orientation="Horizontal">
             <!-- Profiles live in the title bar: they capture the WHOLE pane, so
                  parking them inside one tab's card suggested a narrower reach
                  than they actually have. -->
-            <Button x:Name="BtnSaveProfile" Style="{StaticResource IconBtn}" Content="💾" Margin="0,0,6,0" Click="OnSaveProfile"
-                    ToolTip="Save the export settings — schema, scope, options, coordinates, roles, parameter rules and the set mapping — to a reusable .json profile. (List ticks and the theme are not stored.)"/>
-            <Button x:Name="BtnLoadProfile" Style="{StaticResource IconBtn}" Content="📂" Margin="0,0,6,0" Click="OnLoadProfile"
-                    ToolTip="Load a previously saved .json profile into every tab."/>
-            <Button x:Name="BtnTheme" Style="{StaticResource IconBtn}" Content="🌙" ToolTip="Switch between light and dark theme" Click="OnToggleTheme"/>
+            <Button x:Name="BtnSaveProfile" Style="{StaticResource IconBtn}" Margin="0,0,6,0" Click="OnSaveProfile"
+                    ToolTip="Save the export settings — schema, scope, options, coordinates, roles, parameter rules and the set mapping — to a reusable .json profile. (List ticks and the theme are not stored.)"><Viewbox Width="15" Height="15"><Path x:Name="IcoSave" Data="M5,3 L16,3 L21,8 L21,21 L3,21 L3,3 Z M7,3 L7,9 L15,9 L15,3 M7,21 L7,14 L17,14 L17,21" Stroke="White" StrokeThickness="2" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Viewbox></Button>
+            <!-- One menu for every way of replacing the current settings: a saved
+                 profile, a built-in preset, or the defaults. Settings themselves are
+                 remembered between sessions, so a profile is for sharing, not for
+                 surviving a restart. -->
+            <Button x:Name="BtnLoadProfile" Style="{StaticResource IconBtn}" Margin="0,0,6,0" Click="OnProfileMenu"
+                    ToolTip="Load a saved profile, apply a built-in preset, or reset everything to defaults."><Viewbox Width="15" Height="15"><Path x:Name="IcoProfiles" Data="M3,6 L9,6 L11,8 L21,8 L21,19 L3,19 Z" Stroke="White" StrokeThickness="2" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Viewbox></Button>
+            <Button x:Name="BtnTheme" Style="{StaticResource IconBtn}" ToolTip="Switch between light and dark theme" Click="OnToggleTheme"><Viewbox Width="15" Height="15"><Path x:Name="IcoTheme" Data="M20,14 A8,8 0 1 1 10,4 A6,6 0 0 0 20,14 Z" Stroke="White" StrokeThickness="2" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></Viewbox></Button>
           </StackPanel>
         </Grid>
       </Border>
@@ -485,49 +510,16 @@
                 </Grid>
               </Border>
 
-              <!-- One button for every auto-detect the pane has. These used to be
-                   five buttons on three tabs (Detect from model, Scan model,
-                   Auto-map, Refresh sets ×2) that partly called the same code —
-                   nobody could tell what ran what. -->
-              <Border Style="{StaticResource CardStyle}">
-                <StackPanel>
-                  <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                    <TextBlock Style="{StaticResource H3}" Text="SMART SETUP"/>
-                    <Border Style="{StaticResource BadgeAuto}"><TextBlock Text="✨ AUTO" FontSize="9.5" FontWeight="SemiBold" Foreground="#0070C0"/></Border>
-                  </StackPanel>
-                  <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,9"
-                             Text="One scan prepares the whole export: finds your saved sets, samples YOUR EXPORT SCOPE for property sets, fills the semantic roles (Data tab), proposes set→class rules (Mapping tab), and previews the result. Set the scope above first — with Current selection it reads only your selection, not the model. Anything you already set by hand is left alone."/>
-                  <Button Style="{StaticResource Btn}" Content="✨ Smart setup — scan &amp; auto-fill" Click="OnSmartSetup" HorizontalAlignment="Left"
-                          ToolTip="Runs every auto-detect in sequence over the scope selected above. Takes roughly as long as collecting that scope once (geometry is not read); use Stop by the progress bar to interrupt it. Re-running only fills blanks — it never overwrites your entries. One nuance: a role or rule you deliberately blanked counts as blank, so it will be proposed again."/>
-                  <TextBlock x:Name="TxtSmartSummary" Style="{StaticResource Hint}" FontFamily="Consolas" Text=""/>
-                </StackPanel>
-              </Border>
-
+              <!-- Top to bottom the tab now reads choose → scan → check → export:
+                   scope first (Smart setup and Pre-flight both read it), then the
+                   handful of format choices most exports touch, then the scan.
+                   Everything that only tunes size, speed or diagnostics lives in
+                   the collapsed Advanced card below. -->
               <Border Style="{StaticResource CardStyle}">
                 <StackPanel>
                   <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
-                    <TextBlock Style="{StaticResource H3}" Text="OUTPUT"/>
-                    <Border Style="{StaticResource BadgeReq}"><TextBlock Text="REQUIRED" FontSize="9.5" FontWeight="SemiBold" Foreground="#1A8F4C"/></Border>
-                  </StackPanel>
-                  <Grid>
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0">
-                      <TextBlock Style="{StaticResource Lbl}" Text="IFC schema"/>
-                      <ComboBox x:Name="CmbSchema" ToolTip="IFC version to write. IFC4 is recommended; choose IFC2x3 only if the receiving software requires it."/>
-                    </StackPanel>
-                    <StackPanel Grid.Column="2">
-                      <TextBlock Style="{StaticResource Lbl}" Text="Source units"/>
-                      <ComboBox x:Name="CmbUnits" ToolTip="Length unit of the source model. 'Auto' reads it from the model — only override if the model's units are wrong."/>
-                    </StackPanel>
-                  </Grid>
-                </StackPanel>
-              </Border>
-
-              <Border Style="{StaticResource CardStyle}">
-                <StackPanel>
-                  <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
-                    <TextBlock Style="{StaticResource H3}" Text="SCOPE"/>
-                    <Border Style="{StaticResource BadgeReq}"><TextBlock Text="REQUIRED" FontSize="9.5" FontWeight="SemiBold" Foreground="#1A8F4C"/></Border>
+                    <TextBlock Style="{StaticResource H3}" Text="WHAT TO EXPORT"/>
+                    <Border Style="{StaticResource BadgeReq}"><TextBlock Text="REQUIRED" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeReqTx}"/></Border>
                   </StackPanel>
                   <StackPanel x:Name="ScopeOptions"/>
                   <TextBlock x:Name="LblScopeHint" Style="{StaticResource Hint}" Foreground="{DynamicResource AmberTx}"/>
@@ -560,37 +552,53 @@
                 </StackPanel>
               </Border>
 
-              <!-- File-shaping options only. Base point and georeferencing moved to
-                   the Coordinates tab — they are about WHERE the model sits, not
-                   about the file, and burying the survey point in a checkbox
-                   reveal here is how it kept getting missed. -->
+              <!-- The four choices nearly every export makes. Base point and
+                   georeferencing stay on the Coordinates tab — they are about WHERE
+                   the model sits, not about the file. -->
               <Border Style="{StaticResource CardStyle}">
                 <StackPanel>
                   <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
-                    <TextBlock Style="{StaticResource H3}" Text="FILE OPTIONS"/>
-                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
+                    <TextBlock Style="{StaticResource H3}" Text="FORMAT"/>
+                    <Border Style="{StaticResource BadgeReq}"><TextBlock Text="REQUIRED" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeReqTx}"/></Border>
                   </StackPanel>
-                  <TextBlock Style="{StaticResource Lbl}" Text="Geometry quality"/>
-                  <ComboBox x:Name="CmbQuality" ToolTip="Vertex welding tolerance and stored coordinate precision. 'Balanced' suits most models; 'Small file' welds more coarsely, 'High detail' preserves finer detail and writes larger files. Navisworks fixes the mesh tessellation when the NWC is made, so this cannot add detail that is not already there."/>
-                  <StackPanel Orientation="Horizontal" Margin="0,9,0,0"
-                              ToolTip="Split the output into multiple files once it grows past this size.">
-                    <CheckBox x:Name="ChkSplit" Content="Split when larger than" VerticalAlignment="Center"/>
-                    <TextBox x:Name="TxtSplitMb" Text="200" Width="58" Margin="8,0,6,0"/>
-                    <TextBlock Text="MB" VerticalAlignment="Center" Foreground="{DynamicResource Muted}"/>
+                  <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="10"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <StackPanel Grid.Row="0" Grid.Column="0">
+                      <TextBlock Style="{StaticResource Lbl}" Text="IFC schema"/>
+                      <ComboBox x:Name="CmbSchema" ToolTip="IFC version to write. IFC4 is recommended; choose IFC2x3 only if the receiving software requires it."/>
+                    </StackPanel>
+                    <StackPanel Grid.Row="0" Grid.Column="2">
+                      <TextBlock Style="{StaticResource Lbl}" Text="Source units"/>
+                      <ComboBox x:Name="CmbUnits" ToolTip="Length unit of the source model. 'Auto' reads it from the model — only override if the model's units are wrong."/>
+                    </StackPanel>
+                    <StackPanel Grid.Row="2" Grid.Column="0">
+                      <TextBlock Style="{StaticResource Lbl}" Text="Geometry quality"/>
+                      <ComboBox x:Name="CmbQuality" ToolTip="Vertex welding tolerance and stored coordinate precision. 'Balanced' suits most models; 'Small file' welds more coarsely, 'High detail' preserves finer detail and writes larger files. Navisworks fixes the mesh tessellation when the NWC is made, so this cannot add detail that is not already there."/>
+                    </StackPanel>
+                  </Grid>
+                  <CheckBox x:Name="ChkZip" Margin="0,11,0,0" Content="Write compressed .ifczip (recommended)" ToolTip="Write IFC's standard zipped form: an ordinary ZIP holding one .ifc, read directly by Revit, Solibri, ArchiCAD, Navisworks, xBim and IfcOpenShell with no unpacking step.&#x0a;&#x0a;STEP text compresses very well, so this is typically 6-12x smaller on disk. It also writes LESS data: the export streams straight into the archive, so the uncompressed file is never created at all.&#x0a;&#x0a;Turn it off if a downstream script expects a literal .ifc."/>
+                  <TextBlock Style="{StaticResource Lbl}" Text="File name" Margin="0,9,0,5"/>
+                  <TextBox x:Name="TxtFileName" Text="{}{model}_{schema}"
+                           ToolTip="Name for the exported file, without extension. Tokens: {model} the Navisworks file, {schema} IFC4 or IFC2x3, {set} the set name in a batch, {date} today (yyyy-MM-dd). A batch always includes {set}, so files never overwrite each other. Blank = {model}_{schema}."/>
+                </StackPanel>
+              </Border>
+
+              <!-- One button for every auto-detect the pane has. These used to be
+                   five buttons on three tabs (Detect from model, Scan model,
+                   Auto-map, Refresh sets ×2) that partly called the same code —
+                   nobody could tell what ran what. -->
+              <Border Style="{StaticResource CardStyle}">
+                <StackPanel>
+                  <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <TextBlock Style="{StaticResource H3}" Text="SMART SETUP"/>
+                    <Border Style="{StaticResource BadgeAuto}"><TextBlock Text="AUTO" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeAutoTx}"/></Border>
                   </StackPanel>
-                  <CheckBox x:Name="ChkInstancing" Content="Optimize repeated geometry (instancing)" ToolTip="Reuse identical geometry across elements to shrink the file and speed up export."/>
-                  <CheckBox x:Name="ChkMergeParts" Margin="18,0,0,0" Content="Merge multi-part elements (element-level instancing)" ToolTip="An element built from many fragments (a seat of a thousand parts) is written as ONE shape instead of one placed copy per fragment, and every identical element reuses that shape. Viewers then place one copy per element, not millions of tiny ones.&#x0a;&#x0a;Applies to elements with more than 16 parts. Elements with fewer keep per-part instancing."/>
-                  <CheckBox x:Name="ChkFastInstancing" Margin="18,0,0,0" Content="Fast instancing — trust type + size (experimental)" ToolTip="Skip re-reading the geometry of elements that look like a repeat of one already read (same tree type, size, fragment count and colour). Reading triangles is 80-90% of the export, and most models repeat their shapes many times, so this can be several times faster.&#x0a;&#x0a;It is a GUESS about the model, so it checks itself: every 20th repeat is read for real and compared. Any disagreement is reported, that shape is dropped, and the file stays correct. Turn this on only after a run reports zero mismatches on YOUR model."/>
-                  <CheckBox x:Name="ChkZip" Content="Write compressed .ifczip" ToolTip="Write IFC's standard zipped form: an ordinary ZIP holding one .ifc, read directly by Revit, Solibri, ArchiCAD, Navisworks, xBim and IfcOpenShell with no unpacking step.&#x0a;&#x0a;STEP text compresses very well, so this is typically 6-12x smaller on disk. It also writes LESS data: the export streams straight into the archive, so the uncompressed file is never created at all.&#x0a;&#x0a;Turn it off if a downstream script expects a literal .ifc."/>
-                  <CheckBox x:Name="ChkShareTypeProps" Content="Share type-level properties (IFC4, needs a Type role)" ToolTip="Put the properties that are the same for every element of a type onto the IfcElementType, and write only what differs on each element - the standard IFC arrangement (type Psets shared, occurrence Psets override).&#x0a;&#x0a;This is the biggest remaining saving for property-heavy models, because a set with one per-element value (an Id or Mark) currently forces ALL its properties to be repeated per element.&#x0a;&#x0a;Off by default because it moves data to where a simpler IFC reader may not look. The report says how many elements it could not express exactly - zero means the export is faithful."/>
-                  <CheckBox x:Name="ChkSkipEmptyProps" Content="Skip empty property values" ToolTip="Do not write properties whose value is blank. Each one costs a full entity carrying a single space, and blanks also stop otherwise-identical property sets from being shared."/>
-                  <StackPanel Orientation="Horizontal">
-                    <CheckBox x:Name="ChkMinSize" Content="Skip geometry smaller than" VerticalAlignment="Center" ToolTip="Leave out parts below this size - washers, fasteners, screen-only detail. These are a large share of the triangle count on plant models and add nothing to a coordination deliverable.&#x0a;&#x0a;This REMOVES objects rather than simplifying them, so everything dropped is counted in the report."/>
-                    <TextBox x:Name="TxtMinSizeMm" Text="5" Width="46" Margin="8,0,6,0"/>
-                    <TextBlock Text="mm" VerticalAlignment="Center" Foreground="{DynamicResource Muted}"/>
-                  </StackPanel>
-                  <CheckBox x:Name="ChkValidate" Content="Validate output after export" ToolTip="Check the written IFC for structural damage and for the mistakes this exporter can make — bad PredefinedType values, wrong attribute counts, dangling references."/>
-                  <CheckBox x:Name="ChkProfile" Content="Size &amp; time breakdown in report (slower)" ToolTip="Break down where the file size and the export time went, in the report below. Adds a little overhead."/>
+                  <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,9"
+                             Text="One scan of the scope above prepares the whole export: finds your saved sets, samples property sets, fills the semantic roles (Data tab), proposes set→class rules (Mapping tab), and fills the pre-flight checks below. Anything you already set by hand is left alone."/>
+                  <Button Style="{StaticResource Btn}" Content="Smart setup: scan &amp; auto-fill" Click="OnSmartSetup" HorizontalAlignment="Left"
+                          ToolTip="Runs every auto-detect in sequence over the scope selected above. Takes roughly as long as collecting that scope once (geometry is not read); use Stop by the progress bar to interrupt it. Re-running only fills blanks — it never overwrites your entries. One nuance: a role or rule you deliberately blanked counts as blank, so it will be proposed again."/>
+                  <TextBlock x:Name="TxtSmartSummary" Style="{StaticResource Hint}" FontFamily="Consolas" Text=""/>
                 </StackPanel>
               </Border>
 
@@ -606,21 +614,103 @@
                     <TextBlock Style="{StaticResource H3}" Text="PRE-FLIGHT"/>
                   </StackPanel>
                   <TextBlock x:Name="LblPreflightWhen" Style="{StaticResource Hint}" Margin="0,0,0,7"
-                             Text="Checks that need a scan fill in after ✨ Smart setup (above) or 🔍 Preview (Mapping tab)."/>
+                             Text="Checks that need a scan fill in after Smart setup or Run full check."/>
                   <StackPanel x:Name="PreflightHost"/>
+                  <!-- The mapping preview used to live on the Mapping tab with its own
+                       console, while the rows it fills lived here: checking meant two
+                       places. Now it runs here, and its full breakdown folds out below. -->
+                  <WrapPanel Margin="0,9,0,0">
+                    <Button Style="{StaticResource Btn}" Content="Run full check" Click="OnPreviewMapping"
+                            ToolTip="Resolve the mapping rules and roles against the scope above, without writing anything: how many elements map, to which classes, how many fall back to proxy, property coverage and geometry size. Takes about as long as collecting the scope once."/>
+                    <ToggleButton x:Name="TglCheckDetails" Style="{StaticResource LinkToggle}" Content="Show details" VerticalAlignment="Center" Margin="4,0,0,0"
+                                  ToolTip="Show the full breakdown from the last check."/>
+                  </WrapPanel>
+                  <Border x:Name="CheckDetails" Background="{DynamicResource ConsoleBg}" CornerRadius="9" Padding="11" Margin="0,8,0,0" MaxHeight="220" Visibility="Collapsed">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                      <TextBlock x:Name="TxtPreview" Foreground="{DynamicResource ConsoleTx}" FontFamily="Consolas"
+                                 FontSize="11" TextWrapping="NoWrap" Text="Run full check to see how many elements map, and how many will export as IfcBuildingElementProxy."/>
+                    </ScrollViewer>
+                  </Border>
+                </StackPanel>
+              </Border>
+
+              <!-- Size, speed and diagnostics. Collapsed by default because the
+                   defaults are right for most exports; the header counts settings
+                   that differ from those defaults, so a loaded profile can never
+                   hide a change behind the fold. -->
+              <Border Style="{StaticResource CardStyle}">
+                <StackPanel>
+                  <ToggleButton x:Name="TglAdvanced" Cursor="Hand" Focusable="True"
+                                ToolTip="Show or hide the size, speed and diagnostics options.">
+                    <ToggleButton.Template>
+                      <ControlTemplate TargetType="ToggleButton">
+                        <Grid Background="Transparent">
+                          <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                          <StackPanel Grid.Column="0" Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource H3}" Text="ADVANCED OPTIONS"/>
+                            <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeOptTx}"/></Border>
+                          </StackPanel>
+                          <TextBlock Grid.Column="1" Margin="10,0,0,0" FontSize="11" VerticalAlignment="Center"
+                                     Foreground="{DynamicResource AmberTx}" Text="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}"/>
+                          <TextBlock Grid.Column="2" x:Name="chev" Text="▸" FontSize="13" Foreground="{DynamicResource Muted}" VerticalAlignment="Center"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                          <Trigger Property="IsChecked" Value="True"><Setter TargetName="chev" Property="Text" Value="▾"/></Trigger>
+                          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="chev" Property="Foreground" Value="{DynamicResource Accent}"/></Trigger>
+                        </ControlTemplate.Triggers>
+                      </ControlTemplate>
+                    </ToggleButton.Template>
+                  </ToggleButton>
+
+                  <StackPanel x:Name="AdvancedBody" Visibility="Collapsed" Margin="0,10,0,0">
+                    <TextBlock Style="{StaticResource Lbl}" Text="File size &amp; speed" FontWeight="SemiBold" Margin="0,0,0,2"/>
+                    <CheckBox x:Name="ChkInstancing" Content="Optimize repeated geometry (instancing)" ToolTip="Reuse identical geometry across elements to shrink the file and speed up export."/>
+                    <CheckBox x:Name="ChkMergeParts" Margin="26,0,0,0" Content="Merge multi-part elements (element-level instancing)" ToolTip="An element built from many fragments (a seat of a thousand parts) is written as ONE shape instead of one placed copy per fragment, and every identical element reuses that shape. Viewers then place one copy per element, not millions of tiny ones.&#x0a;&#x0a;Applies to elements with more than 16 parts. Elements with fewer keep per-part instancing.&#x0a;&#x0a;Needs instancing to be on."/>
+                    <CheckBox x:Name="ChkFastInstancing" Margin="26,0,0,5" Content="Fast instancing — trust type + size (experimental)" ToolTip="Skip re-reading the geometry of elements that look like a repeat of one already read (same tree type, size, fragment count and colour). Reading triangles is 80-90% of the export, and most models repeat their shapes many times, so this can be several times faster.&#x0a;&#x0a;It is a GUESS about the model, so it checks itself: every 20th repeat is read for real and compared. Any disagreement is reported, that shape is dropped, and the file stays correct. Turn this on only after a run reports zero mismatches on YOUR model.&#x0a;&#x0a;Needs instancing to be on."/>
+                    <CheckBox x:Name="ChkSkipEmptyProps" Content="Skip empty property values" ToolTip="Do not write properties whose value is blank. Each one costs a full entity carrying a single space, and blanks also stop otherwise-identical property sets from being shared."/>
+                    <CheckBox x:Name="ChkShareTypeProps" Content="Share type-level properties (IFC4, needs a Type role)" ToolTip="Put the properties that are the same for every element of a type onto the IfcElementType, and write only what differs on each element - the standard IFC arrangement (type Psets shared, occurrence Psets override).&#x0a;&#x0a;This is the biggest remaining saving for property-heavy models, because a set with one per-element value (an Id or Mark) currently forces ALL its properties to be repeated per element.&#x0a;&#x0a;Off by default because it moves data to where a simpler IFC reader may not look. The report says how many elements it could not express exactly - zero means the export is faithful."/>
+                    <StackPanel Orientation="Horizontal">
+                      <CheckBox x:Name="ChkMinSize" Content="Skip geometry smaller than" VerticalAlignment="Center" ToolTip="Leave out parts below this size - washers, fasteners, screen-only detail. These are a large share of the triangle count on plant models and add nothing to a coordination deliverable.&#x0a;&#x0a;This REMOVES objects rather than simplifying them, so everything dropped is counted in the report."/>
+                      <TextBox x:Name="TxtMinSizeMm" Text="5" Width="46" Margin="8,0,6,0"/>
+                      <TextBlock Text="mm" VerticalAlignment="Center" Foreground="{DynamicResource Muted}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0"
+                                ToolTip="Split the output into multiple files once it grows past this size.">
+                      <CheckBox x:Name="ChkSplit" Content="Split into files larger than" VerticalAlignment="Center"/>
+                      <TextBox x:Name="TxtSplitMb" Text="200" Width="58" Margin="8,0,6,0"/>
+                      <TextBlock Text="MB" VerticalAlignment="Center" Foreground="{DynamicResource Muted}"/>
+                    </StackPanel>
+
+                    <TextBlock Style="{StaticResource Lbl}" Text="Checks &amp; diagnostics" FontWeight="SemiBold" Margin="0,12,0,2"/>
+                    <CheckBox x:Name="ChkValidate" Content="Validate output after export" ToolTip="Check the written IFC for structural damage and for the mistakes this exporter can make — bad PredefinedType values, wrong attribute counts, dangling references."/>
+                    <CheckBox x:Name="ChkProfile" Content="Size &amp; time breakdown in report (adds a little time)" ToolTip="Break down where the file size and the export time went, in the report below. Adds a little overhead."/>
+
+                    <Button Style="{StaticResource LinkBtn}" Content="↺ Reset advanced options to defaults" Click="OnResetAdvanced" Margin="0,8,0,0"
+                            ToolTip="Put every option in this card back to its default. Scope, format and the other tabs are not touched."/>
+                  </StackPanel>
                 </StackPanel>
               </Border>
 
               <Border Style="{StaticResource CardStyle}">
                 <StackPanel>
-                  <TextBlock Style="{StaticResource H3}" Text="REPORT" Margin="0,0,0,10"/>
+                  <TextBlock x:Name="LblReportHead" Style="{StaticResource H3}" Text="REPORT" Margin="0,0,0,10"/>
                   <Border CornerRadius="9" Background="{DynamicResource ConsoleBg}" Padding="11" MaxHeight="190">
                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
                       <TextBlock x:Name="TxtReport" Foreground="{DynamicResource ConsoleTx}" FontFamily="Consolas"
                                  FontSize="11" TextWrapping="NoWrap" Text="Configure and click Export IFC."/>
                     </ScrollViewer>
                   </Border>
-                  <Button Style="{StaticResource LinkBtn}" Content="⧉ Copy report" Click="OnCopyReport" ToolTip="Copy the report text to the clipboard."/>
+                  <!-- The output stays one click away after the export, instead of a
+                       modal "Open now?" that was gone once answered. -->
+                  <WrapPanel Margin="0,8,0,0">
+                    <Button x:Name="BtnOpenFile" Style="{StaticResource Btn}" Content="Open file" Click="OnOpenOutput" IsEnabled="False"
+                            ToolTip="Open the exported IFC in its default viewer."/>
+                    <Button x:Name="BtnOpenFolder" Style="{StaticResource Btn}" Content="Open folder" Click="OnOpenOutputFolder" IsEnabled="False"
+                            ToolTip="Show the exported file(s) in Explorer."/>
+                    <Button Style="{StaticResource Btn}" Content="Save report…" Click="OnSaveReport"
+                            ToolTip="Save this report as a text file, to keep a record of the export."/>
+                    <Button Style="{StaticResource Btn}" Content="Copy" Click="OnCopyReport" ToolTip="Copy the report text to the clipboard."/>
+                  </WrapPanel>
                 </StackPanel>
               </Border>
             </StackPanel>
@@ -628,14 +718,19 @@
         </TabItem>
 
         <!-- ===== DATA (was Properties + Semantics) ===== -->
-        <TabItem>
+        <TabItem x:Name="TabData">
           <TabItem.Header>
             <StackPanel ToolTip="What data each element carries: property sets, materials, quantities, semantic roles and parameter renames. All optional — Smart setup fills the marked sections.">
               <Viewbox Width="18" Height="18" HorizontalAlignment="Center">
                 <Path Data="M4,6 L20,6 M4,12 L20,12 M4,18 L20,18" StrokeThickness="2"
                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}"/>
               </Viewbox>
-              <TextBlock Text="Data" FontSize="11" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+              <!-- The dot appears when pre-flight has a warning this tab fixes. -->
+              <Grid HorizontalAlignment="Center" Margin="0,4,0,0">
+                <TextBlock Text="Data" FontSize="11"/>
+                <Ellipse x:Name="DotData" Width="6" Height="6" Fill="{DynamicResource AmberTx}" Visibility="Collapsed"
+                         HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-2,-8,0"/>
+              </Grid>
             </StackPanel>
           </TabItem.Header>
           <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="14,14,14,8">
@@ -644,30 +739,36 @@
                 <StackPanel>
                   <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
                     <TextBlock Style="{StaticResource H3}" Text="WHAT TO EXPORT"/>
-                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
+                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeOptTx}"/></Border>
                   </StackPanel>
                   <CheckBox x:Name="ChkProps" Content="Export properties (property sets)" ToolTip="Write each element's property sets into the IFC."/>
                   <TextBlock Style="{StaticResource Lbl}" Text="Read properties from" Margin="18,6,0,2"/>
                   <ComboBox x:Name="CmbPropSource" Margin="18,0,0,6" ToolTip="Which level of the Navisworks selection tree each element's properties come from.&#x0a;&#x0a;Navisworks exports geometry, but most authoring tools put the useful data on the object ABOVE the geometry: Revit's Element tab sits on the element node, SmartPlant 3D and E3D on the occurrence several levels up. 'Geometry + parent object' adds the properties of the nearest composite object above each piece of geometry (Navisworks' Last Object) - the right choice for Revit models.&#x0a;&#x0a;Where the geometry and a parent both carry the same property, the geometry's value is kept.&#x0a;&#x0a;Re-run Smart setup or Scan after changing this, so the property set list and the roles see the new categories."/>
                   <CheckBox x:Name="ChkMaterials" Content="Export materials / colours" ToolTip="Write material names and colours."/>
                   <CheckBox x:Name="ChkQuantities" Content="Compute base quantities (volume / area / length)" ToolTip="Compute and write IfcElementQuantity base quantities."/>
+                  <CheckBox x:Name="ChkAutoClassify" Content="Auto-classify unmapped elements (from Revit category and names)" ToolTip="Elements no mapping rule covers get an IFC class from fixed rules instead of IfcBuildingElementProxy: the IFC class a model already states, the Revit category (Walls, Pipes, Structural Framing…), then whole words in family, type and element names. Your mapping rules always win, nothing is guessed when the evidence is ambiguous, and each element records the rule that decided in the BIMCamel_Classification property set."/>
                 </StackPanel>
               </Border>
               <Border Style="{StaticResource CardStyle}">
                 <StackPanel>
                   <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
                     <TextBlock Style="{StaticResource H3}" Text="PROPERTY SETS TO INCLUDE"/>
-                    <Border Style="{StaticResource BadgeAuto}"><TextBlock Text="✨ AUTO" FontSize="9.5" FontWeight="SemiBold" Foreground="#0070C0"/></Border>
+                    <Border Style="{StaticResource BadgeAuto}"><TextBlock Text="AUTO" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeAutoTx}"/></Border>
                   </StackPanel>
                   <WrapPanel Margin="0,0,0,9">
                     <!-- "Scan model (sample)" is gone: it was the same scan Smart
                          setup runs. Scan selection stays because it is genuinely
                          different — it reads the elements YOU picked, not a
                          model-wide sample. -->
-                    <Button Style="{StaticResource Btn}" Content="⚡ Scan selection instead" Click="OnScanSelection" ToolTip="Manual alternative: scan only the elements currently selected in Navisworks, whatever the export scope is set to. Useful when specific elements carry the property sets you care about but you are exporting something wider."/>
+                    <Button Style="{StaticResource Btn}" Content="Scan selection instead" Click="OnScanSelection" ToolTip="Manual alternative: scan only the elements currently selected in Navisworks, whatever the export scope is set to. Useful when specific elements carry the property sets you care about but you are exporting something wider."/>
                     <Button Style="{StaticResource Btn}" Content="All" Click="OnCatsAll" ToolTip="Tick every property set."/>
                     <Button Style="{StaticResource Btn}" Content="None" Click="OnCatsNone" ToolTip="Untick every property set."/>
                   </WrapPanel>
+                  <Grid Margin="0,0,0,6">
+                    <TextBox x:Name="TxtCatFilter" TextChanged="OnCatFilter" ToolTip="Show only the property sets whose name contains this text. All and None then act on the ones shown."/>
+                    <TextBlock x:Name="LblCatFilterHint" Text="Search property sets…" IsHitTestVisible="False" Margin="10,0,0,0" VerticalAlignment="Center"
+                               FontSize="12" Foreground="{DynamicResource Faint}"/>
+                  </Grid>
                   <Border BorderBrush="{DynamicResource FieldBd}" BorderThickness="1" CornerRadius="9" Background="{DynamicResource Field}" Padding="4" MaxHeight="160"
                           ToolTip="Property sets to include. If you never scan, all are exported.">
                     <ListBox x:Name="LstCategories" BorderThickness="0" Background="Transparent" ScrollViewer.VerticalScrollBarVisibility="Auto">
@@ -692,7 +793,7 @@
                 <StackPanel>
                   <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                     <TextBlock Style="{StaticResource H3}" Text="SEMANTIC ROLES"/>
-                    <Border Style="{StaticResource BadgeAuto}"><TextBlock Text="✨ AUTO" FontSize="9.5" FontWeight="SemiBold" Foreground="#0070C0"/></Border>
+                    <Border Style="{StaticResource BadgeAuto}"><TextBlock Text="AUTO" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeAutoTx}"/></Border>
                   </StackPanel>
                   <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,11"
                              Text="Which source property carries each IFC role. Smart setup fills blank rows from a best guess; edit freely — blank = role off. Storeys are built from the Level role."/>
@@ -704,7 +805,7 @@
                 <StackPanel>
                   <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
                     <TextBlock Style="{StaticResource H3}" Text="PARAMETER MAPPING"/>
-                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="MANUAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
+                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="MANUAL" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeOptTx}"/></Border>
                   </StackPanel>
                   <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,8" Text="Rename a source property or move it into a different IFC property set. Pick the category to disambiguate same-named parameters."/>
                   <DataGrid x:Name="GridParams" AutoGenerateColumns="False" HeadersVisibility="Column" CanUserAddRows="False"
@@ -737,6 +838,8 @@
                   <WrapPanel Margin="0,9,0,0">
                     <Button Style="{StaticResource Btn}" Content="+ Add mapping" Click="OnParamAdd" ToolTip="Add a new mapping row."/>
                     <Button Style="{StaticResource Btn}" Content="Remove selected" Click="OnParamRemove" ToolTip="Remove the selected mapping row."/>
+                    <Button Style="{StaticResource Btn}" Content="Import CSV…" Click="OnParamImportCsv" ToolTip="Add mapping rows from a CSV file with the columns: source category, source property, target pset, target name. A header row is skipped. Edit the list in Excel and bring it back."/>
+                    <Button Style="{StaticResource Btn}" Content="Export CSV…" Click="OnParamExportCsv" ToolTip="Save these mapping rows as a CSV file, to edit in Excel or reuse on another project."/>
                   </WrapPanel>
                 </StackPanel>
               </Border>
@@ -752,7 +855,12 @@
                 <Path Data="M4,8 L17,8 M14,5 L17,8 L14,11 M20,16 L7,16 M10,13 L7,16 L10,19" StrokeThickness="2"
                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}"/>
               </Viewbox>
-              <TextBlock Text="Mapping" FontSize="11" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+              <!-- The dot appears when pre-flight has a warning this tab fixes. -->
+              <Grid HorizontalAlignment="Center" Margin="0,4,0,0">
+                <TextBlock Text="Mapping" FontSize="11"/>
+                <Ellipse x:Name="DotMapping" Width="6" Height="6" Fill="{DynamicResource AmberTx}" Visibility="Collapsed"
+                         HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-2,-8,0"/>
+              </Grid>
             </StackPanel>
           </TabItem.Header>
           <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="14,14,14,8">
@@ -761,7 +869,7 @@
               <StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                   <TextBlock Style="{StaticResource H3}" Text="MAP NAVISWORKS SETS → IFC CLASSES"/>
-                  <Border Style="{StaticResource BadgeAuto}"><TextBlock Text="✨ AUTO" FontSize="9.5" FontWeight="SemiBold" Foreground="#0070C0"/></Border>
+                  <Border Style="{StaticResource BadgeAuto}"><TextBlock Text="AUTO" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeAutoTx}"/></Border>
                 </StackPanel>
                 <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,11" TextWrapping="Wrap"
                            Text="Each rule assigns one saved set to an IFC class and, optionally, a classification code. Smart setup proposes rules from set names; edit them here. A search set is already an IF/THEN rule — build it in Find Items, save it, map it. Unmapped elements export as IfcBuildingElementProxy. The set list reloads automatically when you open this tab."/>
@@ -782,7 +890,8 @@
                     </DataGridTemplateColumn>
                     <DataGridTemplateColumn Header="Predefined type" Width="0.7*" MinWidth="78">
                       <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                        <TextBox Text="{Binding Predefined, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                        <ComboBox IsEditable="True" ItemsSource="{Binding PredefinedOptions}" Text="{Binding Predefined, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"
+                                  ToolTip="IFC PredefinedType for this class. Pick from the values IFC4 defines for it, or type your own."/>
                       </DataTemplate></DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
                     <DataGridTemplateColumn Header="Classification" Width="0.7*" MinWidth="78">
@@ -799,15 +908,74 @@
                 <WrapPanel Margin="0,10,0,0">
                   <Button Style="{StaticResource Btn}" Content="+ Add rule" Click="OnMapAdd" ToolTip="Add a new set→class rule."/>
                   <Button Style="{StaticResource Btn}" Content="Remove selected" Click="OnMapRemove" ToolTip="Remove the selected rule."/>
+                  <Button Style="{StaticResource Btn}" Content="↑" Click="OnMapUp" ToolTip="Move the selected rule up. When an element is in two mapped sets, the rule higher in this list wins."/>
+                  <Button Style="{StaticResource Btn}" Content="↓" Click="OnMapDown" ToolTip="Move the selected rule down. When an element is in two mapped sets, the rule higher in this list wins."/>
                   <Button Style="{StaticResource Btn}" Content="Clear all" Click="OnMapClear" ToolTip="Remove every rule."/>
-                  <Button Style="{StaticResource Btn}" Content="🔍 Preview" Click="OnPreviewMapping" ToolTip="Resolve the rules against the current scope and report, below, how many elements map, the per-class breakdown, and property coverage — before exporting. Smart setup runs this too."/>
+                  <Button Style="{StaticResource Btn}" Content="Check these rules" Click="OnPreviewMapping" ToolTip="Resolve the rules against the export scope without writing anything. The one-line result shows here; the full breakdown is under Pre-flight on the Export tab."/>
                 </WrapPanel>
-                <Border Background="{DynamicResource ConsoleBg}" CornerRadius="9" Padding="11" Margin="0,4,0,0" MaxHeight="200">
-                  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
-                    <TextBlock x:Name="TxtPreview" Foreground="{DynamicResource ConsoleTx}" FontFamily="Consolas"
-                               FontSize="11" TextWrapping="NoWrap" Text="Preview shows how many elements map, and how many will export as IfcBuildingElementProxy."/>
-                  </ScrollViewer>
-                </Border>
+                <TextBlock x:Name="LblMapSummary" Style="{StaticResource Hint}" Text="Check these rules to see how many elements they map."/>
+              </StackPanel>
+            </Border>
+
+            <!-- Rules by property value: the same IF/THEN as a search set, without having to
+                 build and save one in Navisworks first. -->
+            <Border Style="{StaticResource CardStyle}">
+              <StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                  <TextBlock Style="{StaticResource H3}" Text="RULES BY PROPERTY VALUE"/>
+                  <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeOptTx}"/></Border>
+                </StackPanel>
+                <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,11" TextWrapping="Wrap"
+                           Text="IF a property has a value THEN export as a class, with no search set needed. For example: Element / Category equals Walls → IfcWall. These rules only fill what the set rules above left empty, and the first matching rule wins. Scan on the Data tab to fill the property lists."/>
+                <DataGrid x:Name="GridPropRules" AutoGenerateColumns="False" HeadersVisibility="Column" CanUserAddRows="False"
+                          Background="Transparent" RowBackground="Transparent" BorderBrush="{DynamicResource FieldBd}" BorderThickness="1"
+                          GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource Bd}" RowHeight="40"
+                          Foreground="{DynamicResource Text}" FontSize="12">
+                  <DataGrid.Columns>
+                    <DataGridTemplateColumn Header="Category" Width="0.8*" MinWidth="80">
+                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                        <ComboBox ItemsSource="{Binding Categories}" SelectedItem="{Binding Category, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Property" Width="0.8*" MinWidth="80">
+                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                        <ComboBox IsEditable="True" ItemsSource="{Binding AvailableProps}" Text="{Binding Property, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Test" Width="0.6*" MinWidth="70">
+                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                        <ComboBox ItemsSource="{Binding Tests}" SelectedItem="{Binding Test, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"
+                                  ToolTip="How the value is compared. Never case-sensitive."/>
+                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Value" Width="0.8*" MinWidth="70">
+                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                        <TextBox Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="IFC class" Width="*" MinWidth="90">
+                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                        <ComboBox ItemsSource="{Binding Classes}" SelectedItem="{Binding IfcClass, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Predefined" Width="0.6*" MinWidth="70">
+                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                        <ComboBox IsEditable="True" ItemsSource="{Binding PredefinedOptions}" Text="{Binding Predefined, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Classification" Width="0.6*" MinWidth="70">
+                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                        <TextBox Text="{Binding Classification, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                  </DataGrid.Columns>
+                </DataGrid>
+                <WrapPanel Margin="0,10,0,0">
+                  <Button Style="{StaticResource Btn}" Content="+ Add rule" Click="OnPropRuleAdd" ToolTip="Add a rule that picks a class by a property value."/>
+                  <Button Style="{StaticResource Btn}" Content="Remove selected" Click="OnPropRuleRemove"/>
+                  <Button Style="{StaticResource Btn}" Content="↑" Click="OnPropRuleUp" ToolTip="Move up. When two rules match one element, the higher one wins."/>
+                  <Button Style="{StaticResource Btn}" Content="↓" Click="OnPropRuleDown" ToolTip="Move down. When two rules match one element, the higher one wins."/>
+                </WrapPanel>
               </StackPanel>
             </Border>
 
@@ -815,7 +983,7 @@
               <StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
                   <TextBlock Style="{StaticResource H3}" Text="CLASSIFICATION &amp; GROUPS"/>
-                  <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
+                  <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeOptTx}"/></Border>
                 </StackPanel>
                 <TextBlock Style="{StaticResource Lbl}" Text="Classification system name"/>
                 <TextBox x:Name="TxtClassSystem" ToolTip="Name of the classification system the codes in the grid belong to, e.g. “Uniclass 2015” or “OmniClass”. Written as IfcClassification.Name; blank falls back to a generic source label."/>
@@ -835,15 +1003,22 @@
           </ScrollViewer>
         </TabItem>
 
-        <!-- ===== COORDINATES (was buried inside the Export tab) ===== -->
-        <TabItem>
+        <!-- ===== PROJECT & LOCATION (the old Coordinates and Structure tabs) =====
+             Structure was a whole tab for four text boxes, and both tabs answer the
+             same question: what is this model and where is it. -->
+        <TabItem x:Name="TabCoords">
           <TabItem.Header>
-            <StackPanel ToolTip="Where the model sits: local base point and real-world georeferencing. Optional — defaults keep the model at its world position.">
+            <StackPanel ToolTip="What the model is called and where it sits: project, site, building and storey names, the base point and real-world georeferencing. All optional.">
               <Viewbox Width="18" Height="18" HorizontalAlignment="Center">
                 <Path Data="M12,2 L12,6 M12,18 L12,22 M2,12 L6,12 M18,12 L22,12 M12,12 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0" StrokeThickness="2"
                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}"/>
               </Viewbox>
-              <TextBlock Text="Coordinates" FontSize="11" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+              <!-- The dot appears when pre-flight has a warning this tab fixes. -->
+              <Grid HorizontalAlignment="Center" Margin="0,4,0,0">
+                <TextBlock Text="Project" FontSize="11"/>
+                <Ellipse x:Name="DotCoords" Width="6" Height="6" Fill="{DynamicResource AmberTx}" Visibility="Collapsed"
+                         HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-2,-8,0"/>
+              </Grid>
             </StackPanel>
           </TabItem.Header>
           <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="14,14,14,8">
@@ -851,8 +1026,42 @@
               <Border Style="{StaticResource CardStyle}">
                 <StackPanel>
                   <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
+                    <TextBlock Style="{StaticResource H3}" Text="PROJECT &amp; SPATIAL STRUCTURE"/>
+                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeOptTx}"/></Border>
+                  </StackPanel>
+                  <TextBlock Style="{StaticResource Lbl}" Text="Project name (blank = the model's file name)"/>
+                  <TextBox x:Name="TxtProject" Text="" ToolTip="Name written to the IfcProject. Leave blank to use the Navisworks file's name, which is what most receivers expect to see."/>
+                  <Grid Margin="0,11,0,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                      <TextBlock Style="{StaticResource Lbl}" Text="Site name"/>
+                      <TextBox x:Name="TxtSite" Text="Site" ToolTip="Name written to the IfcSite."/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                      <TextBlock Style="{StaticResource Lbl}" Text="Building name"/>
+                      <TextBox x:Name="TxtBuilding" Text="Building" ToolTip="Name written to the IfcBuilding."/>
+                    </StackPanel>
+                  </Grid>
+                  <TextBlock Style="{StaticResource Lbl}" Text="Fallback storey (items with no level)" Margin="0,11,0,5"/>
+                  <TextBox x:Name="TxtStorey" Text="Storey" ToolTip="Storey for elements whose Level role is empty."/>
+                  <TextBlock Style="{StaticResource Hint}" Text="Storeys come from the Level role on the Data tab."/>
+                  <!-- What the storeys will actually be, from the last check: before
+                       this, nobody saw them until the IFC was open in another tool. -->
+                  <TextBlock Style="{StaticResource Lbl}" Text="Storeys found by the last check" Margin="0,11,0,5"/>
+                  <Border Background="{DynamicResource ConsoleBg}" CornerRadius="9" Padding="11" MaxHeight="160">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                      <TextBlock x:Name="TxtStoreys" Foreground="{DynamicResource ConsoleTx}" FontFamily="Consolas" FontSize="11"
+                                 Text="Run Smart setup or Run full check (Export tab) to list them."/>
+                    </ScrollViewer>
+                  </Border>
+                </StackPanel>
+              </Border>
+
+              <Border Style="{StaticResource CardStyle}">
+                <StackPanel>
+                  <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
                     <TextBlock Style="{StaticResource H3}" Text="BASE POINT"/>
-                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
+                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeOptTx}"/></Border>
                   </StackPanel>
                   <ComboBox x:Name="CmbBasePoint" ToolTip="Where the IFC local origin sits. This only affects how large the stored coordinates are — the placement chain puts the model back at its world position either way. Real-world georeferencing is the survey point below."/>
                   <StackPanel x:Name="CoordRow" Margin="0,11,0,0" Visibility="Collapsed"
@@ -882,7 +1091,7 @@
                 <StackPanel>
                   <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
                     <TextBlock Style="{StaticResource H3}" Text="GEOREFERENCING"/>
-                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
+                    <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource BadgeOptTx}"/></Border>
                   </StackPanel>
                   <CheckBox x:Name="ChkGeoref" Content="Write IFC4 georeferencing (IfcMapConversion)" ToolTip="Record where the model sits in a real-world projected CRS. IFC4 only. Written only when you supply a CRS or a survey point below — an empty map conversion is worse than none."/>
                   <StackPanel x:Name="GeorefRow" Margin="20,7,0,4">
@@ -903,37 +1112,6 @@
           </ScrollViewer>
         </TabItem>
 
-        <!-- ===== STRUCTURE ===== -->
-        <TabItem>
-          <TabItem.Header>
-            <StackPanel ToolTip="Names for the IFC spatial structure (project / site / building / storey)">
-              <Viewbox Width="18" Height="18" HorizontalAlignment="Center">
-                <Path Data="M5,21 L5,4 A1,1 0 0 1 6,3 L18,3 A1,1 0 0 1 19,4 L19,21 M5,9 L19,9 M5,15 L19,15" StrokeThickness="2"
-                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}"/>
-              </Viewbox>
-              <TextBlock Text="Structure" FontSize="11" HorizontalAlignment="Center" Margin="0,4,0,0"/>
-            </StackPanel>
-          </TabItem.Header>
-          <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="14,14,14,8">
-            <Border Style="{StaticResource CardStyle}">
-              <StackPanel>
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,11">
-                  <TextBlock Style="{StaticResource H3}" Text="SPATIAL STRUCTURE"/>
-                  <Border Style="{StaticResource BadgeOpt}"><TextBlock Text="OPTIONAL" FontSize="9.5" FontWeight="SemiBold" Foreground="#6B7480"/></Border>
-                </StackPanel>
-                <TextBlock Style="{StaticResource Lbl}" Text="Project name"/>
-                <TextBox x:Name="TxtProject" Text="BIMCamel Export" ToolTip="Name written to the IfcProject."/>
-                <TextBlock Style="{StaticResource Lbl}" Text="Site name" Margin="0,11,0,5"/>
-                <TextBox x:Name="TxtSite" Text="Site" ToolTip="Name written to the IfcSite."/>
-                <TextBlock Style="{StaticResource Lbl}" Text="Building name" Margin="0,11,0,5"/>
-                <TextBox x:Name="TxtBuilding" Text="Building" ToolTip="Name written to the IfcBuilding."/>
-                <TextBlock Style="{StaticResource Lbl}" Text="Default storey (items with no Level)" Margin="0,11,0,5"/>
-                <TextBox x:Name="TxtStorey" Text="Storey" ToolTip="Fallback storey name for elements that have no Level property."/>
-                <TextBlock Style="{StaticResource Hint}" Text="Storeys come from the Level role on the Data tab. The name above is only the fallback storey for items without a level."/>
-              </StackPanel>
-            </Border>
-          </ScrollViewer>
-        </TabItem>
       </TabControl>
 
       <!-- Action bar -->
@@ -958,7 +1136,9 @@
               <Viewbox Width="17" Height="17" Margin="0,0,8,0">
                 <Path Data="M12,3 L12,15 M8,11 L12,15 L16,11 M4,17 L4,19 A2,2 0 0 0 6,21 L18,21 A2,2 0 0 0 20,19 L20,17" Stroke="White" StrokeThickness="2"/>
               </Viewbox>
-              <TextBlock Text="Export IFC"/>
+              <!-- Says what the click will do — schema, form, how many files — and is
+                   updated as those settings change. -->
+              <TextBlock x:Name="LblExportBtn" Text="Export IFC"/>
             </StackPanel>
           </Button>
         </StackPanel>

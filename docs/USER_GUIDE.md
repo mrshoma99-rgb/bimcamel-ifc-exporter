@@ -103,19 +103,41 @@ Every card in the pane wears one of three chips, so a glance answers
 |---|---|
 | **REQUIRED** | The export reads this. Defaults are already valid. |
 | **OPTIONAL** | Enrichment. Blank/off is a legitimate choice. |
-| **✨ AUTO** | Smart setup fills it. Everything stays hand-editable. |
+| **AUTO** | Smart setup fills it. Everything stays hand-editable. |
 
 ### Export — run it
-The landing tab. **Smart setup** (one button, section 5), **Output**
-(IFC schema, source units — both REQUIRED, both defaulted), **Scope**
+The landing tab, laid out in the order you use it: **What to export**
 (REQUIRED: whole model / current selection / active section box / one
-saved set / multiple sets batch), **File options** (geometry quality,
-size splitting, instancing, post-export validation, size & time breakdown),
-**Pre-flight** (section 6) and the **Report** console.
+saved set / multiple sets batch), **Format** (IFC schema, source units,
+geometry quality and compressed .ifczip — all defaulted), **Smart setup**
+(one button, section 5, which scans the scope above it), **Pre-flight**
+(section 6, with **Run full check** to measure the scope without writing
+anything), **Advanced options** and the **Report**.
+
+The pane follows Navisworks: the title shows the open model, the scope
+line counts the current selection, and the Export button says what it will
+write ("Export 1,204 selected → IFC4"). Every setting is remembered between
+sessions; the profile menu in the title bar (see section 11) adds presets
+and a full reset.
+
+The **file name** box takes a template: `{model}`, `{schema}`, `{set}`
+(batch) and `{date}`. Save dialogs open in the folder of the last export.
+After an export the Report card offers **Open file**, **Open folder** and
+**Save report…**; a failed export shows the plain reason first and the
+technical details below it.
+
+**Advanced options** is collapsed by default because its defaults suit most
+exports. It holds *File size & speed* (instancing, merge multi-part elements,
+fast instancing, skip
+empty property values, share type-level properties, skip small geometry,
+size splitting) and *Checks & diagnostics* (post-export validation, size &
+time breakdown). While collapsed, its header shows how many of these differ
+from the defaults (e.g. "2 changed"), and **↺ Reset** puts them all back.
 
 ### Data — what each element carries
 - **What to export:** properties, materials/colours, base quantities
-  (volume / area / length / width / height as `Qto_*BaseQuantities`).
+  (volume / area / length / width / height as `Qto_*BaseQuantities`), and
+  **Auto-classify unmapped elements** (on by default, see Mapping below).
 - **Read properties from:** which level of the selection tree each element's
   properties come from. Navisworks exports geometry, but Revit puts its
   **Element** tab on the element node *above* the geometry (SmartPlant 3D and
@@ -126,7 +148,7 @@ size splitting, instancing, post-export validation, size & time breakdown),
   carry the same property, the geometry's value wins. Re-run Smart setup or
   Scan after changing it so the pset list and roles see the new categories.
 - **Property sets to include:** the pset checklist, filled by Smart setup's
-  scan of your export scope — or by **⚡ Scan selection instead**, the
+  scan of your export scope — or by **Scan selection instead**, the
   manual alternative that reads only the elements selected in Navisworks
   whatever the scope is set to (useful when the elements carrying the
   properties you care about are not the ones you are exporting).
@@ -135,22 +157,58 @@ size splitting, instancing, post-export validation, size & time breakdown),
   (→ `IfcElementType` + ObjectType), **Level** (→ `IfcBuildingStorey`),
   **Material** (→ `IfcMaterial`) and **Classification**
   (→ `IfcClassificationReference`). Smart setup proposes these from the
-  scan; blank = role off.
+  scan; blank = role off. **Element name** picks the property written as
+  each element's IFC Name (e.g. *Mark* or *Tag*); blank keeps the
+  Navisworks name. It is never guessed.
+- **Search property sets:** the box above the pset list filters it by
+  name; **All** / **None** then act on the sets shown.
 - **Parameter mapping:** rename a source property or move it into a
   different target pset (e.g. scattered fire ratings →
-  `Pset_WallCommon.FireRating`).
+  `Pset_WallCommon.FireRating`). **Import CSV…** / **Export CSV…** move the
+  list to and from a spreadsheet (columns: source category, source
+  property, target pset, target name; `,` or `;` separated).
 
 ### Mapping — which IFC class each thing becomes
 One grid, one toolbar. Each rule: **Navisworks set → IFC class**, optional
 **PredefinedType**, optional **classification code**. Unmapped elements
-stay `IfcBuildingElementProxy`. **🔍 Preview** resolves the rules against
-your scope *before export* and prints mapped vs proxy counts, the
-per-class breakdown, property coverage and a geometry estimate — into the
-console right below the button. A second card holds the classification
+stay `IfcBuildingElementProxy`. **↑ / ↓** set the order (the higher rule
+wins when an element is in two sets), and the Predefined column offers the
+values IFC4 defines for the chosen class. **Check these rules** resolves
+the rules against your scope *before export*: the one-line result appears
+under the button and the full breakdown under Pre-flight on the Export
+tab.
+
+**Rules by property value** pick a class or code straight from a
+property, with no search set needed: *Element / Category equals Walls →
+IfcWall*. Tests are *equals*, *contains* and *starts with*, never
+case-sensitive. They only fill what the set rules left empty, and the
+first matching one wins.
+
+**Auto-classify unmapped elements** (Data tab, on by default) handles
+whatever no rule above claimed, before it would become a proxy. It uses
+fixed rules, no machine learning and no network, in this order: the IFC
+class an IFC-sourced model already states, then the Revit category
+(Walls, Floors, Pipes, Structural Framing and others with a clear IFC
+class), then whole words in the family, type and element names. It is
+cautious: a name naming two classes or a piece ("glazing", "elbow") is
+left alone, and the element's size can veto a name. Each element it
+classifies records the deciding rule in a `BIMCamel_Classification`
+property set, and the report has an `Auto-classify:` line with counts per
+rule. The pre-flight check counts only your rules, so auto-classified
+elements still show there as proxies.
+
+A further card holds the classification
 system name (written as `IfcClassification`) and "also export each mapped
 set as" `IfcGroup` / `IfcSystem` / `IfcZone`. Full detail in section 8.
 
-### Coordinates — where the model sits
+### Project — what the model is and where it sits
+**Project & spatial structure:** `IfcProject` / `IfcSite` / `IfcBuilding`
+names (a blank project name uses the Navisworks file name) and the
+fallback storey name for elements without a Level value. Storeys come from
+the **Level role** on the Data tab, and **Check** lists the storeys the
+export will create with their element counts; when the model's grid levels
+carry names and elevations, real elevations are written automatically.
+
 **Base point** (how large the stored coordinates are: geometry origin /
 model origin / custom, with a live preview line) and **Georeferencing**
 (IFC4 `IfcMapConversion`: CRS such as `EPSG:27700`, survey point,
@@ -158,12 +216,6 @@ rotation). **Check federated model origins** prints every loaded model's
 origin, rotation and units and says plainly whether they agree. Section 9
 explains the base-point / survey-point distinction — the one everyone
 trips over.
-
-### Structure — names
-`IfcProject` / `IfcSite` / `IfcBuilding` names and the fallback storey
-name for elements without a Level value. Storeys themselves come from the
-**Level role** on the Data tab; when the model's grid levels carry names
-and elevations, real elevations are written automatically.
 
 ## 5. Smart setup
 
@@ -182,7 +234,7 @@ One button on the Export tab runs every auto-detect in dependency order:
    Classification sources from the scan.
 5. **Propose mapping rules** — matches set names against ~90 known
    category keywords ("External Walls" → IfcWall).
-6. **Preview** — resolves everything against the scope collected in step 2
+6. **Check** — resolves everything against the scope collected in step 2
    and fills the Mapping console + the Pre-flight panel.
 
 Then it prints exactly what it did: sets found, psets discovered, roles
@@ -216,7 +268,7 @@ contradictions — properties ON with every pset unticked, CRS filled in
 while georeferencing is OFF, two batch sets whose sanitised filenames
 would overwrite each other, a rule bound to a set name that exists twice.
 
-**Scanned rows** fill after Smart setup or Preview and carry their
+**Scanned rows** fill after Smart setup or Run full check and carry their
 provenance ("Scanned 14:32 · Whole model"): elements collected (and how
 many *hidden* subtrees were excluded — the "I hid a discipline for
 viewing" catch), rule-match rate, storey coverage with the **distinct
@@ -242,20 +294,20 @@ The weekly coordinator loop, using everything above:
    Items, and the mapping stays live as the model changes. Deactivate
    DataTools links.
 2. **Pick the scope** on the Export tab.
-3. **✨ Smart setup.** Sets, psets, roles, proposed rules, first preview —
+3. **Smart setup.** Sets, psets, roles, proposed rules, first preview —
    one click.
 4. **Review Data:** are the four roles pointing at the right properties?
    Untick noisy psets you don't want shipped.
 5. **Review Mapping:** finish what auto-mapping couldn't ("no obvious
    class" sets), add PredefinedTypes and classification codes, set the
-   classification system name. **🔍 Preview** after edits.
-6. **Coordinates** once per project: CRS + survey point if the deliverable
+   classification system name. **Check these rules** after edits.
+6. **Project** tab once per project: names, then CRS + survey point if the deliverable
    is georeferenced; check federated origins agree.
 7. **Pre-flight** on the Export tab: all green or explained amber?
 8. **Export IFC.** Read the report — mapped counts, proxy counts with
    reasons, storeys, validation result, timing breakdown.
-9. **Save a profile** (💾 in the title bar). Next revision: load profile →
-   Smart setup (fills anything new, keeps your decisions) → Preview →
+9. **Save a profile** (save icon in the title bar). Next revision: load profile →
+   Smart setup (fills anything new, keeps your decisions) → Run full check →
    Export. The revision diff in the report tells you what changed since
    last export.
 
@@ -318,10 +370,10 @@ size. Pre-flight ambers exactly that case.
 **Batch** (scope = "Multiple sets → one IFC each"): tick sets, choose an
 output folder, get one IFC per set — the standard per-discipline or
 per-zone package cut. File names come from set names (sanitised); the
-pre-flight warns when two would collide. Preview under batch measures the
+pre-flight warns when two would collide. The full check under batch measures the
 union of the ticked sets.
 
-**Size splitting** (File options): cap file size (default 200 MB) and
+**Size splitting** (Advanced options): cap file size (default 200 MB) and
 larger exports roll into `name_001.ifc`, `name_002.ifc`, … — each a
 complete, standalone IFC. Composes with batch. Split parts share
 deterministic identity: the project/site/building GUIDs stay stable, so
@@ -329,11 +381,23 @@ viewers federate the parts cleanly.
 
 ## 11. Profiles — reuse everything weekly
 
-💾 / 📂 in the title bar save and load a `.json` profile: schema, units,
+The save icon in the title bar writes a `.json` profile; the profile
+menu next to it loads one. A profile holds schema, units,
 scope, quality, base point, coordinates and georeferencing, all
 checkboxes, semantic roles, parameter rules, the full mapping grid,
+property-value rules, the file name template,
 classification system, group setting, spatial names, split settings.
 (List *ticks* — psets and batch — and the theme are not stored.)
+
+The title shows the loaded profile's name, with a dot once you change
+something since loading it. Your settings are also saved automatically,
+so the pane opens the way you left it.
+
+The profile menu also offers three **presets** that set only how the file
+is written (schema, quality, size and data switches) and keep your
+mapping, roles, names and coordinates: *Coordination model*, *Smallest
+file* and *Full data hand-off*. **Reset all settings** puts every tab back
+to a fresh install, after asking.
 
 Profiles are the loop-closer: `P03_structural.json` today is next month's
 one-click setup. Keep them in the project folder, next to the deliverable.
@@ -358,7 +422,20 @@ bad enum tokens, dangling references, duplicate GUIDs.
 export of the same file reports NEW / DELETED / MODIFIED / UNCHANGED
 element counts against it — your "what changed since P02?" answer, for
 free. Deterministic GUIDs make diffs meaningful across revisions and
-split parts.
+split parts. Elements without a Navisworks instance GUID are keyed by
+their place in the tree, so their GlobalIds stay stable between exports;
+the first export after v0.12 gives them new ones once, so one diff will
+show them as replaced.
+
+The report also flags what an exporter should never hide: GlobalIds that
+collided (a model appended twice) and were re-derived, elements whose
+written shape falls outside their Navisworks bounding box, placements with
+stretch or shear that were baked into the vertices, and how often shared
+geometry reads were reused and re-checked.
+
+**Text in any language.** Names and values with accents, Arabic or CJK
+characters, and Windows paths are written with proper IFC escaping, so
+strict readers show them as they appear in Navisworks.
 
 ## 13. Performance
 
@@ -408,7 +485,7 @@ Navisworks models are triangulated geometry + properties. That means, honestly:
 | Plugin missing after manual copy; `PLUGIN_LOAD_02` / `0x80131515` | Windows kept the browser's "downloaded" mark on the DLLs. Run the setup exe (strips it automatically), or `Get-ChildItem "$env:APPDATA\Autodesk\ApplicationPlugins\BIMCamel.bundle" -Recurse -File \| Unblock-File`. |
 | SmartScreen blocks the installer | Unsigned download: **More info → Run anyway**. Verify the SHA-256 checksum published next to the release asset. |
 | Export is far slower than the model size suggests; report says "SLOW PROPERTY HARVEST" | An active DataTools link queries a database per object. Home → DataTools, deactivate/delete the link, re-export. |
-| Everything exports as `IfcBuildingElementProxy` | No mapping rules matched — run Smart setup, review Mapping, Preview. The report says how many matched. |
+| Everything exports as `IfcBuildingElementProxy` | No mapping rules matched — run Smart setup, review Mapping, Run full check. The report says how many matched. |
 | All elements land on one storey | The Level role points at the wrong property (pre-flight shows "1 distinct storey"). Fix it on the Data tab. |
 | Model far from origin / Revit import fails | Base point = Geometry origin (default) keeps coordinates small; real-world position belongs in the survey point. See section 9. |
 | A mapped class exports as proxy under IFC2x3 | That class has no 2x3 entity. Export IFC4, or accept the proxy — preview counts them. |

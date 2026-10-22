@@ -49,7 +49,12 @@ export — BIMCamel fills that gap without the slowness and setup friction of th
 - **Property sets** — category-qualified, typed values, with content **dedup** (identical psets
   shared) and optional parameter renaming/relocation to standard Psets.
 - **Object → IFC class mapping** — assign Navisworks sets to IFC classes (with optional
-  PredefinedType); **Smart setup** proposes classes from set names; unmapped elements stay
+  PredefinedType); **Smart setup** proposes classes from set names. Elements no set covers are
+  **auto-classified by rule** (on by default): the IFC class an IFC-sourced model already states,
+  then the Revit category (Walls, Pipes, Structural Framing…), then whole words in family, type
+  and element names — conservative by design (ambiguous names and pieces like "glazing" or
+  "elbow" are left alone, and shape can veto a name). Each auto-classified element records the
+  rule that decided in a `BIMCamel_Classification` property set. Whatever is left stays
   `IfcBuildingElementProxy` — and the report tells you **how many**, which is the number that
   matters. A Navisworks search set is already an IF/THEN rule, so the same grid also assigns
   **classification codes**: build "Category = Walls AND Name contains External" in Find Items,

@@ -53,10 +53,21 @@ namespace BIMCamel.Geometry
         public Dictionary<string, string>? ClassificationMap; // itemKey → classification code (set rule)
         public Dictionary<string, string>? GroupMap;         // itemKey → set name (IfcGroup export)
         public List<ParamMapRule>? ParamMap;
+        /// <summary>Class / classification chosen by a property value; fills only what the set
+        /// rules left empty.</summary>
+        public List<PropertyRule>? PropRules;
         public PropertyRoles? Roles;
         /// <summary>Per-operation ItemKey memo, shared with BuildSetMaps so keys
         /// computed while resolving the rules are not recomputed per element.</summary>
         public System.Collections.Generic.Dictionary<Autodesk.Navisworks.Api.ModelItem, string>? KeyCache;
+
+        /// <summary>Classify elements no set rule mapped by the fixed rules in
+        /// <see cref="RuleClassifier"/> instead of leaving them as proxies.</summary>
+        public bool AutoClassify;
+        /// <summary>Model units → metres, for the rules' shape check.</summary>
+        public double ClassifyUnitScale = 1;
+        /// <summary>Per-export memo of each node's Revit category (see RuleClassifier.ClassifyItem).</summary>
+        public System.Collections.Generic.Dictionary<Autodesk.Navisworks.Api.ModelItem, string?>? CategoryCache;
     }
 
     /// <summary>One element's world-space triangle mesh + semantic role values, ready for IFC.</summary>
@@ -201,11 +212,26 @@ namespace BIMCamel.Geometry
             if (hasRoles)
             {
                 em.TypeName = rv.Type; em.Level = rv.Level; em.MaterialName = rv.Material; em.ClassCode = rv.Classification;
+                if (!string.IsNullOrWhiteSpace(rv.Name)) em.Name = rv.Name.Trim();
             }
             // A set rule is an explicit decision by the user; it outranks whatever the source
             // property happened to contain.
             if (hasCode && o.ClassificationMap!.TryGetValue(key, out var cc)) em.ClassCode = cc;
+            if (o.PropRules != null)
+            {
+                string? pk = em.ClassKey, pc = hasCode && o.ClassificationMap!.ContainsKey(key) ? em.ClassCode : null;
+                PropertyRules.Apply(item, o.PropRules, ref pk, ref pc);
+                em.ClassKey = pk; if (!string.IsNullOrEmpty(pc)) em.ClassCode = pc!;
+            }
             if (hasGroup && o.GroupMap!.TryGetValue(key, out var gn)) em.GroupName = gn;
+            // No set rule claimed it: try the fixed rules (category, IFC class, name words) before
+            // it falls to IfcBuildingElementProxy. Counted inside HarvestTicks — it is a property read.
+            if (o.AutoClassify && string.IsNullOrEmpty(em.ClassKey)
+                && RuleClassifier.ClassifyItem(item, o.ClassifyUnitScale, o.CategoryCache) is { } guess)
+            {
+                em.ClassKey = guess.ClassKey;
+                em.Properties = RuleClassifier.Apply(guess, em.Properties, o.Props);
+            }
             ExportTiming.HarvestTicks += ExportTiming.Now - ts;
             return em;
         }

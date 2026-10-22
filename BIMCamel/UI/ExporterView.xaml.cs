@@ -43,6 +43,7 @@ namespace BIMCamel.UI
         private readonly ObservableCollection<CheckItem> _batchItems = new ObservableCollection<CheckItem>();
         private readonly ObservableCollection<ParamRow> _paramRows = new ObservableCollection<ParamRow>();
         private readonly ObservableCollection<MapRow> _mapRows = new ObservableCollection<MapRow>();
+        private readonly ObservableCollection<PropRuleRow> _propRules = new ObservableCollection<PropRuleRow>();
 
         /// <summary>What the scan already worked out, so Smart setup → preview → export computes
         /// each item key and resolves each mapping set ONCE instead of three times (v5 S2).</summary>
@@ -53,7 +54,8 @@ namespace BIMCamel.UI
         private readonly List<RadioButton> _scopeRadios = new List<RadioButton>();
         private readonly ObservableCollection<string> _roleCats = new ObservableCollection<string> { AnyCat };
         private ComboBox _catType = null!, _parType = null!, _catLevel = null!, _parLevel = null!,
-                         _catMat = null!, _parMat = null!, _catCls = null!, _parCls = null!;
+                         _catMat = null!, _parMat = null!, _catCls = null!, _parCls = null!,
+                         _catName = null!, _parName = null!;
 
         // progress
         private readonly Stopwatch _tickClock = new Stopwatch();
@@ -69,7 +71,9 @@ namespace BIMCamel.UI
             BuildRoleRows();
             InitControls();
             InitGridsAndLists();
-            Loaded += (_, _) => { UpdateScopeHint(); PreviewBasePoint(); RefreshModelStatus(); RefreshSets(); RenderPreflight(); };
+            InitSession();
+            Loaded += (_, _) => { AttachDocumentEvents(); UpdateScopeHint(); PreviewBasePoint(); RefreshModelStatus(); RefreshSets(); RenderPreflight(); };
+            Unloaded += (_, _) => DetachDocumentEvents();
             // The set list self-refreshes when the Mapping tab opens (replacing
             // the old per-tab Refresh buttons), and the pre-flight rows refresh
             // when the Export tab opens — they show live config state, and this
@@ -120,20 +124,13 @@ namespace BIMCamel.UI
             CmbPropSource.SelectedIndex = (int)PropSource.ParentObject;
             AddItems(CmbBasePoint, new[] { "Geometry origin — recommended (real coords kept in georeferencing)", "Model origin (no offset — keeps world coords)", "Custom base point" }); CmbBasePoint.SelectedIndex = 0;
 
-            // Validation defaults ON: it exists to catch the mistakes this exporter can make, and
-            // silently shipping an invalid file is worse than the second it costs to check.
-            ChkGeoref.IsChecked = true; ChkInstancing.IsChecked = true; ChkValidate.IsChecked = true; ChkProfile.IsChecked = true;
-            // Fast instancing stays OFF until a run proves the guess holds on this model (v5 E1).
-            ChkFastInstancing.IsChecked = false;
-            // Element-level instancing defaults ON: a many-part element otherwise becomes one
-            // placed copy per fragment, which viewers cannot load at stadium scale.
-            ChkMergeParts.IsChecked = true;
-            // v6. Compression and dropping blank properties are pure wins, so they default ON.
-            // Type-level sharing MOVES data to where a simpler reader may not look, and the size
-            // filter REMOVES objects — both change what a recipient sees, so both default OFF.
-            ChkZip.IsChecked = true; ChkSkipEmptyProps.IsChecked = true;
-            ChkShareTypeProps.IsChecked = false; ChkMinSize.IsChecked = false;
-            ChkProps.IsChecked = true; ChkMaterials.IsChecked = true; ChkQuantities.IsChecked = true; ChkSplit.IsChecked = false;
+            ChkGeoref.IsChecked = true;
+            // v6. Compression is a pure win, so it defaults ON.
+            ChkZip.IsChecked = true;
+            ChkProps.IsChecked = true; ChkMaterials.IsChecked = true; ChkQuantities.IsChecked = true;
+            ChkAutoClassify.IsChecked = true;
+            ApplyAdvancedDefaults();
+            InitAdvancedCard();
             TxtE.Text = TxtN.Text = TxtElev.Text = TxtRot.Text = "0";
             TxtSurveyE.Text = TxtSurveyN.Text = TxtSurveyElev.Text = "0";
 
@@ -143,8 +140,68 @@ namespace BIMCamel.UI
             TxtElev.TextChanged += (_, _) => PreviewBasePoint();
             void SyncProps() => LstCategories.IsEnabled = CmbPropSource.IsEnabled = ChkProps.IsChecked == true;
             ChkProps.Checked += (_, _) => SyncProps(); ChkProps.Unchecked += (_, _) => SyncProps(); SyncProps();
+            void SyncDetails() => CheckDetails.Visibility = TglCheckDetails.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+            TglCheckDetails.Checked += (_, _) => { SyncDetails(); TglCheckDetails.Content = "Hide details"; };
+            TglCheckDetails.Unchecked += (_, _) => { SyncDetails(); TglCheckDetails.Content = "Show details"; };
             void SyncGeoref() => GeorefRow.Visibility = ChkGeoref.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
             ChkGeoref.Checked += (_, _) => SyncGeoref(); ChkGeoref.Unchecked += (_, _) => SyncGeoref(); SyncGeoref();
+        }
+
+        // ── Advanced options card ───────────────────────────────────────────────
+        // Every option in the collapsed Advanced card, with its default. One table
+        // drives the defaults, the Reset link and the "N changed" header count, so
+        // the three can never disagree.
+        private (CheckBox box, bool def)[] AdvancedDefaults() => new[]
+        {
+            // Validation defaults ON: it exists to catch the mistakes this exporter can make, and
+            // silently shipping an invalid file is worse than the second it costs to check.
+            (ChkInstancing, true), (ChkValidate, true), (ChkProfile, true),
+            // Fast instancing stays OFF until a run proves the guess holds on this model (v5 E1).
+            (ChkFastInstancing, false),
+            // Element-level instancing defaults ON: a many-part element otherwise becomes one
+            // placed copy per fragment, which viewers cannot load at stadium scale.
+            (ChkMergeParts, true),
+            // v6. Dropping blank properties is a pure win, so it defaults ON.
+            // Type-level sharing MOVES data to where a simpler reader may not look, and the size
+            // filter REMOVES objects — both change what a recipient sees, so both default OFF.
+            (ChkSkipEmptyProps, true), (ChkShareTypeProps, false), (ChkMinSize, false),
+            (ChkSplit, false),
+        };
+
+        private void ApplyAdvancedDefaults()
+        {
+            foreach (var (box, def) in AdvancedDefaults()) box.IsChecked = def;
+        }
+
+        private void InitAdvancedCard()
+        {
+            void SyncBody() => AdvancedBody.Visibility = TglAdvanced.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+            TglAdvanced.Checked += (_, _) => SyncBody(); TglAdvanced.Unchecked += (_, _) => SyncBody(); SyncBody();
+
+            // Fast instancing and part merging only mean anything inside instancing (the export
+            // reads them there), so grey them out rather than let it look active when instancing is off.
+            void SyncFast() => ChkFastInstancing.IsEnabled = ChkMergeParts.IsEnabled = ChkInstancing.IsChecked == true;
+            ChkInstancing.Checked += (_, _) => SyncFast(); ChkInstancing.Unchecked += (_, _) => SyncFast(); SyncFast();
+
+            foreach (var (box, _) in AdvancedDefaults())
+            {
+                box.Checked += (_, _) => UpdateAdvancedSummary();
+                box.Unchecked += (_, _) => UpdateAdvancedSummary();
+            }
+            UpdateAdvancedSummary();
+        }
+
+        private void UpdateAdvancedSummary()
+        {
+            int changed = AdvancedDefaults().Count(x => (x.box.IsChecked == true) != x.def);
+            TglAdvanced.Tag = changed == 0 ? "" : changed == 1 ? "1 changed" : changed + " changed";
+        }
+
+        private void OnResetAdvanced(object sender, RoutedEventArgs e)
+        {
+            ApplyAdvancedDefaults();
+            TxtMinSizeMm.Text = "5"; TxtSplitMb.Text = "200";
+            SetStatus("Advanced options reset to defaults.");
         }
 
         /// <summary>Push the "read properties from" choice to the harvester at once, so the next
@@ -162,6 +219,7 @@ namespace BIMCamel.UI
             LstBatch.ItemsSource = _batchItems;
             GridParams.ItemsSource = _paramRows;
             GridMap.ItemsSource = _mapRows;
+            GridPropRules.ItemsSource = _propRules;
 
             // shared catalogs for the grids
             ParamRow.SharedCategories.Clear(); ParamRow.SharedCategories.Add(AnyCat);
@@ -218,15 +276,18 @@ namespace BIMCamel.UI
             (_catLevel, _parLevel) = AddRoleRow("Level → IfcBuildingStorey");
             (_catMat, _parMat) = AddRoleRow("Material → IfcMaterial");
             (_catCls, _parCls) = AddRoleRow("Classification → IfcClassificationReference");
+            (_catName, _parName) = AddRoleRow("Element name → IFC Name (blank = the Navisworks name)");
         }
 
         private (ComboBox cat, ComboBox par) AddRoleRow(string label)
         {
             var border = new Border
             {
-                BorderBrush = (Brush)FindResource("Bd"), BorderThickness = new Thickness(1),
+                BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(9), Padding = new Thickness(10), Margin = new Thickness(0, 0, 0, 9)
             };
+            // A resource REFERENCE, not the brush resolved now, so the row follows a theme switch.
+            border.SetResourceReference(Border.BorderBrushProperty, "Bd");
             var sp = new StackPanel();
             sp.Children.Add(new TextBlock { Text = label, FontSize = 12, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 7) });
             var grid = new Grid();
@@ -247,10 +308,13 @@ namespace BIMCamel.UI
         private static void AddItems(ComboBox cmb, IEnumerable<string> items) { foreach (var i in items) cmb.Items.Add(i); }
 
         // ── theme toggle ──────────────────────────────────────────────────────────
-        private void OnToggleTheme(object sender, RoutedEventArgs e)
+        private void OnToggleTheme(object sender, RoutedEventArgs e) => ApplyTheme(!_dark);
+
+        private void ApplyTheme(bool dark)
         {
-            _dark = !_dark;
-            BtnTheme.Content = _dark ? "☀" : "🌙";
+            _dark = dark;
+            // The button shows the theme a click switches TO.
+            IcoTheme.Data = System.Windows.Media.Geometry.Parse(_dark ? "M12,7 A5,5 0 1 0 12.01,7 Z M12,1 L12,3 M12,21 L12,23 M1,12 L3,12 M21,12 L23,12 M4.2,4.2 L5.6,5.6 M18.4,18.4 L19.8,19.8 M4.2,19.8 L5.6,18.4 M18.4,5.6 L19.8,4.2" : "M20,14 A8,8 0 1 1 10,4 A6,6 0 0 0 20,14 Z");
             void Set(string key, string hex) => Resources[key] = new SolidColorBrush((System.Windows.Media.Color)ColorConverter.ConvertFromString(hex));
             if (_dark)
             {
@@ -261,6 +325,9 @@ namespace BIMCamel.UI
                 Set("Nav", "#1A1D22"); Set("NavActive", "#1F2D3D");
                 Set("AmberBg", "#3A2F12"); Set("AmberBd", "#5C4A1E"); Set("AmberTx", "#F0C66A");
                 Set("ConsoleBg", "#0A0C10"); Set("ConsoleTx", "#BFE0C8"); Set("Ok", "#46C97E");
+                Set("BadgeReqBg", "#16352A"); Set("BadgeReqTx", "#5FD394");
+                Set("BadgeOptBg", "#2C3138"); Set("BadgeOptTx", "#A7B0BA");
+                Set("BadgeAutoBg", "#173049"); Set("BadgeAutoTx", "#6DB8F5");
             }
             else
             {
@@ -271,6 +338,9 @@ namespace BIMCamel.UI
                 Set("Nav", "#F0F2F5"); Set("NavActive", "#E6F0FA");
                 Set("AmberBg", "#FFF7E6"); Set("AmberBd", "#FFE1A8"); Set("AmberTx", "#8A5A00");
                 Set("ConsoleBg", "#0E1116"); Set("ConsoleTx", "#CFE3D5"); Set("Ok", "#1A8F4C");
+                Set("BadgeReqBg", "#E4F6EC"); Set("BadgeReqTx", "#1A8F4C");
+                Set("BadgeOptBg", "#ECEFF3"); Set("BadgeOptTx", "#6B7480");
+                Set("BadgeAutoBg", "#E6F0FA"); Set("BadgeAutoTx", "#0070C0");
             }
             // The pre-flight rows are code-built with resolved brushes, so they
             // do not retint through DynamicResource — rebuild them.
@@ -285,7 +355,10 @@ namespace BIMCamel.UI
             BatchRow.Visibility = idx == 4 ? Visibility.Visible : Visibility.Collapsed;
             switch (idx)
             {
-                case 1: LblScopeHint.Text = "→ select items in Navisworks first"; break;
+                case 1:
+                    int selected = SelectedCount();
+                    LblScopeHint.Text = selected > 0 ? $"{selected:N0} item(s) selected in Navisworks" : "→ select items in Navisworks first";
+                    break;
                 case 2: LblScopeHint.Text = "→ enable a section box in Navisworks first"; break;
                 case 3: LblScopeHint.Text = "→ pick a saved set below"; RefreshSets(); break;
                 case 4: LblScopeHint.Text = "→ tick sets below; each becomes its own IFC (choose an output folder)"; RefreshSets(); break;
@@ -296,25 +369,62 @@ namespace BIMCamel.UI
         private void RefreshModelStatus()
         {
             var doc = NavApp.ActiveDocument;
-            LblModel.Text = (doc != null && doc.Models.Count > 0) ? "● Model loaded" : "";
+            if (doc == null || doc.Models.Count == 0) { LblModel.Text = "No model open"; LblModel.SetResourceReference(TextBlock.ForegroundProperty, "Muted"); return; }
+            LblModel.SetResourceReference(TextBlock.ForegroundProperty, "Ok");
+            string name = ModelBaseName(doc);
+            LblModel.Text = "● " + name + (doc.Models.Count > 1 ? $" · {doc.Models.Count} models" : "");
         }
 
         // ── button handlers ───────────────────────────────────────────────────────
         private void OnBatchAll(object s, RoutedEventArgs e) { foreach (var c in _batchItems) c.Checked = true; }
         private void OnBatchNone(object s, RoutedEventArgs e) { foreach (var c in _batchItems) c.Checked = false; }
         private void OnScanSelection(object s, RoutedEventArgs e) { _cancelRequested = false; ScanSelection(); }
-        private void OnCatsAll(object s, RoutedEventArgs e) { foreach (var c in _cats) c.Checked = true; }
-        private void OnCatsNone(object s, RoutedEventArgs e) { foreach (var c in _cats) c.Checked = false; }
+        private void OnCatsAll(object s, RoutedEventArgs e) { foreach (var c in VisibleCats()) c.Checked = true; }
+        private void OnCatsNone(object s, RoutedEventArgs e) { foreach (var c in VisibleCats()) c.Checked = false; }
+        private IEnumerable<CheckItem> VisibleCats()
+        {
+            var f = (TxtCatFilter.Text ?? "").Trim();
+            return f.Length == 0 ? _cats : _cats.Where(c => c.Name.IndexOf(f, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+        }
+        private void OnCatFilter(object s, TextChangedEventArgs e)
+        {
+            var f = (TxtCatFilter.Text ?? "").Trim();
+            LblCatFilterHint.Visibility = f.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+            var view = System.Windows.Data.CollectionViewSource.GetDefaultView(_cats);
+            view.Filter = f.Length == 0 ? null : (Predicate<object>)(o => o is CheckItem c && c.Name.IndexOf(f, StringComparison.OrdinalIgnoreCase) >= 0);
+        }
         private void OnParamAdd(object s, RoutedEventArgs e) => _paramRows.Add(new ParamRow { SourceCategory = AnyCat });
         private void OnParamRemove(object s, RoutedEventArgs e) { if (GridParams.SelectedItem is ParamRow r) _paramRows.Remove(r); }
         private void OnMapAdd(object s, RoutedEventArgs e) => _mapRows.Add(new MapRow());
         private void OnMapRemove(object s, RoutedEventArgs e) { if (GridMap.SelectedItem is MapRow r) _mapRows.Remove(r); }
         private void OnMapClear(object s, RoutedEventArgs e) => _mapRows.Clear();
+        private void OnMapUp(object s, RoutedEventArgs e) => MoveMapRow(-1);
+        private void OnMapDown(object s, RoutedEventArgs e) => MoveMapRow(+1);
+        private void MoveMapRow(int delta)
+        {
+            if (!(GridMap.SelectedItem is MapRow r)) { SetStatus("Select a rule to move."); return; }
+            int i = _mapRows.IndexOf(r), j = i + delta;
+            if (i < 0 || j < 0 || j >= _mapRows.Count) return;
+            _mapRows.Move(i, j);
+            GridMap.SelectedItem = r;
+        }
+        private void OnPropRuleAdd(object s, RoutedEventArgs e) => _propRules.Add(new PropRuleRow { Category = AnyCat });
+        private void OnPropRuleRemove(object s, RoutedEventArgs e) { if (GridPropRules.SelectedItem is PropRuleRow r) _propRules.Remove(r); }
+        private void OnPropRuleUp(object s, RoutedEventArgs e) => MovePropRule(-1);
+        private void OnPropRuleDown(object s, RoutedEventArgs e) => MovePropRule(+1);
+        private void MovePropRule(int delta)
+        {
+            if (!(GridPropRules.SelectedItem is PropRuleRow r)) { SetStatus("Select a rule to move."); return; }
+            int i = _propRules.IndexOf(r), j = i + delta;
+            if (i < 0 || j < 0 || j >= _propRules.Count) return;
+            _propRules.Move(i, j);
+            GridPropRules.SelectedItem = r;
+        }
         private void OnPreviewMapping(object s, RoutedEventArgs e)
         {
             _cancelRequested = false;
             try { PreviewMapping(); }
-            catch (OperationCanceledException) { SetStatus("Preview stopped."); }
+            catch (OperationCanceledException) { SetStatus("Check stopped."); }
             finally { EndBusy(); }
         }
         private void OnFederationReport(object s, RoutedEventArgs e)
@@ -384,9 +494,9 @@ namespace BIMCamel.UI
                 // summary, and keep whatever error the step left in the status
                 // line instead of overwriting it with "complete".
                 var digest = PreviewMapping(items);
-                sb.AppendLine(digest ?? "Preview        : did not run — open the Mapping tab for the reason");
+                sb.AppendLine(digest ?? "Full check     : did not run — see the status line for the reason");
 
-                sb.Append("Review the ✨ AUTO sections on Data and Mapping, then Export.");
+                sb.Append("Review the AUTO sections on Data and Mapping, then Export.");
                 TxtSmartSummary.Text = sb.ToString().Replace("\n", Environment.NewLine);
                 if (digest != null) SetStatus("Smart setup complete — review, then Export IFC.");
             }
@@ -497,6 +607,7 @@ namespace BIMCamel.UI
             // grid catalogs (categories + the property-name suggestion list)
             ParamRow.SharedCategories.Clear(); ParamRow.SharedCategories.Add(AnyCat); foreach (var c in cats) ParamRow.SharedCategories.Add(c);
             foreach (var row in _paramRows) row.Refresh();
+            foreach (var row in _propRules) row.Refresh();
 
             // Capture the user's role choices BEFORE touching _roleCats:
             // clearing that ItemsSource cascades SelectionChanged →
@@ -508,6 +619,7 @@ namespace BIMCamel.UI
             var priorLevel = (_catLevel.Text, _parLevel.Text);
             var priorMat = (_catMat.Text, _parMat.Text);
             var priorCls = (_catCls.Text, _parCls.Text);
+            var priorName = (_catName.Text, _parName.Text);
 
             // role category combos
             _roleCats.Clear(); _roleCats.Add(AnyCat); foreach (var c in cats) _roleCats.Add(c);
@@ -521,6 +633,8 @@ namespace BIMCamel.UI
             FillRole(_catLevel, _parLevel, priorLevel.Item1, priorLevel.Item2, g.Level);
             FillRole(_catMat, _parMat, priorMat.Item1, priorMat.Item2, g.Material);
             FillRole(_catCls, _parCls, priorCls.Item1, priorCls.Item2, g.Classification);
+            // Never guessed: the Navisworks name is a fine default, so this stays the user's call.
+            FillRole(_catName, _parName, priorName.Item1, priorName.Item2, default);
 
             string read = sample.Count < items.Count
                 ? $"a sample of {sample.Count:N0} of {items.Count:N0} {sourceLabel} elements"
@@ -589,7 +703,8 @@ namespace BIMCamel.UI
             Type = MakeRef(_catType, _parType),
             Level = MakeRef(_catLevel, _parLevel),
             Material = MakeRef(_catMat, _parMat),
-            Classification = MakeRef(_catCls, _parCls)
+            Classification = MakeRef(_catCls, _parCls),
+            Name = MakeRef(_catName, _parName)
         };
         private static PropRef MakeRef(ComboBox cat, ComboBox par)
         {
@@ -701,6 +816,7 @@ namespace BIMCamel.UI
                 if (doc == null || doc.Models.Count == 0) { SetStatus("Open a model first."); return; }
                 // Reset BEFORE scope collection — the collector counts recovered branch geometry.
                 BIMCamel.Geometry.ExportIssues.Reset();
+                RuleClassifier.Reset();
 
                 var schema = CmbSchema.SelectedIndex == 1 ? IfcSchema.Ifc2x3 : IfcSchema.Ifc4;
                 string schemaName = schema == IfcSchema.Ifc4 ? "IFC4" : "IFC2x3";
@@ -710,7 +826,7 @@ namespace BIMCamel.UI
                 var coords = BuildCoords();
                 var names = new SpatialNames
                 {
-                    Project = Def(TxtProject.Text, "BIMCamel Export"), Site = Def(TxtSite.Text, "Site"),
+                    Project = Def(TxtProject.Text, ModelBaseName(doc)), Site = Def(TxtSite.Text, "Site"),
                     Building = Def(TxtBuilding.Text, "Building"), Storey = Def(TxtStorey.Text, "Storey"),
                     // Real storey elevations, when the model's grids name the levels.
                     LevelElevations = ModelSurvey.LevelElevations(doc, unitScale),
@@ -734,7 +850,8 @@ namespace BIMCamel.UI
                     Title = "Export IFC",
                     Filter = zip ? "Compressed IFC (*.ifczip)|*.ifczip|IFC file (*.ifc)|*.ifc"
                                  : "IFC file (*.ifc)|*.ifc|Compressed IFC (*.ifczip)|*.ifczip",
-                    FileName = $"{ModelBaseName(doc)}_{schemaName}.{ext}",
+                    FileName = $"{FileNameFor(ModelBaseName(doc), schemaName, null)}.{ext}",
+                    InitialDirectory = StartFolder(),
                     DefaultExt = ext
                 };
                 if (sfd.ShowDialog() != WF.DialogResult.OK) return;
@@ -786,9 +903,13 @@ namespace BIMCamel.UI
             }
             catch (Exception ex)
             {
+                // The plain message first, where the user is already looking; the stack trace goes
+                // below it in the report, for Copy or Save report, rather than in a modal dialog.
                 SetStatus("Export failed: " + ex.Message);
-                SetReport("Export FAILED\n──────────────────────────────\n" + ex.Message);
-                WF.MessageBox.Show(ex.ToString(), "BIMCamel export — error", WF.MessageBoxButtons.OK, WF.MessageBoxIcon.Error);
+                SetReport("Export FAILED\n──────────────────────────────\n" + ex.Message
+                          + "\n\nNo usable file was written. If this keeps happening, use Save report or Copy and send the details below with your issue.\n\n"
+                          + "Details\n──────────────────────────────\n" + ex);
+                ShowReport();
             }
             finally { EndBusy(); }
         }
@@ -801,7 +922,7 @@ namespace BIMCamel.UI
                 if (_batchItems[i].Checked) chosen.Add(_sets[i]);
             if (chosen.Count == 0) { SetStatus("Tick at least one set to export (batch scope)."); return; }
 
-            using var fbd = new WF.FolderBrowserDialog { Description = "Choose an output folder — one IFC per set" };
+            using var fbd = new WF.FolderBrowserDialog { Description = "Choose an output folder — one IFC per set", SelectedPath = StartFolder() };
             if (fbd.ShowDialog() != WF.DialogResult.OK) return;
             string folder = fbd.SelectedPath;
 
@@ -832,7 +953,7 @@ namespace BIMCamel.UI
                 if (items.Count == 0) { skipped++; continue; }
                 totalItems += items.Count;
                 // Batch honours the compression choice too (v6 Z1) — one archive per set.
-                string baseName = Sanitize(set.DisplayName ?? $"set{setNum}") + "_" + schemaName
+                string baseName = FileNameFor(ModelBaseName(doc), schemaName, set.DisplayName ?? $"set{setNum}")
                                   + (ChkZip.IsChecked == true ? BIMCamel.Ifc.IfcSource.ZipExtension : ".ifc");
                 RunOneExport(System.IO.Path.Combine(folder, baseName), schema, items, unitScale, coords, names, opts, weldTolMetres, coordDecimals, geomMin, splitLimit, summary, $"Set {setNum}/{chosen.Count}");
             }
@@ -858,14 +979,37 @@ namespace BIMCamel.UI
             Props = ChkProps.IsChecked == true, Materials = ChkMaterials.IsChecked == true,
             PsetFilter = SelectedCategories(), ClassMap = maps.Class, ClassificationMap = maps.Classification,
             GroupMap = CmbGroups.SelectedIndex > 0 ? maps.Group : null,
-            ParamMap = BuildParamRules(), Roles = BuildRoles()
+            ParamMap = BuildParamRules(), Roles = BuildRoles(), PropRules = BuildPropRules(),
+            AutoClassify = ChkAutoClassify.IsChecked == true,
+            CategoryCache = new Dictionary<ModelItem, string?>()
         };
+
+        /// <summary>Complete property-rule rows, or null when there are none (the extractors skip
+        /// the whole step on null).</summary>
+        private List<PropertyRule>? BuildPropRules()
+        {
+            var rules = new List<PropertyRule>();
+            foreach (var r in _propRules)
+            {
+                var prop = (r.Property ?? "").Trim(); var cls = (r.IfcClass ?? "").Trim(); var code = (r.Classification ?? "").Trim();
+                bool hasClass = cls.Length > 0 && TypeMapping.Catalog.ContainsKey(cls);
+                if (prop.Length == 0 || (r.Value ?? "").Trim().Length == 0 || (!hasClass && code.Length == 0)) continue;
+                rules.Add(new PropertyRule
+                {
+                    Source = new PropRef(r.Category == AnyCat ? "" : (r.Category ?? "").Trim(), prop),
+                    Test = r.TestKind, Value = r.Value!.Trim(),
+                    ClassKey = hasClass ? TypeMapping.Encode(cls, r.Predefined) : "", Classification = code
+                });
+            }
+            return rules.Count > 0 ? rules : null;
+        }
 
         private void RunOneExport(string basePath, IfcSchema schema, List<ModelItem> items, double unitScale, CoordOptions coords, SpatialNames names,
             ExtractOptions opts, double weldTolMetres, int coordDecimals, (double x, double y, double z) geomMin, long splitLimit, ExportSummary summary, string verb)
         {
             SwitchToDeterminate(items.Count);
             bool quantities = ChkQuantities.IsChecked == true;
+            opts.ClassifyUnitScale = unitScale;   // the rules' shape check reads item boxes in model units
             string author = Environment.UserName;
             bool shareTypeProps = ChkShareTypeProps.IsChecked == true;   // v6 Z3
             PropertyHarvester.SkipEmptyValues = ChkSkipEmptyProps.IsChecked == true;   // v6 Z4
@@ -931,13 +1075,7 @@ namespace BIMCamel.UI
             SetReport(BuildReport(summary, schemaName, scopeLabel, unitName, scopeItemCount, scanMs, exportMs, ruleCount, validation, profile, baseHeap, _peakHeap));
             SetStatus($"Done · {summary.FileCount} file(s) · {summary.ElementCount:N0} elements · {summary.FileSizeBytes / 1024.0:N0} KB · {exportMs:N0} ms");
 
-            string? openTarget = summary.Files.Count == 1 ? summary.Files[0] : (summary.Files.Count > 0 ? System.IO.Path.GetDirectoryName(summary.Files[0]) : null);
-            if (openTarget != null && WF.MessageBox.Show($"Exported {summary.FileCount} file(s) · {summary.ElementCount:N0} elements ({summary.FileSizeBytes / 1024.0:N0} KB).\n\nOpen now?",
-                    "BIMCamel export complete", WF.MessageBoxButtons.YesNo, WF.MessageBoxIcon.Information) == WF.DialogResult.Yes)
-            {
-                try { Process.Start(new ProcessStartInfo(openTarget) { UseShellExecute = true }); }
-                catch { try { Process.Start("explorer.exe", $"\"{openTarget}\""); } catch { } }
-            }
+            ShowOutputs(summary.Files);
         }
 
         private string ScopeLabel() => ScopeIndex() switch
@@ -1228,13 +1366,13 @@ namespace BIMCamel.UI
         private string? PreviewMapping(List<ModelItem>? scope = null)
         {
             var doc = NavApp.ActiveDocument;
-            if (doc == null || doc.Models.Count == 0) { TxtPreview.Text = "Open a model first."; return null; }
+            if (doc == null || doc.Models.Count == 0) { TxtPreview.Text = LblMapSummary.Text = "Open a model first."; return null; }
             try
             {
-                BeginBusyMarquee("Previewing mapping…", cancelable: true);
+                BeginBusyMarquee("Checking the export…", cancelable: true);
                 var schema = CmbSchema.SelectedIndex == 1 ? IfcSchema.Ifc2x3 : IfcSchema.Ifc4;
                 var items = scope ?? ResolveScope(doc, CollectTick);
-                if (items == null) { TxtPreview.Text = "Pick a scope first."; return null; }
+                if (items == null) { TxtPreview.Text = LblMapSummary.Text = "Pick a scope first."; return null; }
 
                 var rules = BuildSetRules();
                 var maps = ResolveMaps(doc, rules);
@@ -1245,7 +1383,10 @@ namespace BIMCamel.UI
                 // No class or classification rule resolved to anything: every item is unmapped and
                 // unclassified by definition, and computing its key (a COM walk for GUID-less items)
                 // would only confirm that, once per element in the scope.
-                if (!maps.Any) unmapped = items.Count;
+                var propRules = BuildPropRules();
+                if (!PropertyRules.AnyClassRule(propRules)) propRules = null;
+                List<ModelItem>? leftOver = propRules != null ? new List<ModelItem>() : null;
+                if (!maps.Any) { unmapped = items.Count; leftOver = propRules != null ? items : null; }
                 else foreach (var it in items)
                 {
                     // ItemKey is an O(tree-depth) COM walk for GUID-less items;
@@ -1261,14 +1402,45 @@ namespace BIMCamel.UI
                         // The silent trap: a class the user mapped that 2x3 cannot represent.
                         if (schema == IfcSchema.Ifc2x3 && TypeMapping.Catalog.TryGetValue(friendly, out var c) && c.Ifc2x3.Length == 0) degraded++;
                     }
-                    else unmapped++;
+                    else { unmapped++; leftOver?.Add(it); }
+                }
+
+                // Property rules fill only what the set rules left empty, so they are tried on the
+                // leftovers alone. Reading properties is the slow part, so a large remainder is
+                // sampled and the counts scaled.
+                int byProp = 0;
+                if (propRules != null && leftOver != null && leftOver.Count > 0)
+                {
+                    SyncPropSource();
+                    const int MaxSample = 20000;
+                    int step = leftOver.Count > MaxSample ? leftOver.Count / MaxSample : 1, seen = 0;
+                    var propClass = new Dictionary<string, int>(StringComparer.Ordinal);
+                    int hits = 0, hitsDegraded = 0;
+                    for (int i = 0; i < leftOver.Count; i += step)
+                    {
+                        if ((++seen & 255) == 0) CollectTick(seen);
+                        string? ck = null, cc = null;
+                        PropertyRules.Apply(leftOver[i], propRules, ref ck, ref cc);
+                        if (string.IsNullOrEmpty(ck)) continue;
+                        hits++;
+                        string friendly = TypeMapping.Friendly(ck!);
+                        propClass.TryGetValue(friendly, out int n); propClass[friendly] = n + 1;
+                        if (schema == IfcSchema.Ifc2x3 && TypeMapping.Catalog.TryGetValue(friendly, out var c) && c.Ifc2x3.Length == 0) hitsDegraded++;
+                    }
+                    double scale = seen > 0 ? (double)leftOver.Count / seen : 0;
+                    byProp = (int)Math.Round(hits * scale);
+                    foreach (var kv in propClass)
+                    {
+                        byClass.TryGetValue(kv.Key, out int n); byClass[kv.Key] = n + (int)Math.Round(kv.Value * scale);
+                    }
+                    mapped += byProp; unmapped -= byProp; degraded += (int)Math.Round(hitsDegraded * scale);
                 }
 
                 var facts = new PreflightFacts
                 {
                     When = DateTime.Now, ScopeLabel = ScopeLabel(), Fingerprint = PreflightFingerprint(),
                     Items = items.Count, Mapped = mapped, Unmapped = unmapped, Degraded = degraded,
-                    Classified = classified, Rules = rules.Count,
+                    Classified = classified, Rules = rules.Count + (propRules?.Count ?? 0),
                     ByClass = new Dictionary<string, int>(byClass, StringComparer.Ordinal),
                     HiddenExcluded = ItemCollector.HiddenSkipped,
                 };
@@ -1276,9 +1448,10 @@ namespace BIMCamel.UI
                 var sb = new StringBuilder();
                 sb.AppendLine($"Scope       : {ScopeLabel()}   {items.Count:N0} items");
                 sb.AppendLine($"Schema      : {(schema == IfcSchema.Ifc4 ? "IFC4" : "IFC2x3")}");
-                sb.AppendLine($"Rules       : {rules.Count} set rule(s)");
+                sb.AppendLine($"Rules       : {rules.Count} set rule(s)" + (propRules != null ? $", {propRules.Count} property rule(s)" : ""));
                 sb.AppendLine();
                 sb.AppendLine($"Mapped      : {mapped:N0}" + (items.Count > 0 ? $"  ({100.0 * mapped / items.Count:0.#}%)" : ""));
+                if (byProp > 0) sb.AppendLine($"     · {byProp:N0} of them by property rules" + (leftOver!.Count > 20000 ? " (estimated from a sample)" : ""));
                 int proxy = unmapped + degraded;
                 if (proxy > 0)
                 {
@@ -1303,11 +1476,13 @@ namespace BIMCamel.UI
                 sb.Append(GeometryEstimate(items, facts, CollectTick));
 
                 TxtPreview.Text = sb.ToString().Replace("\n", Environment.NewLine);
-                SetStatus($"Preview: {mapped:N0} mapped, {proxy:N0} proxy of {items.Count:N0} items.");
+                SetStatus($"Check: {mapped:N0} mapped, {proxy:N0} proxy of {items.Count:N0} items.");
+                LblMapSummary.Text = $"Last check {DateTime.Now:HH:mm}: {mapped:N0} of {items.Count:N0} elements matched a rule, {proxy:N0} will export as proxy. Full breakdown: Export tab, Pre-flight.";
                 _preflight = facts;
                 RenderPreflight();
+                RenderStoreys(doc, facts);
                 double pct = items.Count > 0 ? 100.0 * mapped / items.Count : 0;
-                return $"Preview        : {mapped:N0} of {items.Count:N0} elements map ({pct:0.#}%), {proxy:N0} proxy — details on the Mapping tab";
+                return $"Full check     : {mapped:N0} of {items.Count:N0} elements map ({pct:0.#}%), {proxy:N0} proxy — details under Pre-flight";
             }
             catch (OperationCanceledException)
             {
@@ -1315,13 +1490,13 @@ namespace BIMCamel.UI
                 // instead of reporting itself as a step that merely "did not run".
                 // _preflight is untouched — the panel keeps the previous, correctly
                 // fingerprinted facts rather than inventing partial ones.
-                TxtPreview.Text = "Preview stopped before it finished.";
+                TxtPreview.Text = LblMapSummary.Text = "The check stopped before it finished.";
                 throw;
             }
             catch (Exception ex)
             {
-                TxtPreview.Text = "Preview failed: " + ex.Message;
-                SetStatus("Preview failed: " + ex.Message);
+                TxtPreview.Text = LblMapSummary.Text = "The check failed: " + ex.Message;
+                SetStatus("Check failed: " + ex.Message);
                 return null;
             }
             finally { EndBusy(); }
@@ -1342,7 +1517,7 @@ namespace BIMCamel.UI
             // Distinct level VALUES, not just presence: a wrong Level role often
             // still "has a value" on every element — one bogus storey. The count
             // of distinct storeys is the number that exposes it instantly.
-            var levels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var levels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < items.Count; i += step)
             {
                 try
@@ -1350,7 +1525,12 @@ namespace BIMCamel.UI
                     var rv = PropertyHarvester.ReadRoles(items[i], roles);
                     n++;
                     if (!string.IsNullOrWhiteSpace(rv.Type)) type++;
-                    if (!string.IsNullOrWhiteSpace(rv.Level)) { level++; levels.Add(rv.Level.Trim()); }
+                    if (!string.IsNullOrWhiteSpace(rv.Level))
+                    {
+                        level++;
+                        string lv = rv.Level.Trim();
+                        levels.TryGetValue(lv, out int seen); levels[lv] = seen + 1;
+                    }
                     if (!string.IsNullOrWhiteSpace(rv.Material)) mat++;
                     if (!string.IsNullOrWhiteSpace(rv.Classification)) cls++;
                 }
@@ -1362,6 +1542,7 @@ namespace BIMCamel.UI
                 facts.TypePct = 100 * type / n; facts.LevelPct = 100 * level / n;
                 facts.MatPct = 100 * mat / n; facts.ClsPct = 100 * cls / n;
                 facts.DistinctLevels = levels.Count;
+                facts.LevelCounts = levels;
                 facts.RolesConfigured = true;
             }
             if (n == 0) return "";
@@ -1443,6 +1624,8 @@ namespace BIMCamel.UI
             /// degradation can be RE-derived against the schema selected NOW —
             /// baking it at preview time made the row lie after a schema flip.</summary>
             public Dictionary<string, int>? ByClass;
+            /// <summary>Storey name → elements carrying it in the role sample.</summary>
+            public Dictionary<string, int>? LevelCounts;
         }
         private PreflightFacts? _preflight;
 
@@ -1451,19 +1634,20 @@ namespace BIMCamel.UI
         private string PreflightFingerprint() =>
             ScopeIndex() + "|" + CmbSavedSet.SelectedIndex + "|" +
             string.Join(",", _batchItems.Where(b => b.Checked).Select(b => b.Name)) + "|" +
-            GridToText() + "|" + RolesToText() + "|" + CmbPropSource.SelectedIndex;
+            GridToText() + "|" + PropRulesToText() + "|" + RolesToText() + "|" + CmbPropSource.SelectedIndex;
 
         private void RenderPreflight()
         {
             PreflightHost.Children.Clear();
+            _warnTabs.Clear();
             var doc = NavApp.ActiveDocument;
             bool schema2x3 = CmbSchema.SelectedIndex == 1;
             var f = _preflight;
             bool stale = f != null && f.Fingerprint != PreflightFingerprint();
 
             LblPreflightWhen.Text = f == null
-                ? "Checks that need a scan fill in after ✨ Smart setup (above) or 🔍 Preview (Mapping tab)."
-                : $"Scanned {f.When:HH:mm} · {f.ScopeLabel}" + (stale ? "  —  ⚠ settings changed since; re-run Smart setup or Preview" : "");
+                ? "Checks that need a scan fill in after Smart setup or Run full check."
+                : $"Scanned {f.When:HH:mm} · {f.ScopeLabel}" + (stale ? "  —  ⚠ settings changed since; re-run Smart setup or Run full check" : "");
 
             Brush ok = (Brush)FindResource("Ok"), warn = (Brush)FindResource("AmberTx"),
                   info = (Brush)FindResource("Muted"), dim = (Brush)FindResource("Faint");
@@ -1540,13 +1724,13 @@ namespace BIMCamel.UI
             // CONTRADICTIONS: data that will silently not be written.
             var coords = BuildCoords();
             if (ChkGeoref.IsChecked != true && coords.HasGeorefData)
-                PreflightRow(warn, "Georeferencing — CRS/survey point filled in, but writing is OFF: nothing will be written", "→ Coordinates");
+                PreflightRow(warn, "Georeferencing — CRS/survey point filled in, but writing is OFF: nothing will be written", "→ Project");
             else if (ChkGeoref.IsChecked != true)
                 PreflightRow(info, "Georeferencing — off (placement still carries the world position)");
             else if (schema2x3 && coords.HasGeorefData)
-                PreflightRow(warn, "Georeferencing — configured, but IfcMapConversion does not exist in IFC2x3: it will not be written. Export IFC4 to keep it.", "→ Coordinates");
+                PreflightRow(warn, "Georeferencing — configured, but IfcMapConversion does not exist in IFC2x3: it will not be written. Export IFC4 to keep it.", "→ Project");
             else if (!coords.HasGeorefData)
-                PreflightRow(info, "Georeferencing — on, but no CRS or survey point set: nothing to write (fine on a local grid)", "→ Coordinates");
+                PreflightRow(info, "Georeferencing — on, but no CRS or survey point set: nothing to write (fine on a local grid)", "→ Project");
             else
                 PreflightRow(ok, $"Georeferencing — IfcMapConversion · {(string.IsNullOrWhiteSpace(coords.CrsName) ? "local CRS" : coords.CrsName)}");
 
@@ -1588,11 +1772,11 @@ namespace BIMCamel.UI
                         // One unitScale is applied to EVERY model at export
                         // (ResolveUnits) — mixed declared units means at least
                         // one discipline exports at the wrong size.
-                        PreflightRow(warn, $"Federation — {models.Count} models with MIXED declared units; one scale ({unitName}) is applied to all", "→ Coordinates (origins report)");
+                        PreflightRow(warn, $"Federation — {models.Count} models with MIXED declared units; one scale ({unitName}) is applied to all", "→ Project (origins report)");
                     else if (models.Count > 1 && !sameOrigin)
                         // Different origins are how correct federation positions
                         // disciplines — informational, not a warning.
-                        PreflightRow(info, $"Federation — {models.Count} models, differing origins (normal) · units {unitName}", "→ Coordinates (origins report)");
+                        PreflightRow(info, $"Federation — {models.Count} models, differing origins (normal) · units {unitName}", "→ Project (origins report)");
                     else
                         PreflightRow(ok, models.Count > 1
                             ? $"Federation — {models.Count} models agree on origin and units · {unitName}"
@@ -1612,6 +1796,7 @@ namespace BIMCamel.UI
                 PreflightRow(info, schema2x3
                     ? "Schema — IFC2x3 (no georeferencing entity; some classes unavailable — IFC4 recommended unless the receiver requires 2x3)"
                     : "Schema — IFC4");
+            UpdateTabDots();
         }
 
         /// <summary>One ✓/⚠ row: coloured dot, wrapping text, optional go-fix-it pointer.</summary>
@@ -1626,11 +1811,77 @@ namespace BIMCamel.UI
             if (jump != null)
             {
                 body.Inlines.Add("  ");
-                body.Inlines.Add(new System.Windows.Documents.Run(jump) { Foreground = (Brush)FindResource("Accent") });
+                // A real link: it used to be blue text that looked clickable and was not, so the
+                // user had to find the tab and the field by themselves.
+                var link = new System.Windows.Documents.Hyperlink(new System.Windows.Documents.Run(jump))
+                {
+                    Foreground = (Brush)FindResource("Accent"), TextDecorations = null, Cursor = Cursors.Hand
+                };
+                link.Click += (_, _) => JumpTo(jump);
+                body.Inlines.Add(link);
+                var tab = JumpTab(jump);
+                if (tab != null && ReferenceEquals(tone, FindResource("AmberTx"))) _warnTabs.Add(tab);
             }
             Grid.SetColumn(dot, 0); Grid.SetColumn(body, 1);
             grid.Children.Add(dot); grid.Children.Add(body);
             PreflightHost.Children.Add(grid);
+        }
+
+        /// <summary>Tabs that hold the fix for a current pre-flight warning; each gets a dot.</summary>
+        private readonly HashSet<TabItem> _warnTabs = new HashSet<TabItem>();
+
+        private TabItem? JumpTab(string jump)
+        {
+            if (jump.Contains("Mapping")) return TabMapping;
+            if (jump.Contains("Data")) return TabData;
+            if (jump.Contains("Project")) return TabCoords;
+            if (jump.Contains("Export")) return TabExport;
+            return null;
+        }
+
+        private void JumpTo(string jump)
+        {
+            var tab = JumpTab(jump);
+            if (tab == null) return;
+            Tabs.SelectedItem = tab;
+            // Land on the field, not just the tab, where the row names one.
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (jump.Contains("Level role")) { _parLevel.BringIntoView(); _parLevel.Focus(); }
+                else if (jump.Contains("origins report")) OnFederationReport(this, new RoutedEventArgs());
+                else if (jump.Contains("Schema")) { CmbSchema.BringIntoView(); CmbSchema.Focus(); }
+                else if (ReferenceEquals(tab, TabCoords)) ChkGeoref.BringIntoView();
+            }), DispatcherPriority.Loaded);
+        }
+
+        private void UpdateTabDots()
+        {
+            DotData.Visibility = _warnTabs.Contains(TabData) ? Visibility.Visible : Visibility.Collapsed;
+            DotMapping.Visibility = _warnTabs.Contains(TabMapping) ? Visibility.Visible : Visibility.Collapsed;
+            DotCoords.Visibility = _warnTabs.Contains(TabCoords) ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        /// <summary>The storeys the export will create, as the last check saw them, with the
+        /// elevation the model's grids give each one.</summary>
+        private void RenderStoreys(Document doc, PreflightFacts f)
+        {
+            if (f.LevelCounts == null || f.LevelCounts.Count == 0)
+            {
+                TxtStoreys.Text = f.RolesConfigured
+                    ? "No element in the sample has a level. Check the Level role on the Data tab."
+                    : "No Level role is set, so every element goes on the fallback storey.";
+                return;
+            }
+            Dictionary<string, double>? elev = null;
+            try { elev = ModelSurvey.LevelElevations(doc, ResolveUnits(doc).scale); } catch { }
+            var sb = new StringBuilder();
+            sb.AppendLine(f.SamplePartial ? $"From a sample of {f.RoleSample:N0} elements:" : $"From all {f.RoleSample:N0} elements:");
+            foreach (var kv in f.LevelCounts.OrderBy(k => elev != null && elev.TryGetValue(k.Key, out var kz) ? kz : double.MaxValue).ThenBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                string zs = elev != null && elev.TryGetValue(kv.Key, out var e) ? $"{e,9:0.000} m" : "  (no grid level)";
+                sb.AppendLine($"{kv.Key,-28} {zs}   {kv.Value,7:N0} el.");
+            }
+            TxtStoreys.Text = sb.ToString().TrimEnd().Replace("\n", Environment.NewLine);
         }
 
         // ── base point preview ────────────────────────────────────────────────────
@@ -1694,6 +1945,8 @@ namespace BIMCamel.UI
             sb.AppendLine($"Class rules : {ruleCount} set rule(s)");
             if (s.GuidCollisions > 0)
                 sb.AppendLine($"GlobalIds   : {s.GuidCollisions:N0} element(s) shared a GlobalId with another (model appended twice?) and got a derived one");
+            var auto = RuleClassifier.Report();
+            if (auto.Length > 0) sb.AppendLine(auto);
             sb.Append(MappingLines(s));
             if (s.Revision != null)
             {
@@ -1855,17 +2108,12 @@ namespace BIMCamel.UI
             {
                 using var sfd = new WF.SaveFileDialog { Title = "Save BIMCamel profile", Filter = "BIMCamel profile (*.json)|*.json", FileName = "bimcamel_profile.json", DefaultExt = "json" };
                 if (sfd.ShowDialog() != WF.DialogResult.OK) return;
-                ExportProfile.Save(Capture(), sfd.FileName); SetStatus("Profile saved.");
-            }
-            catch (Exception ex) { WF.MessageBox.Show(ex.Message, "BIMCamel", WF.MessageBoxButtons.OK, WF.MessageBoxIcon.Error); }
-        }
-        private void OnLoadProfile(object s, RoutedEventArgs e)
-        {
-            try
-            {
-                using var ofd = new WF.OpenFileDialog { Title = "Load BIMCamel profile", Filter = "BIMCamel profile (*.json)|*.json" };
-                if (ofd.ShowDialog() != WF.DialogResult.OK) return;
-                Apply(ExportProfile.Load(ofd.FileName)); SetStatus("Profile loaded.");
+                var p = Capture();
+                ExportProfile.Save(p, sfd.FileName);
+                _ui.ProfileName = System.IO.Path.GetFileNameWithoutExtension(sfd.FileName);
+                _profileJson = ExportProfile.ToJson(p);
+                SaveSession();
+                SetStatus("Profile saved.");
             }
             catch (Exception ex) { WF.MessageBox.Show(ex.Message, "BIMCamel", WF.MessageBoxButtons.OK, WF.MessageBoxIcon.Error); }
         }
@@ -1880,9 +2128,9 @@ namespace BIMCamel.UI
             SkipEmptyProps = ChkSkipEmptyProps.IsChecked == true,
             PropSource = CmbPropSource.SelectedIndex,
             MinSize = ChkMinSize.IsChecked == true, MinSizeMm = (TxtMinSizeMm.Text ?? "").Trim(),
-            Validate = ChkValidate.IsChecked == true, Quantities = ChkQuantities.IsChecked == true, Mapping = GridToText(),
+            Validate = ChkValidate.IsChecked == true, Quantities = ChkQuantities.IsChecked == true, NoAutoClassify = ChkAutoClassify.IsChecked != true, Mapping = GridToText(),
             Crs = (TxtCrs.Text ?? "").Trim(), SurveyE = ParseD(TxtSurveyE.Text), SurveyN = ParseD(TxtSurveyN.Text), SurveyElev = ParseD(TxtSurveyElev.Text),
-            Roles = RolesToText(), ParamRules = ParamRulesToText(),
+            Roles = RolesToText(), ParamRules = ParamRulesToText(), PropRules = PropRulesToText(),
             ProjectName = TxtProject.Text ?? "", SiteName = TxtSite.Text ?? "", BuildingName = TxtBuilding.Text ?? "", StoreyName = TxtStorey.Text ?? "",
             ClassificationSystem = (TxtClassSystem.Text ?? "").Trim(),
             ClassificationSource = (TxtClassSource.Text ?? "").Trim(),
@@ -1890,7 +2138,8 @@ namespace BIMCamel.UI
             ClassificationEditionDate = (TxtClassEditionDate.Text ?? "").Trim(),
             ClassificationLocation = (TxtClassLocation.Text ?? "").Trim(),
             Split = ChkSplit.IsChecked == true, SplitMb = TxtSplitMb.Text ?? "200",
-            Groups = CmbGroups.SelectedIndex
+            Groups = CmbGroups.SelectedIndex,
+            FileNameTemplate = (TxtFileName.Text ?? "").Trim()
         };
         private void Apply(ExportProfile p)
         {
@@ -1901,7 +2150,7 @@ namespace BIMCamel.UI
             CmbBasePoint.SelectedIndex = Clamp(p.BasePoint, CmbBasePoint.Items.Count);
             TxtE.Text = Inv(p.CustomE); TxtN.Text = Inv(p.CustomN); TxtElev.Text = Inv(p.CustomElev); TxtRot.Text = Inv(p.Rotation);
             ChkGeoref.IsChecked = p.Georef; ChkProps.IsChecked = p.Props; ChkMaterials.IsChecked = p.Materials;
-            ChkInstancing.IsChecked = p.Instancing; ChkValidate.IsChecked = p.Validate; ChkQuantities.IsChecked = p.Quantities;
+            ChkInstancing.IsChecked = p.Instancing; ChkValidate.IsChecked = p.Validate; ChkQuantities.IsChecked = p.Quantities; ChkAutoClassify.IsChecked = !p.NoAutoClassify;
             ChkFastInstancing.IsChecked = p.FastInstancing; ChkMergeParts.IsChecked = p.MergeParts;
             ChkZip.IsChecked = p.Zip; ChkShareTypeProps.IsChecked = p.ShareTypeProps;
             ChkSkipEmptyProps.IsChecked = p.SkipEmptyProps;
@@ -1920,8 +2169,10 @@ namespace BIMCamel.UI
             TxtClassLocation.Text = p.ClassificationLocation ?? "";
             ChkSplit.IsChecked = p.Split; if (!string.IsNullOrWhiteSpace(p.SplitMb)) TxtSplitMb.Text = p.SplitMb;
             CmbGroups.SelectedIndex = Clamp(p.Groups, CmbGroups.Items.Count);
+            TxtFileName.Text = string.IsNullOrWhiteSpace(p.FileNameTemplate) ? DefaultNameTemplate : p.FileNameTemplate;
             TextToRoles(p.Roles); TextToParamRules(p.ParamRules);
             TextToGrid(p.Mapping);
+            TextToPropRules(p.PropRules);
         }
 
         // Mapping grid: "set => class :: predefined @@ classification". The class half is now
@@ -1968,7 +2219,7 @@ namespace BIMCamel.UI
         {
             var sb = new StringBuilder();
             void Line(ComboBox cat, ComboBox par) => sb.AppendLine(((cat.Text == AnyCat ? "" : cat.Text) ?? "") + "|" + (par.Text ?? ""));
-            Line(_catType, _parType); Line(_catLevel, _parLevel); Line(_catMat, _parMat); Line(_catCls, _parCls);
+            Line(_catType, _parType); Line(_catLevel, _parLevel); Line(_catMat, _parMat); Line(_catCls, _parCls); Line(_catName, _parName);
             return sb.ToString();
         }
         private void TextToRoles(string? text)
@@ -1984,7 +2235,9 @@ namespace BIMCamel.UI
                 cat.Text = c.Length == 0 ? AnyCat : c;
                 par.Text = lines[i].Substring(bar + 1).Trim();
             }
-            Set(0, _catType, _parType); Set(1, _catLevel, _parLevel); Set(2, _catMat, _parMat); Set(3, _catCls, _parCls);
+            // A profile from before the name role has four lines; it means "the Navisworks name".
+            _catName.Text = AnyCat; _parName.Text = "";
+            Set(0, _catType, _parType); Set(1, _catLevel, _parLevel); Set(2, _catMat, _parMat); Set(3, _catCls, _parCls); Set(4, _catName, _parName);
         }
 
         // Parameter rules — one "srcCategory | srcProperty | targetPset | targetName" per line.
@@ -2014,6 +2267,40 @@ namespace BIMCamel.UI
                     SourceProperty = f[1].Trim(),
                     TargetPset = f.Length > 2 ? f[2].Trim() : "",
                     TargetName = f.Length > 3 ? f[3].Trim() : ""
+                });
+            }
+        }
+
+        // Property rules — "category|property|test|value|class|predefined|classification" per line.
+        private string PropRulesToText()
+        {
+            var sb = new StringBuilder();
+            foreach (var r in _propRules)
+            {
+                var prop = (r.Property ?? "").Trim();
+                if (prop.Length == 0) continue;
+                string cat = r.Category == AnyCat ? "" : (r.Category ?? "").Trim();
+                sb.AppendLine(string.Join("|", cat, prop, r.Test, (r.Value ?? "").Trim(), (r.IfcClass ?? "").Trim(),
+                    (r.Predefined ?? "").Trim(), (r.Classification ?? "").Trim()));
+            }
+            return sb.ToString();
+        }
+        private void TextToPropRules(string? text)
+        {
+            _propRules.Clear();
+            if (string.IsNullOrWhiteSpace(text)) return;
+            foreach (var line in text!.Replace("\r", "").Split('\n'))
+            {
+                var f = line.Split('|');
+                if (f.Length < 4 || f[1].Trim().Length == 0) continue;
+                string F(int i) => i < f.Length ? f[i].Trim() : "";
+                var cls = F(4);
+                if (cls.Length > 0 && !TypeMapping.Catalog.ContainsKey(cls)) cls = "";
+                _propRules.Add(new PropRuleRow
+                {
+                    Category = F(0).Length == 0 ? AnyCat : F(0), Property = F(1),
+                    Test = Array.IndexOf(PropRuleRow.SharedTests, F(2)) >= 0 ? F(2) : "equals",
+                    Value = F(3), IfcClass = cls, Predefined = F(5), Classification = F(6)
                 });
             }
         }

@@ -48,6 +48,9 @@ namespace BIMCamel.Profiles
         [DataMember] public string MinSizeMm = "5";
         [DataMember] public bool Validate;
         [DataMember] public bool Quantities = true;
+        /// <summary>Stored inverted so a profile saved before the option existed (no member, so
+        /// false) loads with auto-classify ON, its default.</summary>
+        [DataMember] public bool NoAutoClassify;
         [DataMember] public string Mapping = "";
 
         // ── real-world georeferencing (kept apart from the base point above) ──────────────
@@ -60,10 +63,14 @@ namespace BIMCamel.Profiles
         // Property roles, parameter rules and the spatial names drive IfcBuildingStorey,
         // IfcElementType, IfcMaterial and IfcClassificationReference — arguably the most valuable
         // configuration in the tool, and none of it survived a save/load round trip before.
-        /// <summary>Roles as "cat|prop" per line: Type, Level, Material, Classification.</summary>
+        /// <summary>Roles as "cat|prop" per line: Type, Level, Material, Classification, Name
+        /// (the fifth line is absent in older profiles).</summary>
         [DataMember] public string Roles = "";
         /// <summary>Parameter rules, one per line: "srcCategory | srcProperty | targetPset | targetName".</summary>
         [DataMember] public string ParamRules = "";
+        /// <summary>Rules by property value, one per line:
+        /// "category | property | test | value | class | predefined | classification".</summary>
+        [DataMember] public string PropRules = "";
         [DataMember] public string ProjectName = "";
         [DataMember] public string SiteName = "";
         [DataMember] public string BuildingName = "";
@@ -81,12 +88,25 @@ namespace BIMCamel.Profiles
         [DataMember] public string SplitMb = "200";
         /// <summary>0 = none, 1 = IfcGroup, 2 = IfcSystem, 3 = IfcZone.</summary>
         [DataMember] public int Groups;
+        /// <summary>Output file name template ({model}, {schema}, {set}, {date}). Blank in an older
+        /// profile, which falls back to the name the exporter always used.</summary>
+        [DataMember] public string FileNameTemplate = "";
 
         public static void Save(ExportProfile p, string path)
         {
             var ser = new DataContractJsonSerializer(typeof(ExportProfile));
             using var fs = File.Create(path);
             ser.WriteObject(fs, p);
+        }
+
+        /// <summary>The same JSON <see cref="Save"/> writes, as a string — for the auto-saved last
+        /// settings and for telling whether the pane still matches the profile it loaded.</summary>
+        public static string ToJson(ExportProfile p)
+        {
+            var ser = new DataContractJsonSerializer(typeof(ExportProfile));
+            using var ms = new MemoryStream();
+            ser.WriteObject(ms, p);
+            return System.Text.Encoding.UTF8.GetString(ms.ToArray());
         }
 
         public static ExportProfile Load(string path)
