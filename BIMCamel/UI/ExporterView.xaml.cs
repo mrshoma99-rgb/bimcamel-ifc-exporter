@@ -1216,7 +1216,11 @@ namespace BIMCamel.UI
 
                 int mapped = 0, unmapped = 0, degraded = 0, classified = 0, walked = 0;
                 var byClass = new Dictionary<string, int>(StringComparer.Ordinal);
-                foreach (var it in items)
+                // No class or classification rule resolved to anything: every item is unmapped and
+                // unclassified by definition, and computing its key (a COM walk for GUID-less items)
+                // would only confirm that, once per element in the scope.
+                if (!maps.Any) unmapped = items.Count;
+                else foreach (var it in items)
                 {
                     // ItemKey is an O(tree-depth) COM walk for GUID-less items;
                     // tick so the UI pumps through large scopes.
