@@ -81,7 +81,20 @@ namespace BIMCamel.UI
         private string _set = "", _cls = "", _predef = "", _classif = "";
 
         public string Set { get => _set; set { _set = value ?? ""; OnChanged(nameof(Set)); } }
-        public string IfcClass { get => _cls; set { _cls = value ?? ""; OnChanged(nameof(IfcClass)); } }
+        public string IfcClass
+        {
+            get => _cls;
+            set
+            {
+                _cls = value ?? ""; OnChanged(nameof(IfcClass));
+                PredefinedOptions.Clear();
+                foreach (var v in BIMCamel.Data.TypeMapping.PredefinedValues(_cls)) PredefinedOptions.Add(v);
+            }
+        }
+
+        /// <summary>The PredefinedType values IFC4 defines for the chosen class, offered as picks in
+        /// an editable box. Free text still goes through <c>TypeMapping.NormalizePredef</c>.</summary>
+        public ObservableCollection<string> PredefinedOptions { get; } = new ObservableCollection<string>();
         public string Predefined { get => _predef; set { _predef = value ?? ""; OnChanged(nameof(Predefined)); } }
 
         /// <summary>

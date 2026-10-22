@@ -148,6 +148,20 @@
       </Setter>
     </Style>
 
+    <!-- ════ Link-style toggle (show / hide a detail block) ════ -->
+    <Style x:Key="LinkToggle" TargetType="ToggleButton">
+      <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ToggleButton">
+            <TextBlock Background="Transparent" Text="{TemplateBinding Content}"/>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
     <!-- ════ Primary export button ════ -->
     <Style x:Key="PrimaryBtn" TargetType="Button">
       <Setter Property="Foreground" Value="White"/>
@@ -591,8 +605,23 @@
                     <TextBlock Style="{StaticResource H3}" Text="PRE-FLIGHT"/>
                   </StackPanel>
                   <TextBlock x:Name="LblPreflightWhen" Style="{StaticResource Hint}" Margin="0,0,0,7"
-                             Text="Checks that need a scan fill in after ✨ Smart setup (above) or 🔍 Preview (Mapping tab)."/>
+                             Text="Checks that need a scan fill in after Smart setup or Run full check."/>
                   <StackPanel x:Name="PreflightHost"/>
+                  <!-- The mapping preview used to live on the Mapping tab with its own
+                       console, while the rows it fills lived here: checking meant two
+                       places. Now it runs here, and its full breakdown folds out below. -->
+                  <WrapPanel Margin="0,9,0,0">
+                    <Button Style="{StaticResource Btn}" Content="Run full check" Click="OnPreviewMapping"
+                            ToolTip="Resolve the mapping rules and roles against the scope above, without writing anything: how many elements map, to which classes, how many fall back to proxy, property coverage and geometry size. Takes about as long as collecting the scope once."/>
+                    <ToggleButton x:Name="TglCheckDetails" Style="{StaticResource LinkToggle}" Content="Show details" VerticalAlignment="Center" Margin="4,0,0,0"
+                                  ToolTip="Show the full breakdown from the last check."/>
+                  </WrapPanel>
+                  <Border x:Name="CheckDetails" Background="{DynamicResource ConsoleBg}" CornerRadius="9" Padding="11" Margin="0,8,0,0" MaxHeight="220" Visibility="Collapsed">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                      <TextBlock x:Name="TxtPreview" Foreground="{DynamicResource ConsoleTx}" FontFamily="Consolas"
+                                 FontSize="11" TextWrapping="NoWrap" Text="Run full check to see how many elements map, and how many will export as IfcBuildingElementProxy."/>
+                    </ScrollViewer>
+                  </Border>
                 </StackPanel>
               </Border>
 
@@ -834,7 +863,8 @@
                     </DataGridTemplateColumn>
                     <DataGridTemplateColumn Header="Predefined type" Width="0.7*" MinWidth="78">
                       <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                        <TextBox Text="{Binding Predefined, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                        <ComboBox IsEditable="True" ItemsSource="{Binding PredefinedOptions}" Text="{Binding Predefined, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"
+                                  ToolTip="IFC PredefinedType for this class. Pick from the values IFC4 defines for it, or type your own."/>
                       </DataTemplate></DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
                     <DataGridTemplateColumn Header="Classification" Width="0.7*" MinWidth="78">
@@ -851,15 +881,12 @@
                 <WrapPanel Margin="0,10,0,0">
                   <Button Style="{StaticResource Btn}" Content="+ Add rule" Click="OnMapAdd" ToolTip="Add a new set→class rule."/>
                   <Button Style="{StaticResource Btn}" Content="Remove selected" Click="OnMapRemove" ToolTip="Remove the selected rule."/>
+                  <Button Style="{StaticResource Btn}" Content="↑" Click="OnMapUp" ToolTip="Move the selected rule up. When an element is in two mapped sets, the rule higher in this list wins."/>
+                  <Button Style="{StaticResource Btn}" Content="↓" Click="OnMapDown" ToolTip="Move the selected rule down. When an element is in two mapped sets, the rule higher in this list wins."/>
                   <Button Style="{StaticResource Btn}" Content="Clear all" Click="OnMapClear" ToolTip="Remove every rule."/>
-                  <Button Style="{StaticResource Btn}" Content="🔍 Preview" Click="OnPreviewMapping" ToolTip="Resolve the rules against the current scope and report, below, how many elements map, the per-class breakdown, and property coverage — before exporting. Smart setup runs this too."/>
+                  <Button Style="{StaticResource Btn}" Content="Check these rules" Click="OnPreviewMapping" ToolTip="Resolve the rules against the export scope without writing anything. The one-line result shows here; the full breakdown is under Pre-flight on the Export tab."/>
                 </WrapPanel>
-                <Border Background="{DynamicResource ConsoleBg}" CornerRadius="9" Padding="11" Margin="0,4,0,0" MaxHeight="200">
-                  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
-                    <TextBlock x:Name="TxtPreview" Foreground="{DynamicResource ConsoleTx}" FontFamily="Consolas"
-                               FontSize="11" TextWrapping="NoWrap" Text="Preview shows how many elements map, and how many will export as IfcBuildingElementProxy."/>
-                  </ScrollViewer>
-                </Border>
+                <TextBlock x:Name="LblMapSummary" Style="{StaticResource Hint}" Text="Check these rules to see how many elements they map."/>
               </StackPanel>
             </Border>
 

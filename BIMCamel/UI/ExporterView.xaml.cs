@@ -137,6 +137,9 @@ namespace BIMCamel.UI
             TxtElev.TextChanged += (_, _) => PreviewBasePoint();
             void SyncProps() => LstCategories.IsEnabled = CmbPropSource.IsEnabled = ChkProps.IsChecked == true;
             ChkProps.Checked += (_, _) => SyncProps(); ChkProps.Unchecked += (_, _) => SyncProps(); SyncProps();
+            void SyncDetails() => CheckDetails.Visibility = TglCheckDetails.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+            TglCheckDetails.Checked += (_, _) => { SyncDetails(); TglCheckDetails.Content = "Hide details"; };
+            TglCheckDetails.Unchecked += (_, _) => { SyncDetails(); TglCheckDetails.Content = "Show details"; };
             void SyncGeoref() => GeorefRow.Visibility = ChkGeoref.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
             ChkGeoref.Checked += (_, _) => SyncGeoref(); ChkGeoref.Unchecked += (_, _) => SyncGeoref(); SyncGeoref();
         }
@@ -369,11 +372,21 @@ namespace BIMCamel.UI
         private void OnMapAdd(object s, RoutedEventArgs e) => _mapRows.Add(new MapRow());
         private void OnMapRemove(object s, RoutedEventArgs e) { if (GridMap.SelectedItem is MapRow r) _mapRows.Remove(r); }
         private void OnMapClear(object s, RoutedEventArgs e) => _mapRows.Clear();
+        private void OnMapUp(object s, RoutedEventArgs e) => MoveMapRow(-1);
+        private void OnMapDown(object s, RoutedEventArgs e) => MoveMapRow(+1);
+        private void MoveMapRow(int delta)
+        {
+            if (!(GridMap.SelectedItem is MapRow r)) { SetStatus("Select a rule to move."); return; }
+            int i = _mapRows.IndexOf(r), j = i + delta;
+            if (i < 0 || j < 0 || j >= _mapRows.Count) return;
+            _mapRows.Move(i, j);
+            GridMap.SelectedItem = r;
+        }
         private void OnPreviewMapping(object s, RoutedEventArgs e)
         {
             _cancelRequested = false;
             try { PreviewMapping(); }
-            catch (OperationCanceledException) { SetStatus("Preview stopped."); }
+            catch (OperationCanceledException) { SetStatus("Check stopped."); }
             finally { EndBusy(); }
         }
         private void OnFederationReport(object s, RoutedEventArgs e)
@@ -443,7 +456,7 @@ namespace BIMCamel.UI
                 // summary, and keep whatever error the step left in the status
                 // line instead of overwriting it with "complete".
                 var digest = PreviewMapping(items);
-                sb.AppendLine(digest ?? "Preview        : did not run — open the Mapping tab for the reason");
+                sb.AppendLine(digest ?? "Full check     : did not run — see the status line for the reason");
 
                 sb.Append("Review the ✨ AUTO sections on Data and Mapping, then Export.");
                 TxtSmartSummary.Text = sb.ToString().Replace("\n", Environment.NewLine);
@@ -1287,13 +1300,13 @@ namespace BIMCamel.UI
         private string? PreviewMapping(List<ModelItem>? scope = null)
         {
             var doc = NavApp.ActiveDocument;
-            if (doc == null || doc.Models.Count == 0) { TxtPreview.Text = "Open a model first."; return null; }
+            if (doc == null || doc.Models.Count == 0) { TxtPreview.Text = LblMapSummary.Text = "Open a model first."; return null; }
             try
             {
-                BeginBusyMarquee("Previewing mapping…", cancelable: true);
+                BeginBusyMarquee("Checking the export…", cancelable: true);
                 var schema = CmbSchema.SelectedIndex == 1 ? IfcSchema.Ifc2x3 : IfcSchema.Ifc4;
                 var items = scope ?? ResolveScope(doc, CollectTick);
-                if (items == null) { TxtPreview.Text = "Pick a scope first."; return null; }
+                if (items == null) { TxtPreview.Text = LblMapSummary.Text = "Pick a scope first."; return null; }
 
                 var rules = BuildSetRules();
                 var maps = ResolveMaps(doc, rules);
@@ -1362,11 +1375,12 @@ namespace BIMCamel.UI
                 sb.Append(GeometryEstimate(items, facts, CollectTick));
 
                 TxtPreview.Text = sb.ToString().Replace("\n", Environment.NewLine);
-                SetStatus($"Preview: {mapped:N0} mapped, {proxy:N0} proxy of {items.Count:N0} items.");
+                SetStatus($"Check: {mapped:N0} mapped, {proxy:N0} proxy of {items.Count:N0} items.");
+                LblMapSummary.Text = $"Last check {DateTime.Now:HH:mm}: {mapped:N0} of {items.Count:N0} elements matched a rule, {proxy:N0} will export as proxy. Full breakdown: Export tab, Pre-flight.";
                 _preflight = facts;
                 RenderPreflight();
                 double pct = items.Count > 0 ? 100.0 * mapped / items.Count : 0;
-                return $"Preview        : {mapped:N0} of {items.Count:N0} elements map ({pct:0.#}%), {proxy:N0} proxy — details on the Mapping tab";
+                return $"Full check     : {mapped:N0} of {items.Count:N0} elements map ({pct:0.#}%), {proxy:N0} proxy — details under Pre-flight";
             }
             catch (OperationCanceledException)
             {
@@ -1374,13 +1388,13 @@ namespace BIMCamel.UI
                 // instead of reporting itself as a step that merely "did not run".
                 // _preflight is untouched — the panel keeps the previous, correctly
                 // fingerprinted facts rather than inventing partial ones.
-                TxtPreview.Text = "Preview stopped before it finished.";
+                TxtPreview.Text = LblMapSummary.Text = "The check stopped before it finished.";
                 throw;
             }
             catch (Exception ex)
             {
-                TxtPreview.Text = "Preview failed: " + ex.Message;
-                SetStatus("Preview failed: " + ex.Message);
+                TxtPreview.Text = LblMapSummary.Text = "The check failed: " + ex.Message;
+                SetStatus("Check failed: " + ex.Message);
                 return null;
             }
             finally { EndBusy(); }
@@ -1522,8 +1536,8 @@ namespace BIMCamel.UI
             bool stale = f != null && f.Fingerprint != PreflightFingerprint();
 
             LblPreflightWhen.Text = f == null
-                ? "Checks that need a scan fill in after ✨ Smart setup (above) or 🔍 Preview (Mapping tab)."
-                : $"Scanned {f.When:HH:mm} · {f.ScopeLabel}" + (stale ? "  —  ⚠ settings changed since; re-run Smart setup or Preview" : "");
+                ? "Checks that need a scan fill in after Smart setup or Run full check."
+                : $"Scanned {f.When:HH:mm} · {f.ScopeLabel}" + (stale ? "  —  ⚠ settings changed since; re-run Smart setup or Run full check" : "");
 
             Brush ok = (Brush)FindResource("Ok"), warn = (Brush)FindResource("AmberTx"),
                   info = (Brush)FindResource("Muted"), dim = (Brush)FindResource("Faint");
