@@ -50,18 +50,43 @@ namespace BIMCamel.Data
         public static void Apply(List<IfcProp> props, List<ParamMapRule>? rules)
         {
             if (rules == null || rules.Count == 0 || props.Count == 0) return;
+            var bySource = IndexFor(rules);
             foreach (var p in props)
             {
-                foreach (var r in rules)
+                // Only the rules whose Source names this property, still in list order, so
+                // "first matching rule wins" is unchanged.
+                if (!bySource.TryGetValue(p.Name, out var candidates)) continue;
+                foreach (var r in candidates)
                 {
-                    if (string.IsNullOrWhiteSpace(r.Source)) continue;
-                    if (!string.Equals(p.Name, r.Source, StringComparison.OrdinalIgnoreCase)) continue;
                     if (!string.IsNullOrWhiteSpace(r.SourceCategory) && !string.Equals(p.Pset, r.SourceCategory, StringComparison.OrdinalIgnoreCase)) continue;
                     if (!string.IsNullOrWhiteSpace(r.TargetPset)) p.Pset = r.TargetPset.Trim();
                     if (!string.IsNullOrWhiteSpace(r.TargetName)) p.Name = r.TargetName.Trim();
                     break; // first matching rule wins
                 }
             }
+        }
+
+        // Apply runs once per exported element and used to compare every property against every
+        // rule: elements × properties × rules case-insensitive string compares, the bulk of which
+        // can never match. The rules are grouped by Source name once per rule list instead, so each
+        // property costs one hash lookup. The export builds a fresh list per run and never edits it
+        // mid-run, so the last list seen (by reference) is the cache key. UI-thread only.
+        private static List<ParamMapRule>? _indexedRules;
+        private static int _indexedCount;
+        private static Dictionary<string, List<ParamMapRule>> _index = new(StringComparer.OrdinalIgnoreCase);
+
+        private static Dictionary<string, List<ParamMapRule>> IndexFor(List<ParamMapRule> rules)
+        {
+            if (ReferenceEquals(rules, _indexedRules) && rules.Count == _indexedCount) return _index;
+            var index = new Dictionary<string, List<ParamMapRule>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var r in rules)
+            {
+                if (string.IsNullOrWhiteSpace(r.Source)) continue;
+                if (!index.TryGetValue(r.Source, out var list)) index[r.Source] = list = new List<ParamMapRule>();
+                list.Add(r);
+            }
+            _index = index; _indexedRules = rules; _indexedCount = rules.Count;
+            return index;
         }
     }
 }
