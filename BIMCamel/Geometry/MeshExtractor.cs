@@ -67,6 +67,9 @@ namespace BIMCamel.Geometry
     {
         public string Name = "";
         public Guid InstanceGuid;
+        /// <summary>Tree-path key (<see cref="ItemCollector.ItemKey(ModelItem)"/>), set only when
+        /// <see cref="InstanceGuid"/> is empty, so the GlobalId fallback is stable across exports.</summary>
+        public string SourceKey = "";
         public List<double> Vertices = new List<double>();
         public List<int> Indices = new List<int>();
         public List<IfcProp>? Properties;
@@ -98,6 +101,8 @@ namespace BIMCamel.Geometry
             bool hasGroup = o.GroupMap != null && o.GroupMap.Count > 0;
             bool hasRoles = o.Roles != null && o.Roles.Any;
             int done = 0;
+            // Indexes each shared node's fragments once, instead of k² calls per node (InstanceGroups).
+            var groups = new InstanceGroups();
 
             // One COM conversion per CHUNK of items rather than one per item (v5 E3).
             foreach (var chunk in ComScope.Chunks(items, ComScope.ChunkSize))
@@ -115,7 +120,7 @@ namespace BIMCamel.Geometry
                         var mine = paths.TryGetValue(item, out var lst)
                             ? (IEnumerable<InwOaPath3>)lst
                             : ComScope.PathsFor(item);
-                        em = BuildElement(item, mine, o, hasClass, hasCode, hasGroup, hasRoles);
+                        em = BuildElement(item, mine, o, groups, hasClass, hasCode, hasGroup, hasRoles);
                     }
                     catch (Exception ex) { ExportIssues.Fail(SafeName(item), ex); em = null; }
 
@@ -127,12 +132,12 @@ namespace BIMCamel.Geometry
         }
 
         /// <summary>Reads one item's mesh + semantics; null when it contributes nothing.</summary>
-        private static ElementMesh? BuildElement(ModelItem item, IEnumerable<InwOaPath3> comPaths, ExtractOptions o, bool hasClass, bool hasCode, bool hasGroup, bool hasRoles)
+        private static ElementMesh? BuildElement(ModelItem item, IEnumerable<InwOaPath3> comPaths, ExtractOptions o, InstanceGroups groups, bool hasClass, bool hasCode, bool hasGroup, bool hasRoles)
         {
             long ts = ExportTiming.Now;
             var sink = new PrimitiveSink();
             foreach (InwOaPath3 path in comPaths)
-                foreach (InwOaFragment3 frag in ComScope.OwnFragments(path))   // not the other instances'
+                foreach (InwOaFragment3 frag in groups.Own(path, out _))   // not the other instances'
                 {
                     sink.CurrentTransform = ReadMatrix(frag);
                     // eNONE: PrimitiveSink reads only v.coord, so asking for normals made
@@ -143,6 +148,10 @@ namespace BIMCamel.Geometry
             ExportTiming.ReadTicks += ExportTiming.Now - ts;
 
             if (sink.TriangleCount == 0) { ExportIssues.NoTriangles++; return null; }
+
+            // Ground truth: what we read must fit in the box Navisworks gives this item. The sink
+            // tracked the world extents while reading, so only the item's box costs a call.
+            BoundsCheck.Check(item, 1.0, 10 * o.WeldTol, sink.MinX, sink.MinY, sink.MinZ, sink.MaxX, sink.MaxY, sink.MaxZ);
 
             // v6 Z7. PrimitiveSink accumulated the extents as it read, so this costs nothing.
             if (o.MinFragmentSize > 0 && sink.TriangleCount > 0)
@@ -187,6 +196,7 @@ namespace BIMCamel.Geometry
                 ClassKey = hasClass && o.ClassMap!.TryGetValue(key, out var ck) ? ck : null,
                 Quantities = measuredOk ? measured : (MeshQty?)null
             };
+            if (em.InstanceGuid == Guid.Empty) em.SourceKey = ItemCollector.ItemKey(item, o.KeyCache);
             ts = ExportTiming.Now;
             // ONE pass over this item's properties for both the psets and the roles (v5 E2).
             em.Properties = PropertyHarvester.HarvestAndRoles(item, o.Props, o.PsetFilter, hasRoles ? o.Roles : null, out var rv);

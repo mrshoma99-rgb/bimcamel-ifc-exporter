@@ -1938,6 +1938,8 @@ namespace BIMCamel.UI
             if (s.MergedElements > 0)
                 sb.AppendLine($"Merged parts: {s.MergedElements:N0} element(s) as one shape each · {s.MergedShapes:N0} distinct");
             sb.AppendLine($"Class rules : {ruleCount} set rule(s)");
+            if (s.GuidCollisions > 0)
+                sb.AppendLine($"GlobalIds   : {s.GuidCollisions:N0} element(s) shared a GlobalId with another (model appended twice?) and got a derived one");
             sb.Append(MappingLines(s));
             if (s.Revision != null)
             {
@@ -1956,6 +1958,8 @@ namespace BIMCamel.UI
             sb.AppendLine($"Type objects: {s.TypeCount}   Materials: {s.MaterialCount}   Classifications: {s.ClassificationCount}");
             if (s.GroupCount > 0) sb.AppendLine($"Groups      : {s.GroupCount} (from Navisworks sets)");
             sb.AppendLine($"Property sets: {s.PsetUnique:N0} unique / {s.PsetRefs:N0} refs" + (s.PsetUnique > 0 ? $"  (×{(double)s.PsetRefs / s.PsetUnique:0.0} shared)" : ""));
+            if (s.PropValueReuses > 0)
+                sb.AppendLine($"Prop values : {s.PropValueReuses:N0} reused instead of written again");
             if (s.TypeSharedPsets > 0 || s.TypeShareNameMismatch > 0)
             {
                 sb.AppendLine($"  type-shared : {s.TypeSharedPsets:N0} pset(s) hoisted onto IfcElementType");
@@ -2000,6 +2004,9 @@ namespace BIMCamel.UI
             if (ET.ForeignFragmentsSkipped > 0 || ET.OwnFragmentFallbacks > 0)
                 sb.AppendLine($"  Instances   : {ET.ForeignFragmentsSkipped:N0} fragment(s) of other instances left out" +
                               (ET.OwnFragmentFallbacks > 0 ? $", {ET.OwnFragmentFallbacks:N0} path(s) kept all (no own match)" : ""));
+            if (ET.GroupReadsShared > 0 || ET.GroupVerifications > 0)
+                sb.AppendLine($"  Shared reads: {ET.GroupReadsShared:N0} fragment read(s) reused from Navisworks instances · "
+                              + $"{ET.GroupVerifications:N0} re-checked, {ET.GroupMismatches:N0} mismatch(es)");
             sb.AppendLine($"  Prop harvest: {hv,10:N0} ms");
             sb.AppendLine($"  Weld        : {wl,10:N0} ms");
             sb.AppendLine($"  Qty compute : {qc,10:N0} ms");

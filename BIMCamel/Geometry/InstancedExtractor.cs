@@ -33,6 +33,9 @@ namespace BIMCamel.Geometry
     {
         public string Name = "";
         public Guid InstanceGuid;
+        /// <summary>Tree-path key, set only when <see cref="InstanceGuid"/> is empty, so the
+        /// GlobalId fallback is stable across exports.</summary>
+        public string SourceKey = "";
         public List<MeshInstance> Instances = new List<MeshInstance>();
         public List<Data.IfcProp>? Properties;
         public string? ClassKey;
@@ -85,6 +88,8 @@ namespace BIMCamel.Geometry
 
             // Opt-in shape cache that lets a repeated element skip its triangle reads (v5 E1).
             var cache = o.FastInstancing ? new GeometryCache(o.FastInstancingBudgetBytes) : null;
+            // Navisworks' own instancing: shared nodes are read once (InstanceGroups).
+            var groups = new InstanceGroups();
 
             // One COM conversion per CHUNK of items rather than one per item (v5 E3).
             foreach (var chunk in ComScope.Chunks(items, ComScope.ChunkSize))
@@ -102,7 +107,7 @@ namespace BIMCamel.Geometry
                         var mine = paths.TryGetValue(item, out var lst)
                             ? (IEnumerable<InwOaPath3>)lst
                             : ComScope.PathsFor(item);
-                        el = BuildElement(item, mine, unitScale, o, cache, hasClass, hasCode, hasGroup, hasRoles);
+                        el = BuildElement(item, mine, unitScale, o, cache, groups, hasClass, hasCode, hasGroup, hasRoles);
                     }
                     catch (Exception ex) { ExportIssues.Fail(MeshExtractor.SafeName(item), ex); el = null; }
 
@@ -115,7 +120,7 @@ namespace BIMCamel.Geometry
 
         /// <summary>Reads one item's instanced meshes + semantics; null when it contributes nothing.</summary>
         private static InstancedElement? BuildElement(ModelItem item, IEnumerable<InwOaPath3> comPaths, double unitScale,
-                                                     ExtractOptions o, GeometryCache? cache,
+                                                     ExtractOptions o, GeometryCache? cache, InstanceGroups groups,
                                                      bool hasClass, bool hasCode, bool hasGroup, bool hasRoles)
         {
             string key = hasClass || hasCode || hasGroup ? Collect.ItemCollector.ItemKey(item, o.KeyCache) : "";
@@ -130,9 +135,15 @@ namespace BIMCamel.Geometry
             // The fragments, gathered once. Enumerating them costs nothing near a triangle read,
             // and the count is part of the shape identity below (v5 E1).
             var frags = new List<InwOaFragment3>();
-            // Only this path's own fragments: an instanced node lists every instance's.
+            // Only this path's own fragments: an instanced node lists every instance's. Each one's
+            // instance group rides alongside, so a shape Navisworks shares is read only once.
+            var fragGroups = new List<InstanceGroups.Group?>();
             foreach (InwOaPath3 path in comPaths)
-                frags.AddRange(ComScope.OwnFragments(path));
+            {
+                var own = groups.Own(path, out var g);
+                frags.AddRange(own);
+                for (int i = 0; i < own.Count; i++) fragGroups.Add(g);
+            }
 
             string? shapeKey = cache?.KeyFor(item, frags.Count, itemMat);
             CachedShape? hit = shapeKey != null ? cache!.Get(shapeKey) : null;
@@ -148,7 +159,7 @@ namespace BIMCamel.Geometry
             }
             else
             {
-                var fresh = ReadFragments(el, frags, unitScale, itemMat, o.WeldTol, o.MinFragmentSize);
+                var fresh = ReadFragments(el, frags, fragGroups, unitScale, itemMat, o.WeldTol, o.MinFragmentSize);
                 collapsedFrags = fresh.CollapsedFrags;
 
                 if (verifying)
@@ -177,6 +188,11 @@ namespace BIMCamel.Geometry
             // Some parts of this element were welded away but others survived, so no element
             // was lost — counted separately so the report cannot imply phantom data loss.
             ExportIssues.CollapsedFragments += collapsedFrags;
+            if (el.InstanceGuid == Guid.Empty) el.SourceKey = Collect.ItemCollector.ItemKey(item, o.KeyCache);
+
+            // Ground truth: the placed instances must fit in the box Navisworks gives this item
+            // (BoundsCheck). Also guards a cached shape that Fast instancing replayed wrongly.
+            CheckBounds(item, el, unitScale, 10 * o.WeldTol);
 
             // Harvest only now that we know the item is actually exported — skips property reads
             // for the (often ~half) of HasGeometry leaves that produce no triangles (v4).
@@ -206,44 +222,64 @@ namespace BIMCamel.Geometry
 
         /// <summary>
         /// The real thing: read every fragment's triangles, weld, hash, and build this element's
-        /// instances. Also returns the shape, ready to cache.
+        /// instances. Also returns the shape, ready to cache. A fragment whose instance group
+        /// already holds its mesh is not read at all — only placed (InstanceGroups).
         /// </summary>
-        private static CachedShape ReadFragments(InstancedElement el, List<InwOaFragment3> frags, double unitScale,
-                                                 Data.Material? itemMat, double weldTol, double minSize)
+        private static CachedShape ReadFragments(InstancedElement el, List<InwOaFragment3> frags, List<InstanceGroups.Group?> fragGroups,
+                                                 double unitScale, Data.Material? itemMat, double weldTol, double minSize)
         {
             var shape = new CachedShape();
             for (int fi = 0; fi < frags.Count; fi++)
             {
                 var frag = frags[fi];
-                long tr = ExportTiming.Now;
-                // Scale folded into the read: local geometry arrives already in metres,
-                // so there is no second pass and no second vertex list.
-                var sink = new PrimitiveSink { Scale = unitScale }; // CurrentTransform null → LOCAL coords
-                // eNONE: PrimitiveSink reads only v.coord, so asking for normals made
-                // Navisworks generate and marshal a per-vertex field we then discarded.
-                frag.GenerateSimplePrimitives(nwEVertexProperty.eNONE, sink);
-                ExportTiming.ReadTicks += ExportTiming.Now - tr; ExportTiming.Fragments++;
-                if (sink.TriangleCount == 0) continue;
+                var g = fragGroups[fi];
+                InstanceGroups.Outcome outcome;
+                List<double>? lv = null;
+                List<int>? li = null;
 
-                // v6 Z7: drop screen-only detail — washers, fasteners, tiny fittings. The sink
-                // already tracked the extents while reading, so the test is free.
-                if (minSize > 0)
+                bool reuse = g != null && g.Result != InstanceGroups.Outcome.Unknown && !g.Distrusted
+                             && ++g.UsesSinceVerify < InstanceGroups.VerifyEvery;
+                if (reuse)
                 {
-                    double sx = sink.MaxX - sink.MinX, sy = sink.MaxY - sink.MinY, sz = sink.MaxZ - sink.MinZ;
-                    if (Math.Max(sx, Math.Max(sy, sz)) < minSize) { ExportIssues.TooSmall++; continue; }
+                    outcome = g!.Result;
+                    if (outcome == InstanceGroups.Outcome.Mesh) { lv = g.Mesh!.Vertices; li = g.Mesh.Indices; }
+                    ExportTiming.GroupReadsShared++;
+                }
+                else
+                {
+                    outcome = ReadOne(frag, unitScale, weldTol, minSize, out lv, out li);
+                    if (g != null && !g.Distrusted)
+                    {
+                        if (g.Result == InstanceGroups.Outcome.Unknown)
+                        {
+                            g.Result = outcome;
+                            if (outcome == InstanceGroups.Outcome.Mesh)
+                            {
+                                g.Mesh = new LocalMesh { Vertices = lv!, Indices = li! };
+                                g.ShapeKey = Key(g.Mesh);
+                            }
+                        }
+                        else
+                        {
+                            // A sampled re-read of a shape the group already holds: must agree.
+                            ExportTiming.GroupVerifications++;
+                            g.UsesSinceVerify = 0;
+                            bool same = outcome == g.Result &&
+                                        (outcome != InstanceGroups.Outcome.Mesh || Key(new LocalMesh { Vertices = lv!, Indices = li! }).Equals(g.ShapeKey));
+                            if (!same) { g.Distrusted = true; g.Mesh = null; ExportTiming.GroupMismatches++; }
+                        }
+                    }
                 }
 
-                var lv = sink.Vertices;
-                var li = sink.Indices;
-                if (weldTol > 0) { long tw = ExportTiming.Now; MeshWelder.Weld(ref lv, ref li, weldTol); ExportTiming.WeldTicks += ExportTiming.Now - tw; }
-                var lm = new LocalMesh { Vertices = lv, Indices = li, Material = itemMat };
-
+                if (outcome == InstanceGroups.Outcome.NoTriangles) continue;
+                if (outcome == InstanceGroups.Outcome.TooSmall) { ExportIssues.TooSmall++; continue; }
                 // Welding can leave every triangle degenerate (a part smaller than the
                 // tolerance). Emitting that instance wrote an EMPTY IfcCartesianPointList3D
                 // / CoordIndex — both are LIST [1:?], so the whole file became schema
                 // invalid and strict readers (Revit) refuse it.
-                if (li.Count == 0) { shape.CollapsedFrags++; continue; }
+                if (outcome == InstanceGroups.Outcome.Collapsed) { shape.CollapsedFrags++; continue; }
 
+                var lm = new LocalMesh { Vertices = lv!, Indices = li!, Material = itemMat };
                 var dk = Key(lm);
                 shape.FragIndex.Add(fi);
                 shape.Meshes.Add(lm);
@@ -253,6 +289,35 @@ namespace BIMCamel.Geometry
                 el.Instances.Add(Place(frag, lm, dk, unitScale));
             }
             return shape;
+        }
+
+        /// <summary>Reads, filters and welds one fragment's local mesh.</summary>
+        private static InstanceGroups.Outcome ReadOne(InwOaFragment3 frag, double unitScale, double weldTol, double minSize,
+                                                      out List<double>? lv, out List<int>? li)
+        {
+            lv = null; li = null;
+            long tr = ExportTiming.Now;
+            // Scale folded into the read: local geometry arrives already in metres,
+            // so there is no second pass and no second vertex list.
+            var sink = new PrimitiveSink { Scale = unitScale }; // CurrentTransform null → LOCAL coords
+            // eNONE: PrimitiveSink reads only v.coord, so asking for normals made
+            // Navisworks generate and marshal a per-vertex field we then discarded.
+            frag.GenerateSimplePrimitives(nwEVertexProperty.eNONE, sink);
+            ExportTiming.ReadTicks += ExportTiming.Now - tr; ExportTiming.Fragments++;
+            if (sink.TriangleCount == 0) return InstanceGroups.Outcome.NoTriangles;
+
+            // v6 Z7: drop screen-only detail — washers, fasteners, tiny fittings. The sink
+            // already tracked the extents while reading, so the test is free.
+            if (minSize > 0)
+            {
+                double sx = sink.MaxX - sink.MinX, sy = sink.MaxY - sink.MinY, sz = sink.MaxZ - sink.MinZ;
+                if (Math.Max(sx, Math.Max(sy, sz)) < minSize) return InstanceGroups.Outcome.TooSmall;
+            }
+
+            lv = sink.Vertices;
+            li = sink.Indices;
+            if (weldTol > 0) { long tw = ExportTiming.Now; MeshWelder.Weld(ref lv, ref li, weldTol); ExportTiming.WeldTicks += ExportTiming.Now - tw; }
+            return li.Count == 0 ? InstanceGroups.Outcome.Collapsed : InstanceGroups.Outcome.Mesh;
         }
 
         /// <summary>
@@ -288,9 +353,87 @@ namespace BIMCamel.Geometry
                 inst.Rotation = new[] { m[0], m[1], m[2], m[4], m[5], m[6], m[8], m[9], m[10] };
                 inst.Translation = new[] { m[12] * unitScale, m[13] * unitScale, m[14] * unitScale };
             }
+
+            // IfcCartesianTransformationOperator3D carries ONE uniform scale, and the writer used
+            // to put the average of the three axis lengths there — a block stretched 2x along one
+            // axis came out uniformly 1.33x. Such a placement is baked into the vertices instead:
+            // the mesh then has its own key (identical stretched copies still share it) and is
+            // placed by translation alone.
+            if (!IsSimilarity(inst.Rotation))
+            {
+                lm = Bake(lm, inst.Rotation);
+                dk = Key(lm);
+                inst.Rotation = new double[] { 1, 0, 0, 0, 1, 0, 0, 0, 1 };
+                ExportIssues.BakedTransforms++;
+            }
             inst.Mesh = lm;
             inst.Key = dk;   // the exporter dedups by this key, per output file (option C)
             return inst;
+        }
+
+        /// <summary>True when the 3x3 is a rotation (or mirror) times one uniform scale — the only
+        /// kind of linear map IfcCartesianTransformationOperator3D can express.</summary>
+        private static bool IsSimilarity(double[] r)
+        {
+            double sx = Math.Sqrt(r[0] * r[0] + r[1] * r[1] + r[2] * r[2]);
+            double sy = Math.Sqrt(r[3] * r[3] + r[4] * r[4] + r[5] * r[5]);
+            double sz = Math.Sqrt(r[6] * r[6] + r[7] * r[7] + r[8] * r[8]);
+            double s = (sx + sy + sz) / 3.0;
+            if (!(s > 1e-12)) return false;
+            // Navisworks stores single-precision matrices; 1e-5 clears their rounding and is far
+            // below any stretch a person would see (10 µm per metre).
+            const double tol = 1e-5;
+            if (Math.Abs(sx - s) > tol * s || Math.Abs(sy - s) > tol * s || Math.Abs(sz - s) > tol * s) return false;
+            double s2 = s * s;
+            return Math.Abs(r[0] * r[3] + r[1] * r[4] + r[2] * r[5]) <= tol * s2
+                && Math.Abs(r[0] * r[6] + r[1] * r[7] + r[2] * r[8]) <= tol * s2
+                && Math.Abs(r[3] * r[6] + r[4] * r[7] + r[5] * r[8]) <= tol * s2;
+        }
+
+        /// <summary>The local mesh with a 3x3 (column-major) applied to every vertex. A mirroring
+        /// map turns triangles inside out, so their winding is reversed to keep normals outward.</summary>
+        private static LocalMesh Bake(LocalMesh lm, double[] r)
+        {
+            var v = lm.Vertices;
+            var nv = new List<double>(v.Count);
+            for (int i = 0; i + 2 < v.Count; i += 3)
+            {
+                double x = v[i], y = v[i + 1], z = v[i + 2];
+                nv.Add(r[0] * x + r[3] * y + r[6] * z);
+                nv.Add(r[1] * x + r[4] * y + r[7] * z);
+                nv.Add(r[2] * x + r[5] * y + r[8] * z);
+            }
+            double det = r[0] * (r[4] * r[8] - r[5] * r[7]) - r[3] * (r[1] * r[8] - r[2] * r[7]) + r[6] * (r[1] * r[5] - r[2] * r[4]);
+            var idx = lm.Indices;
+            if (det < 0)
+            {
+                idx = new List<int>(lm.Indices.Count);
+                for (int k = 0; k + 2 < lm.Indices.Count; k += 3)
+                { idx.Add(lm.Indices[k]); idx.Add(lm.Indices[k + 2]); idx.Add(lm.Indices[k + 1]); }
+            }
+            return new LocalMesh { Vertices = nv, Indices = idx, Material = lm.Material };
+        }
+
+        /// <summary>World box of everything this element places, checked against Navisworks'.</summary>
+        private static void CheckBounds(ModelItem item, InstancedElement el, double unitScale, double slack)
+        {
+            double x0 = double.MaxValue, y0 = double.MaxValue, z0 = double.MaxValue;
+            double x1 = double.MinValue, y1 = double.MinValue, z1 = double.MinValue;
+            foreach (var inst in el.Instances)
+            {
+                var r = inst.Rotation; var t = inst.Translation; var v = inst.Mesh.Vertices;
+                for (int i = 0; i + 2 < v.Count; i += 3)
+                {
+                    double x = v[i], y = v[i + 1], z = v[i + 2];
+                    double wx = r[0] * x + r[3] * y + r[6] * z + t[0];
+                    double wy = r[1] * x + r[4] * y + r[7] * z + t[1];
+                    double wz = r[2] * x + r[5] * y + r[8] * z + t[2];
+                    if (wx < x0) x0 = wx; if (wx > x1) x1 = wx;
+                    if (wy < y0) y0 = wy; if (wy > y1) y1 = wy;
+                    if (wz < z0) z0 = wz; if (wz > z1) z1 = wz;
+                }
+            }
+            BoundsCheck.Check(item, unitScale, slack, x0, y0, z0, x1, y1, z1);
         }
 
         /// <summary>
