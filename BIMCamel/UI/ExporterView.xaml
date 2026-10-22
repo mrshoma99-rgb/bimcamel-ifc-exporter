@@ -670,14 +670,19 @@
         </TabItem>
 
         <!-- ===== DATA (was Properties + Semantics) ===== -->
-        <TabItem>
+        <TabItem x:Name="TabData">
           <TabItem.Header>
             <StackPanel ToolTip="What data each element carries: property sets, materials, quantities, semantic roles and parameter renames. All optional — Smart setup fills the marked sections.">
               <Viewbox Width="18" Height="18" HorizontalAlignment="Center">
                 <Path Data="M4,6 L20,6 M4,12 L20,12 M4,18 L20,18" StrokeThickness="2"
                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}"/>
               </Viewbox>
-              <TextBlock Text="Data" FontSize="11" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+              <!-- The dot appears when pre-flight has a warning this tab fixes. -->
+              <Grid HorizontalAlignment="Center" Margin="0,4,0,0">
+                <TextBlock Text="Data" FontSize="11"/>
+                <Ellipse x:Name="DotData" Width="6" Height="6" Fill="{DynamicResource AmberTx}" Visibility="Collapsed"
+                         HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-2,-8,0"/>
+              </Grid>
             </StackPanel>
           </TabItem.Header>
           <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="14,14,14,8">
@@ -794,7 +799,12 @@
                 <Path Data="M4,8 L17,8 M14,5 L17,8 L14,11 M20,16 L7,16 M10,13 L7,16 L10,19" StrokeThickness="2"
                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}"/>
               </Viewbox>
-              <TextBlock Text="Mapping" FontSize="11" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+              <!-- The dot appears when pre-flight has a warning this tab fixes. -->
+              <Grid HorizontalAlignment="Center" Margin="0,4,0,0">
+                <TextBlock Text="Mapping" FontSize="11"/>
+                <Ellipse x:Name="DotMapping" Width="6" Height="6" Fill="{DynamicResource AmberTx}" Visibility="Collapsed"
+                         HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-2,-8,0"/>
+              </Grid>
             </StackPanel>
           </TabItem.Header>
           <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="14,14,14,8">
@@ -878,14 +888,19 @@
         </TabItem>
 
         <!-- ===== COORDINATES (was buried inside the Export tab) ===== -->
-        <TabItem>
+        <TabItem x:Name="TabCoords">
           <TabItem.Header>
             <StackPanel ToolTip="Where the model sits: local base point and real-world georeferencing. Optional — defaults keep the model at its world position.">
               <Viewbox Width="18" Height="18" HorizontalAlignment="Center">
                 <Path Data="M12,2 L12,6 M12,18 L12,22 M2,12 L6,12 M18,12 L22,12 M12,12 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0" StrokeThickness="2"
                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}"/>
               </Viewbox>
-              <TextBlock Text="Coordinates" FontSize="11" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+              <!-- The dot appears when pre-flight has a warning this tab fixes. -->
+              <Grid HorizontalAlignment="Center" Margin="0,4,0,0">
+                <TextBlock Text="Coordinates" FontSize="11"/>
+                <Ellipse x:Name="DotCoords" Width="6" Height="6" Fill="{DynamicResource AmberTx}" Visibility="Collapsed"
+                         HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-2,-8,0"/>
+              </Grid>
             </StackPanel>
           </TabItem.Header>
           <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="14,14,14,8">
@@ -946,7 +961,7 @@
         </TabItem>
 
         <!-- ===== STRUCTURE ===== -->
-        <TabItem>
+        <TabItem x:Name="TabStructure">
           <TabItem.Header>
             <StackPanel ToolTip="Names for the IFC spatial structure (project / site / building / storey)">
               <Viewbox Width="18" Height="18" HorizontalAlignment="Center">

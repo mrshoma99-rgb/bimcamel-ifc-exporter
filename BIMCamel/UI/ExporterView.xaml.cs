@@ -1508,6 +1508,7 @@ namespace BIMCamel.UI
         private void RenderPreflight()
         {
             PreflightHost.Children.Clear();
+            _warnTabs.Clear();
             var doc = NavApp.ActiveDocument;
             bool schema2x3 = CmbSchema.SelectedIndex == 1;
             var f = _preflight;
@@ -1664,6 +1665,7 @@ namespace BIMCamel.UI
                 PreflightRow(info, schema2x3
                     ? "Schema — IFC2x3 (no georeferencing entity; some classes unavailable — IFC4 recommended unless the receiver requires 2x3)"
                     : "Schema — IFC4");
+            UpdateTabDots();
         }
 
         /// <summary>One ✓/⚠ row: coloured dot, wrapping text, optional go-fix-it pointer.</summary>
@@ -1678,11 +1680,54 @@ namespace BIMCamel.UI
             if (jump != null)
             {
                 body.Inlines.Add("  ");
-                body.Inlines.Add(new System.Windows.Documents.Run(jump) { Foreground = (Brush)FindResource("Accent") });
+                // A real link: it used to be blue text that looked clickable and was not, so the
+                // user had to find the tab and the field by themselves.
+                var link = new System.Windows.Documents.Hyperlink(new System.Windows.Documents.Run(jump))
+                {
+                    Foreground = (Brush)FindResource("Accent"), TextDecorations = null, Cursor = Cursors.Hand
+                };
+                link.Click += (_, _) => JumpTo(jump);
+                body.Inlines.Add(link);
+                var tab = JumpTab(jump);
+                if (tab != null && ReferenceEquals(tone, FindResource("AmberTx"))) _warnTabs.Add(tab);
             }
             Grid.SetColumn(dot, 0); Grid.SetColumn(body, 1);
             grid.Children.Add(dot); grid.Children.Add(body);
             PreflightHost.Children.Add(grid);
+        }
+
+        /// <summary>Tabs that hold the fix for a current pre-flight warning; each gets a dot.</summary>
+        private readonly HashSet<TabItem> _warnTabs = new HashSet<TabItem>();
+
+        private TabItem? JumpTab(string jump)
+        {
+            if (jump.Contains("Mapping")) return TabMapping;
+            if (jump.Contains("Data")) return TabData;
+            if (jump.Contains("Coordinates")) return TabCoords;
+            if (jump.Contains("Export")) return TabExport;
+            return null;
+        }
+
+        private void JumpTo(string jump)
+        {
+            var tab = JumpTab(jump);
+            if (tab == null) return;
+            Tabs.SelectedItem = tab;
+            // Land on the field, not just the tab, where the row names one.
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (jump.Contains("Level role")) { _parLevel.BringIntoView(); _parLevel.Focus(); }
+                else if (jump.Contains("origins report")) OnFederationReport(this, new RoutedEventArgs());
+                else if (jump.Contains("Schema")) { CmbSchema.BringIntoView(); CmbSchema.Focus(); }
+                else if (ReferenceEquals(tab, TabCoords)) ChkGeoref.BringIntoView();
+            }), DispatcherPriority.Loaded);
+        }
+
+        private void UpdateTabDots()
+        {
+            DotData.Visibility = _warnTabs.Contains(TabData) ? Visibility.Visible : Visibility.Collapsed;
+            DotMapping.Visibility = _warnTabs.Contains(TabMapping) ? Visibility.Visible : Visibility.Collapsed;
+            DotCoords.Visibility = _warnTabs.Contains(TabCoords) ? Visibility.Visible : Visibility.Collapsed;
         }
 
         // ── base point preview ────────────────────────────────────────────────────
