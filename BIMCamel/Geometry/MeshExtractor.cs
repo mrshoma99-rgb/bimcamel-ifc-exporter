@@ -98,6 +98,8 @@ namespace BIMCamel.Geometry
             bool hasGroup = o.GroupMap != null && o.GroupMap.Count > 0;
             bool hasRoles = o.Roles != null && o.Roles.Any;
             int done = 0;
+            // Indexes each shared node's fragments once, instead of k² calls per node (InstanceGroups).
+            var groups = new InstanceGroups();
 
             // One COM conversion per CHUNK of items rather than one per item (v5 E3).
             foreach (var chunk in ComScope.Chunks(items, ComScope.ChunkSize))
@@ -115,7 +117,7 @@ namespace BIMCamel.Geometry
                         var mine = paths.TryGetValue(item, out var lst)
                             ? (IEnumerable<InwOaPath3>)lst
                             : ComScope.PathsFor(item);
-                        em = BuildElement(item, mine, o, hasClass, hasCode, hasGroup, hasRoles);
+                        em = BuildElement(item, mine, o, groups, hasClass, hasCode, hasGroup, hasRoles);
                     }
                     catch (Exception ex) { ExportIssues.Fail(SafeName(item), ex); em = null; }
 
@@ -127,12 +129,12 @@ namespace BIMCamel.Geometry
         }
 
         /// <summary>Reads one item's mesh + semantics; null when it contributes nothing.</summary>
-        private static ElementMesh? BuildElement(ModelItem item, IEnumerable<InwOaPath3> comPaths, ExtractOptions o, bool hasClass, bool hasCode, bool hasGroup, bool hasRoles)
+        private static ElementMesh? BuildElement(ModelItem item, IEnumerable<InwOaPath3> comPaths, ExtractOptions o, InstanceGroups groups, bool hasClass, bool hasCode, bool hasGroup, bool hasRoles)
         {
             long ts = ExportTiming.Now;
             var sink = new PrimitiveSink();
             foreach (InwOaPath3 path in comPaths)
-                foreach (InwOaFragment3 frag in ComScope.OwnFragments(path))   // not the other instances'
+                foreach (InwOaFragment3 frag in groups.Own(path, out _))   // not the other instances'
                 {
                     sink.CurrentTransform = ReadMatrix(frag);
                     // eNONE: PrimitiveSink reads only v.coord, so asking for normals made

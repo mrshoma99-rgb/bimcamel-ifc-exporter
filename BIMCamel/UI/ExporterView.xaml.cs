@@ -1756,6 +1756,9 @@ namespace BIMCamel.UI
             if (ET.ForeignFragmentsSkipped > 0 || ET.OwnFragmentFallbacks > 0)
                 sb.AppendLine($"  Instances   : {ET.ForeignFragmentsSkipped:N0} fragment(s) of other instances left out" +
                               (ET.OwnFragmentFallbacks > 0 ? $", {ET.OwnFragmentFallbacks:N0} path(s) kept all (no own match)" : ""));
+            if (ET.GroupReadsShared > 0 || ET.GroupVerifications > 0)
+                sb.AppendLine($"  Shared reads: {ET.GroupReadsShared:N0} fragment read(s) reused from Navisworks instances · "
+                              + $"{ET.GroupVerifications:N0} re-checked, {ET.GroupMismatches:N0} mismatch(es)");
             sb.AppendLine($"  Prop harvest: {hv,10:N0} ms");
             sb.AppendLine($"  Weld        : {wl,10:N0} ms");
             sb.AppendLine($"  Qty compute : {qc,10:N0} ms");
