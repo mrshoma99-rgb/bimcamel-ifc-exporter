@@ -34,6 +34,9 @@ namespace BIMCamel.Profiles
         [DataMember] public bool Zip = true;
         [DataMember] public bool SkipEmptyProps = true;
         [DataMember] public bool ShareTypeProps;
+        /// <summary>Which tree levels properties are read from — a <c>PropSource</c> value. An older
+        /// profile loads as 0 (geometry only), which is exactly what it exported when saved.</summary>
+        [DataMember] public int PropSource;
         [DataMember] public bool MinSize;
         [DataMember] public string MinSizeMm = "5";
         [DataMember] public bool Validate;

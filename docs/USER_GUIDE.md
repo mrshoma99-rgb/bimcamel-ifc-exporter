@@ -116,6 +116,15 @@ size splitting, instancing, post-export validation, size & time breakdown),
 ### Data — what each element carries
 - **What to export:** properties, materials/colours, base quantities
   (volume / area / length / width / height as `Qto_*BaseQuantities`).
+- **Read properties from:** which level of the selection tree each element's
+  properties come from. Navisworks exports geometry, but Revit puts its
+  **Element** tab on the element node *above* the geometry (SmartPlant 3D and
+  E3D go several levels higher). **Geometry + parent object** (the default)
+  adds the nearest composite object's properties — Navisworks' *Last Object* —
+  to each piece of geometry; **Geometry + all parents** climbs to just below
+  the file node; **Geometry only** is the old behaviour. Where both levels
+  carry the same property, the geometry's value wins. Re-run Smart setup or
+  Scan after changing it so the pset list and roles see the new categories.
 - **Property sets to include:** the pset checklist, filled by Smart setup's
   scan of your export scope — or by **⚡ Scan selection instead**, the
   manual alternative that reads only the elements selected in Navisworks

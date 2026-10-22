@@ -13,6 +13,8 @@ Thanks to everyone who has contributed to BIMCamel.
 - **José Antônio Ribeiro Vargas** ([@JoseARVargas](https://github.com/JoseARVargas)) — Navisworks 2027
   support (API v24 / series Nw24): NuGet package mapping, `PackageContents.xml` entries, installer
   detection and manifest generation.
+- **Leandro Assis dos Santos** ([@leandroassis](https://github.com/leandroassis)) — reading properties
+  from parent tree nodes (SmartPlant 3D), the basis of the "Read properties from" option.
 - **Hamada** ([@themodmin](https://github.com/themodmin)) — testing & QA.
 
 ## AI assistance
