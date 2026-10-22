@@ -4,16 +4,6 @@ A free, open-source **Autodesk Navisworks** plug-in that exports models to **IFC
 built for **speed, small files, and zero-config first-click export**. Navisworks has no native IFC
 export — BIMCamel fills that gap without the slowness and setup friction of the commercial tools.
 
-> ## Part of CamelWorks
-> This exporter ships inside **[CamelWorks](https://github.com/mrshoma99-rgb/Camelworks-navisworks-plugin)**,
-> which installs it alongside the coordination, data and delivery apps and the
-> [Dyncamelo](https://github.com/mrshoma99-rgb/dyncamelo) node editor — one installer, one
-> **BIMCamel** ribbon tab. CamelWorks' *Export Kit ▸ IFC* tab opens this exporter's panel.
->
-> **Install [CamelWorks](https://github.com/mrshoma99-rgb/Camelworks-navisworks-plugin/releases/latest)
-> to get all three.** This exporter on its own, from this repository's releases, works exactly as
-> it always has — the bundles sit side by side and share the ribbon tab either way.
-
 > 📖 **[User Guide](docs/USER_GUIDE.md)** — the full manual: quick export, Smart setup,
 > the Pre-flight panel, mapping, georeferencing, batch, profiles, troubleshooting.
 > Also online with screenshots: **[bimcamel.com/Export-Navisworks-to-Ifc/docs](https://bimcamel.com/Export-Navisworks-to-Ifc/docs)**
