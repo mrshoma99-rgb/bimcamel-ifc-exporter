@@ -112,6 +112,12 @@ namespace BIMCamel.UI
             AddItems(CmbUnits, new[] { "Auto (from model)", "Millimeters", "Centimeters", "Meters", "Feet", "Inches" }); CmbUnits.SelectedIndex = 0;
             AddItems(CmbGroups, new[] { "(nothing)", "IfcGroup", "IfcSystem", "IfcZone" }); CmbGroups.SelectedIndex = 0;
             AddItems(CmbQuality, new[] { "Balanced", "Small file", "High detail" }); CmbQuality.SelectedIndex = 0;
+            // Order = PropSource values (stored in profiles). A fresh pane defaults to the parent
+            // object, because geometry-only misses Revit's Element tab entirely; a profile saved
+            // before the option existed loads as 0 and keeps exporting exactly what it used to.
+            AddItems(CmbPropSource, new[] { "Geometry only", "Geometry + parent object (recommended for Revit)", "Geometry + all parents" });
+            CmbPropSource.SelectionChanged += (_, _) => SyncPropSource();
+            CmbPropSource.SelectedIndex = (int)PropSource.ParentObject;
             AddItems(CmbBasePoint, new[] { "Geometry origin — recommended (real coords kept in georeferencing)", "Model origin (no offset — keeps world coords)", "Custom base point" }); CmbBasePoint.SelectedIndex = 0;
 
             ChkGeoref.IsChecked = true;
@@ -127,7 +133,7 @@ namespace BIMCamel.UI
             TxtE.TextChanged += (_, _) => PreviewBasePoint();
             TxtN.TextChanged += (_, _) => PreviewBasePoint();
             TxtElev.TextChanged += (_, _) => PreviewBasePoint();
-            void SyncProps() => LstCategories.IsEnabled = ChkProps.IsChecked == true;
+            void SyncProps() => LstCategories.IsEnabled = CmbPropSource.IsEnabled = ChkProps.IsChecked == true;
             ChkProps.Checked += (_, _) => SyncProps(); ChkProps.Unchecked += (_, _) => SyncProps(); SyncProps();
             void SyncGeoref() => GeorefRow.Visibility = ChkGeoref.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
             ChkGeoref.Checked += (_, _) => SyncGeoref(); ChkGeoref.Unchecked += (_, _) => SyncGeoref(); SyncGeoref();
@@ -185,6 +191,15 @@ namespace BIMCamel.UI
             ApplyAdvancedDefaults();
             TxtMinSizeMm.Text = "5"; TxtSplitMb.Text = "200";
             SetStatus("Advanced options reset to defaults.");
+        }
+
+        /// <summary>Push the "read properties from" choice to the harvester at once, so the next
+        /// scan, pre-flight or export all read the same tree levels.</summary>
+        private void SyncPropSource()
+        {
+            int i = CmbPropSource.SelectedIndex;
+            PropertyHarvester.Source = i >= 0 && i <= (int)PropSource.AllParents ? (PropSource)i : PropSource.Geometry;
+            PropertyHarvester.ResetCache();
         }
 
         private void InitGridsAndLists()
@@ -504,6 +519,7 @@ namespace BIMCamel.UI
             ThrowIfCancelled();
             long tp = ET.Now;
             var sample = Spread(items, SampleCap);
+            PropertyHarvester.ResetCache();
             _catParams = PropertyHarvester.ScanCategoryParams(sample, SampleCap);
             ET.PropScanTicks += ET.Now - tp;
             ET.SampledItems = sample.Count;
@@ -894,6 +910,7 @@ namespace BIMCamel.UI
             string author = Environment.UserName;
             bool shareTypeProps = ChkShareTypeProps.IsChecked == true;   // v6 Z3
             PropertyHarvester.SkipEmptyValues = ChkSkipEmptyProps.IsChecked == true;   // v6 Z4
+            SyncPropSource();   // also drops ancestor reads cached by an earlier run
             // v6 Z7. Expressed in the vertices' own units, the same convention as WeldTol: the
             // instanced path reads in metres, the plain path in model units.
             double minSizeMetres = ChkMinSize.IsChecked == true
@@ -1470,7 +1487,7 @@ namespace BIMCamel.UI
         private string PreflightFingerprint() =>
             ScopeIndex() + "|" + CmbSavedSet.SelectedIndex + "|" +
             string.Join(",", _batchItems.Where(b => b.Checked).Select(b => b.Name)) + "|" +
-            GridToText() + "|" + RolesToText();
+            GridToText() + "|" + RolesToText() + "|" + CmbPropSource.SelectedIndex;
 
         private void RenderPreflight()
         {
@@ -1885,6 +1902,7 @@ namespace BIMCamel.UI
             FastInstancing = ChkFastInstancing.IsChecked == true,
             Zip = ChkZip.IsChecked == true, ShareTypeProps = ChkShareTypeProps.IsChecked == true,
             SkipEmptyProps = ChkSkipEmptyProps.IsChecked == true,
+            PropSource = CmbPropSource.SelectedIndex,
             MinSize = ChkMinSize.IsChecked == true, MinSizeMm = (TxtMinSizeMm.Text ?? "").Trim(),
             Validate = ChkValidate.IsChecked == true, Quantities = ChkQuantities.IsChecked == true, Mapping = GridToText(),
             Crs = (TxtCrs.Text ?? "").Trim(), SurveyE = ParseD(TxtSurveyE.Text), SurveyN = ParseD(TxtSurveyN.Text), SurveyElev = ParseD(TxtSurveyElev.Text),
@@ -1911,6 +1929,7 @@ namespace BIMCamel.UI
             ChkFastInstancing.IsChecked = p.FastInstancing;
             ChkZip.IsChecked = p.Zip; ChkShareTypeProps.IsChecked = p.ShareTypeProps;
             ChkSkipEmptyProps.IsChecked = p.SkipEmptyProps;
+            CmbPropSource.SelectedIndex = Clamp(p.PropSource, CmbPropSource.Items.Count);
             ChkMinSize.IsChecked = p.MinSize;
             if (!string.IsNullOrWhiteSpace(p.MinSizeMm)) TxtMinSizeMm.Text = p.MinSizeMm;
             TxtCrs.Text = p.Crs ?? ""; TxtSurveyE.Text = Inv(p.SurveyE); TxtSurveyN.Text = Inv(p.SurveyN); TxtSurveyElev.Text = Inv(p.SurveyElev);
