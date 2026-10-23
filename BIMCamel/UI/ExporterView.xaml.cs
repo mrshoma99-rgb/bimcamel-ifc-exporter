@@ -89,6 +89,23 @@ namespace BIMCamel.UI
             UpdateCheck.Run(action => Dispatcher.BeginInvoke(action));
         }
 
+        // Pop-up menus live outside the pane's visual tree, so they get its resources merged in;
+        // that keeps the theme brushes (and a dark-mode switch) working inside them.
+        private ContextMenu NewPaneMenu(UIElement? target)
+        {
+            var menu = new ContextMenu();
+            menu.Resources.MergedDictionaries.Add(Resources);
+            menu.Style = (Style)FindResource("PaneMenu");
+            if (target != null)
+            {
+                menu.PlacementTarget = target;
+                menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            }
+            return menu;
+        }
+
+        private Separator NewPaneMenuSeparator() => new Separator { Style = (Style)FindResource("PaneMenuSep") };
+
         private void OnDismissWarning(object sender, RoutedEventArgs e) => WarnBanner.Visibility = Visibility.Collapsed;
 
         // ── one-time setup ──────────────────────────────────────────────────────

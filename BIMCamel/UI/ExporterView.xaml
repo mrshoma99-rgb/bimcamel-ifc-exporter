@@ -154,6 +154,49 @@
       </Setter>
     </Style>
 
+    <!-- Pop-up menus built in code (profile menu, + Token, chip menu). Code merges this
+         dictionary into each menu, so the theme brushes resolve inside the pop-up too. -->
+    <Style x:Key="PaneMenuItem" TargetType="MenuItem">
+      <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+      <Setter Property="FontSize" Value="12.5"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="MenuItem">
+            <Border x:Name="b" Background="Transparent" CornerRadius="6" Padding="10,6">
+              <ContentPresenter ContentSource="Header" RecognizesAccessKey="False"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="b" Property="Background" Value="{DynamicResource NavActive}"/></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="{DynamicResource Faint}"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="PaneMenuSep" TargetType="Separator">
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Separator"><Border Height="1" Margin="6,4" Background="{DynamicResource Bd}"/></ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="PaneMenu" TargetType="ContextMenu">
+      <Setter Property="ItemContainerStyle" Value="{StaticResource PaneMenuItem}"/>
+      <Setter Property="HasDropShadow" Value="False"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ContextMenu">
+            <Border Margin="0,2,10,12" Background="{DynamicResource Card}" BorderBrush="{DynamicResource BdStrong}" BorderThickness="1"
+                    CornerRadius="9" Padding="4">
+              <Border.Effect><DropShadowEffect BlurRadius="12" ShadowDepth="2" Opacity="0.16"/></Border.Effect>
+              <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Cycle"/>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
     <!-- File name editor: a token chip and the plain text between chips. -->
     <Style x:Key="NameChip" TargetType="Border">
       <Setter Property="Background" Value="{DynamicResource BadgeAutoBg}"/>

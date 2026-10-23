@@ -122,7 +122,7 @@ namespace BIMCamel.UI
         // ── the profile menu ─────────────────────────────────────────────────────
         private void OnProfileMenu(object sender, RoutedEventArgs e)
         {
-            var menu = new ContextMenu { PlacementTarget = BtnLoadProfile, Placement = PlacementMode.Bottom };
+            var menu = NewPaneMenu(BtnLoadProfile);
             void Item(string header, string tip, Action act)
             {
                 var mi = new MenuItem { Header = header, ToolTip = tip };
@@ -130,11 +130,11 @@ namespace BIMCamel.UI
                 menu.Items.Add(mi);
             }
             Item("Load profile from file…", "Replace every setting with a saved .json profile.", LoadProfileFromFile);
-            menu.Items.Add(new Separator());
+            menu.Items.Add(NewPaneMenuSeparator());
             Item("Preset: Coordination model", "A light IFC4 for clash and review: instancing, compression, properties from the parent object, no quantities. Mapping, roles, names and coordinates are kept.", () => ApplyPreset(Preset.Coordination));
             Item("Preset: Smallest file", "Everything that shrinks the file: coarser welding, shared type properties, tiny parts left out, no quantities. Mapping, roles, names and coordinates are kept.", () => ApplyPreset(Preset.Small));
             Item("Preset: Full data hand-off", "Everything the model carries: properties from all parent levels, materials, quantities, blank values kept. Mapping, roles, names and coordinates are kept.", () => ApplyPreset(Preset.FullData));
-            menu.Items.Add(new Separator());
+            menu.Items.Add(NewPaneMenuSeparator());
             Item("Reset all settings to defaults…", "Put every tab back the way a fresh install shows it, including mapping rules, roles and coordinates.", ResetAll);
             menu.IsOpen = true;
         }

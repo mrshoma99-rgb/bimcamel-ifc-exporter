@@ -132,7 +132,7 @@ namespace BIMCamel.UI
             sp.Children.Add(label); sp.Children.Add(x);
             chip.Child = sp;
 
-            var menu = new ContextMenu();
+            var menu = NewPaneMenu(null);
             void Item(string header, bool enabled, Action act)
             {
                 var mi = new MenuItem { Header = header, IsEnabled = enabled };
@@ -225,12 +225,21 @@ namespace BIMCamel.UI
         private void OnAddToken(object sender, RoutedEventArgs e)
         {
             int scope = ScopeIndex();
-            var menu = new ContextMenu { PlacementTarget = BtnAddToken, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
+            var menu = NewPaneMenu(BtnAddToken);
             foreach (var tok in NameTokens)
             {
+                // Name on top, what it fills in below, so the list explains itself.
                 bool live = tok.AvailableIn(scope);
-                var mi = new MenuItem { Header = tok.Label + (live ? "" : "  (empty in this scope)"), ToolTip = tok.Tip };
-                if (!live) mi.Opacity = 0.6;
+                var head = new StackPanel { Width = 250 };
+                head.Children.Add(new TextBlock { Text = tok.Label, FontWeight = FontWeights.SemiBold });
+                head.Children.Add(new TextBlock
+                {
+                    Text = live ? tok.Tip : "Empty in this scope. " + tok.Tip,
+                    FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 1, 0, 0),
+                    Foreground = (Brush)FindResource("Muted"),
+                });
+                var mi = new MenuItem { Header = head };
+                if (!live) mi.Opacity = 0.55;
                 mi.Click += (_, _) => AddNameToken(tok.Key);
                 menu.Items.Add(mi);
             }

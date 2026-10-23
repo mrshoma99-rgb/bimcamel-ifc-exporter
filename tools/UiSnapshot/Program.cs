@@ -72,6 +72,8 @@ namespace UiSnapshot
             }
             // What a user sees on opening the pane: a fixed viewport with the footer.
             Render(view, 440, Path.Combine(outDir, "viewport-440x820.png"), 820);
+            try { RenderTokenMenu(view, Path.Combine(outDir, "token-menu.png")); }
+            catch (Exception ex) { Console.WriteLine("token menu: " + ex); }
             Console.WriteLine("Wrote " + Directory.GetFiles(outDir, "*.png").Length + " snapshots to " + Path.GetFullPath(outDir));
             return 0;
         }
@@ -181,6 +183,50 @@ namespace UiSnapshot
                 lc.ItemsSource = new[] { "Element", "Identity Data", "Constraints", "Dimensions", "Phasing", "Item" }.Select((s, i) => new Item { Name = s, Checked = i != 4 }).ToList();
             foreach (var g in new[] { "GridParams", "GridMap", "GridPropRules" })
                 if (F<ItemsControl>(v, g) is ItemsControl ic) ic.ItemsSource = new[] { new Row(), new Row() };
+        }
+
+        /// <summary>The + Token menu, built like ExporterView.OnAddToken builds it, in the Saved set scope.</summary>
+        private static void RenderTokenMenu(UserControl view, string path)
+        {
+            var tokens = new[]
+            {
+                ("Model file", "The Navisworks file name, without its extension.", true),
+                ("Project", "The project name from the Project tab (the model file name when that is blank).", true),
+                ("Schema", "IFC4 or IFC2x3.", true),
+                ("Set name", "The saved set or search set being exported. Filled in the Saved set and batch scopes.", true),
+                ("Selected element", "The selected element's name, with +N when more are selected. Filled in the Current selection scope.", false),
+                ("Scope", "What was exported: model, selection, section-box, set or batch.", true),
+                ("Date", "The export date, as 2026-10-23.", true),
+                ("Time", "The export time, as 1430.", true),
+                ("User", "Your Windows user name.", true),
+            };
+            var menu = new ContextMenu();
+            menu.Resources.MergedDictionaries.Add(view.Resources);
+            menu.Style = (Style)view.Resources["PaneMenu"];
+            foreach (var (label, tip, live) in tokens)
+            {
+                var head = new StackPanel { Width = 250 };
+                head.Children.Add(new TextBlock { Text = label, FontWeight = FontWeights.SemiBold });
+                head.Children.Add(new TextBlock
+                {
+                    Text = live ? tip : "Empty in this scope. " + tip,
+                    FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 1, 0, 0),
+                    Foreground = (Brush)view.Resources["Muted"],
+                });
+                menu.Items.Add(new MenuItem { Header = head, Opacity = live ? 1 : 0.55 });
+            }
+            var host = new Border { Background = (Brush)view.Resources["Pane"], Padding = new Thickness(12), Child = menu };
+            host.Resources.MergedDictionaries.Add(view.Resources);
+            host.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            host.Arrange(new Rect(host.DesiredSize));
+            host.UpdateLayout();
+            int w = (int)Math.Ceiling(host.ActualWidth), h = (int)Math.Ceiling(host.ActualHeight);
+            var rtb = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
+            rtb.Render(host);
+            var enc = new PngBitmapEncoder();
+            enc.Frames.Add(BitmapFrame.Create(rtb));
+            using var fs = File.Create(path);
+            enc.Save(fs);
         }
 
         private static void Render(UserControl view, int width, string path, int viewportHeight = 0)
