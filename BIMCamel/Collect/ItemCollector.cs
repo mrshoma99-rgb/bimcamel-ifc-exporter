@@ -218,23 +218,32 @@ namespace BIMCamel.Collect
 
         /// <summary>Geometry leaves resolved from a saved selection or search set.</summary>
         public static List<ModelItem> GetItemsFromSet(Document doc, SelectionSet set, Action<int>? onProgress = null, bool wantMinCorner = false)
+            => GetItemsFromSet(doc, set, onProgress, wantMinCorner, -1);
+
+        /// <param name="rule">The rule's number in the pane, for the per-set probe; -1 records nothing.</param>
+        private static List<ModelItem> GetItemsFromSet(Document doc, SelectionSet set, Action<int>? onProgress, bool wantMinCorner, int rule)
         {
             var result = new List<ModelItem>();
             BeginWalk();
             try
             {
                 long ts = Geometry.ExportTiming.Now;
+                bool search = !set.HasExplicitModelItems && set.Search != null;
                 ModelItemCollection? mic =
                     set.HasExplicitModelItems ? set.ExplicitModelItems :
                     set.Search != null ? set.Search.FindAll(doc, false) : null;
-                Geometry.ExportTiming.SetSearchTicks += Geometry.ExportTiming.Now - ts;
+                long tf = Geometry.ExportTiming.Now;
+                Geometry.ExportTiming.SetSearchTicks += tf - ts;
                 P.Add(P.K.ScanFindAll, ts);
+                int found = 0;
                 if (mic != null)
                 {
+                    found = mic.Count;
                     var w = new Walk(result, true, onProgress, wantMinCorner, dedup: true);
                     CollectLeaves(mic, w);
                     EndWalk(w);
                 }
+                if (rule >= 0) P.SetResolved(rule, search, tf - ts, Geometry.ExportTiming.Now - tf, found, result.Count);
             }
             // A Stop request travels out through onProgress, and this catch-all
             // would have turned it into "this set resolved to nothing" — silently
@@ -375,8 +384,10 @@ namespace BIMCamel.Collect
             // resolution is a model-wide FindAll. Resolve each distinct set
             // once; rule order (earlier wins) is unchanged.
             var resolved = new Dictionary<SelectionSet, List<ModelItem>>();
+            int ruleNo = 0;
             foreach (var rule in rules)
             {
+                ruleNo++;
                 if (rule.Set == null) continue;
                 bool wantsClass = rule.ClassKey.Length > 0;
                 bool wantsCode = rule.Classification.Length > 0;
@@ -388,7 +399,7 @@ namespace BIMCamel.Collect
                     // the slow half, and passing no callback here left the UI
                     // unpumped — and unstoppable — for all of it.
                 {
-                    resolved[rule.Set] = leaves = GetItemsFromSet(doc, rule.Set, onProgress);
+                    resolved[rule.Set] = leaves = GetItemsFromSet(doc, rule.Set, onProgress, false, ruleNo);
                     Geometry.ExportTiming.SetMembers += leaves.Count;
                 }
                 foreach (var leaf in leaves)

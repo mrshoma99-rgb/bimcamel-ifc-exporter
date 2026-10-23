@@ -142,6 +142,7 @@ namespace BIMCamel.Geometry
         {
             for (int i = 0; i <= ScanLast; i++) { _ticks[i] = 0; _calls[i] = 0; }
             _scanning = true;
+            _sets.Clear();
             Collect.ItemTree.ResetCounts();
             _scanStart = Env.Take();
             _scanEnd = _exportEnd = default;
@@ -174,6 +175,17 @@ namespace BIMCamel.Geometry
         }
         private static int _released = -1;
         private static long _releasedFrom, _releasedTo;
+
+        /// <summary>One resolved set: its place in the rule list, whether it is a search, what
+        /// FindAll (or reading the explicit items) and the walk of the results cost, and what
+        /// came back. Cleared by <see cref="ResetScan"/>.</summary>
+        public static void SetResolved(int rule, bool search, long findTicks, long walkTicks, int found, int leaves)
+        {
+            if (!_scanning) return;
+            _sets.Add((rule, search, findTicks, walkTicks, found, leaves));
+        }
+        private static readonly List<(int rule, bool search, long find, long walk, int found, int leaves)> _sets =
+            new List<(int, bool, long, long, int, int)>();
 
         public static void EndExport(int keyMemo = -1) { _exportEnd = Env.Take(); _keyMemo = keyMemo; }
         private static int _keyMemo = -1;
@@ -249,6 +261,18 @@ namespace BIMCamel.Geometry
                           + $"managed {a.Managed / MB:N0} → {b.Managed / MB:N0} MB · free RAM {a.AvailPhys / MB:N0} → {b.AvailPhys / MB:N0} of {b.TotalPhys / MB:N0} MB");
         }
 
+        /// <summary>Each set the rules resolved, slowest first. Rules are numbered as listed in
+        /// the pane, so no set name goes into a report that may be shared.</summary>
+        private static void SetsTable(StringBuilder sb)
+        {
+            var rows = new List<(int rule, bool search, long find, long walk, int found, int leaves)>(_sets);
+            rows.Sort((a, b) => (b.find + b.walk).CompareTo(a.find + a.walk));
+            sb.AppendLine($"  ── sets, slowest first ──");
+            sb.AppendLine($"  {"rule",-8}{"kind",-10}{"find ms",10}{"walk ms",10}{"found",10}{"leaves",10}");
+            foreach (var r in rows)
+                sb.AppendLine($"  {"#" + r.rule,-8}{(r.search ? "search" : "explicit"),-10}{ExportTiming.Ms(r.find),10:N0}{ExportTiming.Ms(r.walk),10:N0}{r.found,10:N0}{r.leaves,10:N0}");
+        }
+
         private static readonly Dictionary<K, string> Labels = new Dictionary<K, string>
         {
             [K.ScanChildren] = "Children", [K.ScanHidden] = "IsHidden", [K.ScanHasGeometry] = "HasGeometry",
@@ -299,6 +323,7 @@ namespace BIMCamel.Geometry
             }
             double rest = phaseMs - sum;
             sb.AppendLine($"  {"not probed",-18}{Math.Max(0, rest),10:N0}{"",13}{"",10}{(phaseMs > 0 ? 100.0 * Math.Max(0, rest) / phaseMs : 0),6:N0}%");
+            if (scan && _sets.Count > 0) SetsTable(sb);
         }
     }
 }
