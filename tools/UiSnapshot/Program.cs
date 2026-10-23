@@ -128,7 +128,8 @@ namespace UiSnapshot
                 row.ColumnDefinitions.Add(new ColumnDefinition());
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 row.Children.Add(new TextBlock { Text = labels[i], TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center });
-                var hint = new TextBlock { Text = hints[i], FontSize = 12, FontWeight = FontWeights.Normal, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = (Brush)v.FindResource("Muted") };
+                var hint = new TextBlock { Text = hints[i], FontSize = 12, FontWeight = FontWeights.Normal, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+                hint.SetResourceReference(TextBlock.ForegroundProperty, "Muted");
                 Grid.SetColumn(hint, 1); row.Children.Add(hint);
                 scope.Children.Add(new RadioButton { Content = row, GroupName = "scope", IsChecked = i == 0, Style = (Style)v.FindResource("OptionCard") });
             }
