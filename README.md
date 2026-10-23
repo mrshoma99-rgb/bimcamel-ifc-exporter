@@ -16,6 +16,11 @@ export — BIMCamel fills that gap without the slowness and setup friction of th
 
 **[Download v0.12.0](../../releases/tag/v0.12.0)**
 
+<p>
+  <img src="docs/images/pane-export.png" alt="The exporter pane: Export tab with scope, format and the token file name" width="300">
+  <img src="docs/images/pane-mapping.png" alt="The Mapping tab: set rules and property-value rules as cards" width="300">
+</p>
+
 - **Correct geometry on instanced models.** Each element now writes only its own fragments.
   Before, an instanced node wrote every copy's geometry: Autodesk's ice stadium sample went from
   709 MB (149 M triangles) to **27 MB (1.44 M triangles)**. Elements built from many small parts
@@ -28,17 +33,22 @@ export — BIMCamel fills that gap without the slowness and setup friction of th
   they already state, their Revit category, or whole words in their names, instead of all
   becoming `IfcBuildingElementProxy`. It uses fixed rules only, runs fully offline and records
   the deciding rule on each element (#46).
-- **Reworked panel** (#42):
+- **Reworked panel** (#42, #49):
+  - A slimmer header with the BIMCamel wordmark and the plug-in version, and tabs that take
+    half the height they used to.
   - The Export tab is laid out in order: scope, format, Smart setup, Pre-flight, then
     Advanced options.
   - **Rules by property value** (*Category equals Walls → IfcWall*) map classes and codes
-    without building a search set.
+    without building a search set. Set rules and property rules show as two-line cards, so
+    names are no longer cut off when the pane is docked narrow.
   - **Element name** picks the property used as each element's IFC Name (*Mark*, *Tag*…).
   - **Property set search**, plus **CSV import/export** of parameter mappings.
   - Settings are remembered between sessions, with presets in the profile menu.
   - A **Project** tab replaces Coordinates and Structure.
-  - The file name accepts a template (`{model}`, `{schema}`, `{set}`, `{date}`), and the report
-    has **Open file** / **Open folder** / **Save report** buttons.
+  - The file name is built from **token chips**: model file, project, schema, set name,
+    selected element, scope, date, time and user. Type your own text between them, drag or
+    remove them, and a live preview shows the result.
+  - The report has **Open file** / **Open folder** / **Save report** buttons.
 - **Cleaner, smaller IFC files** (#45):
   - Text is escaped correctly, including backslashes and non-ASCII names.
   - A GlobalId is never written twice, and elements without a GUID get a stable one from their

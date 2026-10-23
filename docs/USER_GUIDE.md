@@ -128,6 +128,9 @@ move it, or right-click it to move or remove it; a chip that does not apply
 to the current scope is greyed out and left out of the name. The line under
 the box shows the resulting name. Save dialogs open in the folder of the
 last export.
+
+<img src="images/pane-token-menu.png" alt="The + Token menu, with a description under each token" width="280">
+
 After an export the Report card offers **Open file**, **Open folder** and
 **Save report…**; a failed export shows the plain reason first and the
 technical details below it.
