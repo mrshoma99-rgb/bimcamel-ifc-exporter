@@ -1256,7 +1256,7 @@ namespace BIMCamel.UI
             // is the difference between "Stop" and "Stop, eventually".
             ThrowIfCancelled();
             // 400 ms, not 120: each pump lets Navisworks repaint, and with a large selection
-            // highlighted a repaint is not free. In the export, pumps cost ~18 ms each on the PTS
+            // highlighted a repaint is not free. In the export, pumps cost ~18 ms each on a large
             // E3D model; at 120 ms that would be ~15% of a three-minute walk. Stop still lands
             // within half a second.
             long ms = _tickClock.ElapsedMilliseconds;

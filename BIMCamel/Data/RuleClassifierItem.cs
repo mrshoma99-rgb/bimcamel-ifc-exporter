@@ -89,7 +89,7 @@ namespace BIMCamel.Data
 
         /// <summary>
         /// Ancestors seen this export. Auto-classify runs on every unmapped element — 128k of them
-        /// on the PTS E3D model — and walked up to three ancestors for each, re-reading the same
+        /// on a large E3D plant model — and walked up to three ancestors for each, re-reading the same
         /// branch and pipe nodes for every primitive under them. Bounded: cleared when full, which
         /// costs only re-reads. Matched by value (ModelItem equality), cleared by
         /// <see cref="Reset"/> at the start of each export.
