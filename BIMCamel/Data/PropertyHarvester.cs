@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Autodesk.Navisworks.Api;
+using Probe = BIMCamel.Geometry.Probe;
 
 namespace BIMCamel.Data
 {
@@ -142,10 +143,16 @@ namespace BIMCamel.Data
             rv = new RoleValues { Type = "", Level = "", Material = "", Classification = "", Name = "" };
             bool wantRoles = roles != null && roles.Any;
             var list = new List<IfcProp>();
+            long t = Probe.Now;
             var ancestors = Ancestors(item);
+            Probe.Add(Probe.K.PropAncestors, t);
             // Only needed to resolve leaf-vs-parent clashes; the leaf's own list is written exactly
             // as before, duplicates and all, so Geometry mode is byte-for-byte unchanged.
             var seen = ancestors.Count > 0 ? new HashSet<(string, string)>() : null;
+            // Time alternates between the two probes: stepping through categories and reading
+            // their names is one, reading a category's properties is the other.
+            int nProps = 0;
+            t = Probe.Now;
             try
             {
                 foreach (var cat in item.PropertyCategories)
@@ -166,8 +173,10 @@ namespace BIMCamel.Data
                     bool rolesHere = wantRoles && RolesPending(roles!, rv, roleCat);
                     if (!wantProps && !rolesHere) continue;
 
+                    t = Probe.Mark(Probe.K.PropCategories, t);
                     foreach (var p in cat.Properties)
                     {
+                        nProps++;
                         string name = p.DisplayName ?? p.Name ?? "";
                         if (string.IsNullOrEmpty(name)) continue;
 
@@ -192,11 +201,24 @@ namespace BIMCamel.Data
                             rolesHere = false;
                         }
                     }
+                    t = Probe.Mark(Probe.K.PropValues, t);
                 }
             }
             catch { /* tolerate odd nodes */ }
+            Probe.Mark(Probe.K.PropCategories, t);
+            Probe.Calls(Probe.K.PropCategories, 1);
+            Probe.Calls(Probe.K.PropValues, nProps);
 
             // Then the parents, nearest first, filling only what the nodes below did not have.
+            t = Probe.Now;
+            try { HarvestAncestors(ancestors, include, roles, wantRoles, list, seen!, ref rv); }
+            finally { if (ancestors.Count > 0) Probe.Add(Probe.K.PropAncestorRead, t); }
+            return list;
+        }
+
+        private static void HarvestAncestors(List<ModelItem> ancestors, HashSet<string>? include, PropertyRoles? roles, bool wantRoles,
+                                             List<IfcProp> list, HashSet<(string, string)> seen, ref RoleValues rv)
+        {
             foreach (var a in ancestors)
             {
                 bool rolesDone = !wantRoles || RolesComplete(roles!, rv);
@@ -218,7 +240,6 @@ namespace BIMCamel.Data
                     }
                 }
             }
-            return list;
         }
 
         /// <summary>Same first-wins ordering as the old ReadRoles chain: one property feeds at most

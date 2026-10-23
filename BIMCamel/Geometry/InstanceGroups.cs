@@ -60,7 +60,9 @@ namespace BIMCamel.Geometry
         {
             group = null;
             string? mine;
+            long t = Probe.Now;
             try { mine = Key(path.ArrayData); } catch { mine = null; }
+            Probe.Add(Probe.K.PathId, t);
 
             if (mine != null && _members.TryGetValue(mine, out var hit))
             {
@@ -75,18 +77,25 @@ namespace BIMCamel.Geometry
             }
 
             var all = new List<InwOaFragment3>();
+            t = Probe.Now;
             foreach (InwOaFragment3 frag in path.Fragments()) all.Add(frag);
+            Probe.Add(Probe.K.Fragments, t);
             if (all.Count < 2 || mine == null) return all;   // nothing to choose between, or no id
 
             var byMember = new Dictionary<string, List<int>>(StringComparer.Ordinal);
-            for (int i = 0; i < all.Count; i++)
+            t = Probe.Now;
+            try
             {
-                string? k;
-                try { k = Key(all[i].path.ArrayData); } catch { return all; }
-                if (k == null) return all;
-                if (!byMember.TryGetValue(k, out var l)) { l = new List<int>(1); byMember[k] = l; }
-                l.Add(i);
+                for (int i = 0; i < all.Count; i++)
+                {
+                    string? k;
+                    try { k = Key(all[i].path.ArrayData); } catch { return all; }
+                    if (k == null) return all;
+                    if (!byMember.TryGetValue(k, out var l)) { l = new List<int>(1); byMember[k] = l; }
+                    l.Add(i);
+                }
             }
+            finally { Probe.AddTime(Probe.K.FragPathId, t); Probe.Calls(Probe.K.FragPathId, all.Count); }
             // An element must never lose its geometry to the filter: no match keeps them all.
             if (!byMember.TryGetValue(mine, out var ownIdx)) { ExportTiming.OwnFragmentFallbacks++; return all; }
             ExportTiming.ForeignFragmentsSkipped += all.Count - ownIdx.Count;

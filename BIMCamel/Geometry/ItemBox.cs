@@ -27,6 +27,7 @@ namespace BIMCamel.Geometry
             BoundingBox3D? box;
             try { box = item.BoundingBox(); } catch { box = null; }
             ExportTiming.BoxTicks += ExportTiming.Now - t;
+            Probe.Add(Probe.K.Box, t);
             ExportTiming.BoxReads++;
             _item = item; _box = box;
             return box;

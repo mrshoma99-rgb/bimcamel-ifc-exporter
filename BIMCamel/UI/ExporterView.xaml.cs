@@ -2070,6 +2070,12 @@ namespace BIMCamel.UI
                                 + "candidates were dropped and re-read, so this file is correct — but the "
                                 + "assumption does not hold on this model, and Fast instancing should be off.");
             }
+            // Per call, not per stage: the stage lines above say where the time went, these say
+            // which Navisworks call spent it and what one call costs (Probe).
+            sb.AppendLine($"Per call    : export #{Probe.SessionRun} in this Navisworks session"
+                          + (Probe.SessionRun == 1 ? " (first: includes Navisworks loading the model)" : ""));
+            Probe.Report(sb, true, scanMs);
+            Probe.Report(sb, false, ms);
             sb.AppendLine($"Peak heap   : {peakHeap / 1048576.0:N0} MB  (start {baseHeap / 1048576.0:N0} MB)");
             sb.AppendLine($"Validation  : {validation}");
             sb.AppendLine($"Exported    : {DateTime.Now:yyyy-MM-dd HH:mm}");
