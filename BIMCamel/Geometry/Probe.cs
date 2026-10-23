@@ -313,16 +313,16 @@ namespace BIMCamel.Geometry
             if (scan && _released >= 0) sb.AppendLine($"  released    : {_released:N0} cached item(s) from earlier runs · managed {_releasedFrom / 1048576:N0} → {_releasedTo / 1048576:N0} MB after a full GC");
             if (scan && _keyMemo >= 0) sb.AppendLine($"  key memo    : {_keyMemo:N0} item(s) remembered this session");
             if (!scan) sb.AppendLine($"  parents     : {Collect.ItemTree.Hits:N0} looked up, {Collect.ItemTree.Reads:N0} read from Navisworks (scan and export)");
-            sb.AppendLine($"  {"call",-18}{"ms",10}{"calls",13}{"µs/call",10}{"share",7}");
+            sb.AppendLine($"  {"call",-18}{"ms",10}{"calls",13}{"µs/call",13}{"share",7}");
             foreach (int i in rows)
             {
                 double ms = ExportTiming.Ms(_ticks[i]);
                 double us = _calls[i] > 0 ? ms * 1000.0 / _calls[i] : 0;
                 double share = phaseMs > 0 ? 100.0 * ms / phaseMs : 0;
-                sb.AppendLine($"  {Labels[(K)i],-18}{ms,10:N0}{_calls[i],13:N0}{us,10:N1}{share,6:N0}%");
+                sb.AppendLine($"  {Labels[(K)i],-18}{ms,10:N0}{_calls[i],13:N0}{us,13:N1}{share,6:N0}%");
             }
             double rest = phaseMs - sum;
-            sb.AppendLine($"  {"not probed",-18}{Math.Max(0, rest),10:N0}{"",13}{"",10}{(phaseMs > 0 ? 100.0 * Math.Max(0, rest) / phaseMs : 0),6:N0}%");
+            sb.AppendLine($"  {"not probed",-18}{Math.Max(0, rest),10:N0}{"",13}{"",13}{(phaseMs > 0 ? 100.0 * Math.Max(0, rest) / phaseMs : 0),6:N0}%");
             if (scan && _sets.Count > 0) SetsTable(sb);
         }
     }
