@@ -6,12 +6,21 @@ using System.Linq;
 
 namespace BIMCamel.UI
 {
+    /// <summary>A card in a numbered list of rules; the list renumbers it as cards move.</summary>
+    public interface INumbered
+    {
+        int Number { get; set; }
+    }
+
     /// <summary>A ticked item in one of the WPF check-lists (property sets, batch sets).</summary>
     public sealed class CheckItem : INotifyPropertyChanged
     {
         public string Name { get; set; } = "";
         private bool _checked;
         public bool Checked { get => _checked; set { _checked = value; OnChanged(nameof(Checked)); } }
+        private string _detail = "";
+        /// <summary>The grey text on the right: a batch set's file name, a property set's size.</summary>
+        public string Detail { get => _detail; set { _detail = value ?? ""; OnChanged(nameof(Detail)); } }
 
         public CheckItem() { }
         public CheckItem(string name, bool isChecked) { Name = name; _checked = isChecked; }
@@ -26,8 +35,9 @@ namespace BIMCamel.UI
     /// <see cref="Resolver"/>. Shared catalogs are static so the grid's "new row" (parameterless
     /// ctor) picks them up too.
     /// </summary>
-    public sealed class ParamRow : INotifyPropertyChanged
+    public sealed class ParamRow : INotifyPropertyChanged, INumbered
     {
+        public int Number { get; set; }
         public static Func<string, IEnumerable<string>>? Resolver;
         public static readonly ObservableCollection<string> SharedCategories = new ObservableCollection<string>();
         public static readonly ObservableCollection<string> SharedPsets = new ObservableCollection<string>();
@@ -70,8 +80,10 @@ namespace BIMCamel.UI
     }
 
     /// <summary>One row of the set → IFC-class mapping grid.</summary>
-    public sealed class MapRow : INotifyPropertyChanged
+    public sealed class MapRow : INotifyPropertyChanged, INumbered
     {
+        private int _number;
+        public int Number { get => _number; set { _number = value; OnChanged(nameof(Number)); } }
         public static readonly ObservableCollection<string> SharedSets = new ObservableCollection<string>();
         public static readonly ObservableCollection<string> SharedClasses = new ObservableCollection<string>();
 
@@ -114,8 +126,10 @@ namespace BIMCamel.UI
     /// and/or classification code. The category and property pickers reuse the parameter grid's
     /// scanned catalog, so a scan fills both.
     /// </summary>
-    public sealed class PropRuleRow : INotifyPropertyChanged
+    public sealed class PropRuleRow : INotifyPropertyChanged, INumbered
     {
+        private int _number;
+        public int Number { get => _number; set { _number = value; OnChanged(nameof(Number)); } }
         public static readonly string[] SharedTests = { "equals", "contains", "starts with" };
 
         public ObservableCollection<string> Categories => ParamRow.SharedCategories;

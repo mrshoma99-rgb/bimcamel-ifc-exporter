@@ -11,5 +11,6 @@
   </PropertyGroup>
   <ItemGroup>
     <None Include="..\..\BIMCamel\UI\ExporterView.xaml" Link="ExporterView.xaml" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\BIMCamel\Resources\mark_white.png" Link="mark_white.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

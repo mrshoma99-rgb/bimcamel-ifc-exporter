@@ -68,6 +68,7 @@ namespace BIMCamel.UI
                 if (e.OriginalSource == NameEditor || e.OriginalSource == NameChips)
                     NameChips.Children.OfType<TextBox>().LastOrDefault()?.Focus();
             };
+            TxtOwnText.KeyDown += (_, e) => { if (e.Key == Key.Enter) { OnAddOwnText(TxtOwnText, e); e.Handled = true; } };
             LoadNameTemplate(TxtFileName.Text);
         }
 
@@ -116,20 +117,22 @@ namespace BIMCamel.UI
             var seg = _nameSegs[index];
             var tok = NameTokens.FirstOrDefault(k => k.Key == seg.Value);
             bool live = tok?.AvailableIn(scope) ?? true;
-            var chip = new Border { Style = (Style)FindResource("NameChip"), Tag = index, AllowDrop = true };
-            if (!live) chip.Opacity = 0.55;
+            var chip = new Border { Style = (Style)FindResource(live ? "NameChip" : "NameChipOff"), Tag = index, AllowDrop = true };
             chip.ToolTip = (tok?.Tip ?? seg.Value) + (live ? "" : "\nEmpty in the current scope, so it is left out of the name.");
 
+            // Label, then ‹ › to move it and × to remove it: the same as dragging or the right-click menu.
             var sp = new StackPanel { Orientation = Orientation.Horizontal };
-            var label = new TextBlock { Text = tok?.Label ?? seg.Value, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
-            label.SetResourceReference(TextBlock.ForegroundProperty, "BadgeAutoTx");
-            var x = new Button { Content = "×", Cursor = Cursors.Hand, Margin = new Thickness(3, 0, 0, 0), ToolTip = "Remove", Focusable = false };
-            x.SetResourceReference(Control.ForegroundProperty, "BadgeAutoTx");
-            x.Template = (ControlTemplate)System.Windows.Markup.XamlReader.Parse(
-                "<ControlTemplate TargetType=\"Button\" xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\">" +
-                "<Border Background=\"Transparent\" Padding=\"3,0\"><ContentPresenter VerticalAlignment=\"Center\"/></Border></ControlTemplate>");
-            x.Click += (_, _) => RemoveNameSeg(index);
-            sp.Children.Add(label); sp.Children.Add(x);
+            sp.Children.Add(new TextBlock { Text = tok?.Label ?? seg.Value, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 3, 0) });
+            Button Ctl(string glyph, string tip, bool enabled, Action act)
+            {
+                var b = new Button { Style = (Style)FindResource("ChipCtl"), Content = glyph, ToolTip = tip, IsEnabled = enabled };
+                b.Click += (_, _) => act();
+                sp.Children.Add(b);
+                return b;
+            }
+            Ctl("‹", "Move left", index > 0, () => MoveNameSeg(index, index - 1));
+            Ctl("›", "Move right", index < _nameSegs.Count - 1, () => MoveNameSeg(index, index + 2));
+            Ctl("×", "Remove", true, () => RemoveNameSeg(index));
             chip.Child = sp;
 
             var menu = NewPaneMenu(null);
@@ -145,7 +148,7 @@ namespace BIMCamel.UI
             chip.ContextMenu = menu;
 
             Point? down = null;
-            chip.PreviewMouseLeftButtonDown += (_, e) => down = e.GetPosition(chip);
+            chip.PreviewMouseLeftButtonDown += (_, e) => down = e.OriginalSource is DependencyObject d && FindParent<Button>(d) != null ? (Point?)null : e.GetPosition(chip);
             chip.MouseMove += (_, e) =>
             {
                 if (down == null || e.LeftButton != MouseButtonState.Pressed) { down = null; return; }
@@ -162,6 +165,13 @@ namespace BIMCamel.UI
                 OnNameDrop(index + (after ? 1 : 0), e);
             };
             return chip;
+        }
+
+        private static T? FindParent<T>(DependencyObject d) where T : DependencyObject
+        {
+            for (var p = d; p != null; p = p is Visual || p is System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(p) : LogicalTreeHelper.GetParent(p))
+                if (p is T t) return t;
+            return null;
         }
 
         private FrameworkElement MakeNameText(int index)
@@ -222,28 +232,44 @@ namespace BIMCamel.UI
             BuildNameEditor();
         }
 
+        /// <summary>+ Token: every token with what it would fill in now, greyed when the current
+        /// scope gives it no value, and a field for plain text.</summary>
         private void OnAddToken(object sender, RoutedEventArgs e)
         {
             int scope = ScopeIndex();
-            var menu = NewPaneMenu(BtnAddToken);
+            var values = TokenValues(scope);
+            TokenList.Children.Clear();
             foreach (var tok in NameTokens)
             {
-                // Name on top, what it fills in below, so the list explains itself.
                 bool live = tok.AvailableIn(scope);
-                var head = new StackPanel { Width = 250 };
-                head.Children.Add(new TextBlock { Text = tok.Label, FontWeight = FontWeights.SemiBold });
-                head.Children.Add(new TextBlock
+                var row = new DockPanel();
+                var sample = new TextBlock
                 {
-                    Text = live ? tok.Tip : "Empty in this scope. " + tok.Tip,
-                    FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 1, 0, 0),
-                    Foreground = (Brush)FindResource("Muted"),
-                });
-                var mi = new MenuItem { Header = head };
-                if (!live) mi.Opacity = 0.55;
-                mi.Click += (_, _) => AddNameToken(tok.Key);
-                menu.Items.Add(mi);
+                    Text = live && values.TryGetValue(tok.Key, out var v) && v.Length > 0 ? v : "not in this scope",
+                    FontSize = 12, Margin = new Thickness(12, 0, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 170,
+                };
+                sample.SetResourceReference(TextBlock.ForegroundProperty, "Muted");
+                DockPanel.SetDock(sample, Dock.Right);
+                row.Children.Add(sample);
+                row.Children.Add(new TextBlock { Text = tok.Label, TextTrimming = TextTrimming.CharacterEllipsis });
+                var b = new Button { Style = (Style)FindResource("TokenRow"), Content = row, ToolTip = live ? tok.Tip : "Empty in this scope. " + tok.Tip, Opacity = live ? 1 : 0.55 };
+                b.Click += (_, _) => { TokenPopup.IsOpen = false; AddNameToken(tok.Key); };
+                TokenList.Children.Add(b);
             }
-            menu.IsOpen = true;
+            TxtOwnText.Text = "";
+            TokenPopup.IsOpen = true;
+        }
+
+        private void OnAddOwnText(object sender, RoutedEventArgs e)
+        {
+            var text = new string((TxtOwnText.Text ?? "").Where(c => Array.IndexOf(System.IO.Path.GetInvalidFileNameChars(), c) < 0 && c != '{' && c != '}').ToArray());
+            TokenPopup.IsOpen = false;
+            if (text.Length == 0) return;
+            NormalizeNameSegs();
+            var tail = _nameSegs[_nameSegs.Count - 1];
+            bool needSep = tail.Value.Length == 0 ? _nameSegs.Count > 1 : !"_-. ".Contains(tail.Value[tail.Value.Length - 1]);
+            tail.Value += (needSep && !"_-. ".Contains(text[0]) ? "_" : "") + text;
+            BuildNameEditor();
         }
 
         /// <summary>Append a token, with a "_" between it and whatever came before.</summary>
@@ -276,7 +302,7 @@ namespace BIMCamel.UI
                 if (chip.Tag is int i && i < _nameSegs.Count)
                 {
                     var tok = NameTokens.FirstOrDefault(k => k.Key == _nameSegs[i].Value);
-                    chip.Opacity = tok == null || tok.AvailableIn(scope) ? 1 : 0.55;
+                    chip.Style = (Style)FindResource(tok == null || tok.AvailableIn(scope) ? "NameChip" : "NameChipOff");
                 }
             UpdateNamePreview();
         }
@@ -289,9 +315,9 @@ namespace BIMCamel.UI
                 var doc = NavApp.ActiveDocument;
                 string model = doc != null ? ModelBaseName(doc) : "Model";
                 string schema = CmbSchema.SelectedIndex == 1 ? "IFC2x3" : "IFC4";
-                string? set = ScopeIndex() == 4 ? "SetName" : null;
+                string? set = ScopeIndex() == 4 ? (_batchItems.FirstOrDefault(b => b.Checked)?.Name ?? "SetName") : null;
                 string ext = ChkZip.IsChecked == true ? "ifczip" : "ifc";
-                LblNamePreview.Text = $"→ {FileNameFor(model, schema, set)}.{ext}" + (set != null ? "   (one file per set)" : "");
+                LblNamePreview.Text = $"{FileNameFor(model, schema, set)}.{ext}" + (set != null ? "  (one per set)" : "");
             }
             catch { LblNamePreview.Text = ""; }
         }
@@ -308,9 +334,24 @@ namespace BIMCamel.UI
             if (set != null && t.IndexOf("{set}", StringComparison.OrdinalIgnoreCase) < 0) t += "_{set}";
 
             int scope = ScopeIndex();
+            var values = TokenValues(scope, model, schemaName, set);
+            string name = Regex.Replace(t, @"\{(\w+)\}", m => values.TryGetValue(m.Groups[1].Value, out var v) ? v : m.Value);
+            // An empty token leaves "a__b" or a trailing "_": tidy those, not the user's own text.
+            name = Regex.Replace(name, @"([_\-. ])\1+", "$1").Trim('_', '-', '.', ' ');
+            if (name.Length == 0) name = model;
+            return Sanitize(name);
+        }
+
+        /// <summary>What each token fills in, for the current scope.</summary>
+        private Dictionary<string, string> TokenValues(int scope, string? model = null, string? schemaName = null, string? set = null)
+        {
+            var doc = NavApp.ActiveDocument;
+            model ??= doc != null ? ModelBaseName(doc) : "Model";
+            schemaName ??= CmbSchema.SelectedIndex == 1 ? "IFC2x3" : "IFC4";
             if (set == null && scope == 3) set = CmbSavedSet.SelectedItem as string;
+            if (set == null && scope == 4) set = _batchItems.FirstOrDefault(b => b.Checked)?.Name ?? _batchItems.FirstOrDefault()?.Name;
             var now = DateTime.Now;
-            var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["model"] = model,
                 ["project"] = Def(TxtProject.Text, model),
@@ -322,11 +363,6 @@ namespace BIMCamel.UI
                 ["time"] = now.ToString("HHmm", CultureInfo.InvariantCulture),
                 ["user"] = Environment.UserName,
             };
-            string name = Regex.Replace(t, @"\{(\w+)\}", m => values.TryGetValue(m.Groups[1].Value, out var v) ? v : m.Value);
-            // An empty token leaves "a__b" or a trailing "_": tidy those, not the user's own text.
-            name = Regex.Replace(name, @"([_\-. ])\1+", "$1").Trim('_', '-', '.', ' ');
-            if (name.Length == 0) name = model;
-            return Sanitize(name);
         }
 
         private static string SelectedElementName()
