@@ -42,6 +42,7 @@ namespace BIMCamel.UI
                 {
                     _boundDoc.CurrentSelection.Changed -= OnSelectionChanged;
                     _boundDoc.Models.CollectionChanged -= OnModelsChanged;
+                    _boundDoc.SelectionSets.Changed -= OnSetsChanged;
                 }
             }
             catch { }
@@ -52,6 +53,7 @@ namespace BIMCamel.UI
                 {
                     doc.CurrentSelection.Changed += OnSelectionChanged;
                     doc.Models.CollectionChanged += OnModelsChanged;
+                    doc.SelectionSets.Changed += OnSetsChanged;
                 }
             }
             catch { }
@@ -73,7 +75,15 @@ namespace BIMCamel.UI
             RefreshModelStatus(); RefreshSets(); UpdateScopeHint(); PreviewBasePoint(); RenderPreflight();
         }
 
-        private void OnSelectionChanged(object? sender, EventArgs e)
+        /// <summary>A set was added, removed or edited: the set cache on disk no longer describes
+        /// this session's sets until the file is saved (see <see cref="SetMapStore"/>).</summary>
+        private void OnSetsChanged(object? sender, EventArgs e)
+        {
+            _scan.SetsEdited = true;
+            _scan.DropMaps();
+        }
+
+                private void OnSelectionChanged(object? sender, EventArgs e)
         {
             if (!Tabs.IsEnabled || ScopeIndex() != 1) return;
             UpdateScopeHint();
