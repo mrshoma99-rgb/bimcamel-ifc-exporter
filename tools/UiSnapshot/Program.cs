@@ -80,6 +80,14 @@ namespace UiSnapshot
 
         private static void Fill(UserControl v)
         {
+            // Title bar subtitle, as UpdateProfileLabel writes it.
+            if (F<TextBlock>(v, "LblSubtitle") is TextBlock sub)
+            {
+                sub.Inlines.Clear();
+                sub.Inlines.Add(new System.Windows.Documents.Run("IFC Exporter"));
+                sub.Inlines.Add(new System.Windows.Documents.Run(" v0.12.0") { Foreground = new SolidColorBrush(Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF)), FontSize = 11 });
+            }
+
             // File name editor, as ExporterView.FileName.cs builds it: Model file _ Schema _ Date.
             var chips = F<WrapPanel>(v, "NameChips");
             if (chips != null)

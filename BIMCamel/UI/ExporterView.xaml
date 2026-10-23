@@ -511,7 +511,7 @@
           <ControlTemplate TargetType="TabControl">
             <Grid>
               <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-              <Border Grid.Row="0" Background="{DynamicResource Nav}" BorderBrush="{DynamicResource Bd}" BorderThickness="0,0,0,1" Padding="9">
+              <Border Grid.Row="0" Background="{DynamicResource Nav}" BorderBrush="{DynamicResource Bd}" BorderThickness="0,0,0,1" Padding="8,5">
                 <UniformGrid Rows="1" IsItemsHost="True"/>
               </Border>
               <ContentPresenter Grid.Row="1" ContentSource="SelectedContent" TextElement.Foreground="{DynamicResource Text}"/>
@@ -527,7 +527,7 @@
         <Setter.Value>
           <ControlTemplate TargetType="TabItem">
             <Border x:Name="b" Background="Transparent" BorderBrush="Transparent" BorderThickness="1"
-                    CornerRadius="10" Padding="4,8" Cursor="Hand">
+                    CornerRadius="8" Padding="4,6" Cursor="Hand">
               <ContentPresenter ContentSource="Header" HorizontalAlignment="Center"/>
             </Border>
             <ControlTemplate.Triggers>
@@ -590,7 +590,7 @@
               </Canvas>
             </Viewbox>
           </StackPanel>
-          <TextBlock Grid.Column="1" x:Name="LblSubtitle" Text="IFC Exporter" Foreground="#E6FFFFFF" FontSize="12.5" Margin="8,1,8,0"
+          <TextBlock Grid.Column="1" x:Name="LblSubtitle" Text="IFC Exporter" Foreground="#E6FFFFFF" FontSize="12.5" Margin="9,3,8,0"
                      VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                      ToolTip="The profile these settings came from. A dot means they were changed after it was loaded."/>
           <StackPanel Grid.Column="2" Orientation="Horizontal">
@@ -615,12 +615,12 @@
         <!-- ===== EXPORT ===== -->
         <TabItem x:Name="TabExport">
           <TabItem.Header>
-            <StackPanel ToolTip="Core export settings: schema, units, scope and output">
-              <Viewbox Width="18" Height="18" HorizontalAlignment="Center">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTip="Core export settings: schema, units, scope and output">
+              <Viewbox Width="15" Height="15" VerticalAlignment="Center">
                 <Path Data="M12,3 L12,15 M8,11 L12,15 L16,11 M4,17 L4,19 A2,2 0 0 0 6,21 L18,21 A2,2 0 0 0 20,19 L20,17" StrokeThickness="2"
                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}"/>
               </Viewbox>
-              <TextBlock Text="Export" FontSize="11" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+              <TextBlock Text="Export" FontSize="12" VerticalAlignment="Center" Margin="6,0,0,0"/>
             </StackPanel>
           </TabItem.Header>
           <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="14,14,14,8">
@@ -880,14 +880,14 @@
         <!-- ===== DATA (was Properties + Semantics) ===== -->
         <TabItem x:Name="TabData">
           <TabItem.Header>
-            <StackPanel ToolTip="What data each element carries: property sets, materials, quantities, semantic roles and parameter renames. All optional — Smart setup fills the marked sections.">
-              <Viewbox Width="18" Height="18" HorizontalAlignment="Center">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTip="What data each element carries: property sets, materials, quantities, semantic roles and parameter renames. All optional — Smart setup fills the marked sections.">
+              <Viewbox Width="15" Height="15" VerticalAlignment="Center">
                 <Path Data="M4,6 L20,6 M4,12 L20,12 M4,18 L20,18" StrokeThickness="2"
                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}"/>
               </Viewbox>
               <!-- The dot appears when pre-flight has a warning this tab fixes. -->
-              <Grid HorizontalAlignment="Center" Margin="0,4,0,0">
-                <TextBlock Text="Data" FontSize="11"/>
+              <Grid VerticalAlignment="Center" Margin="6,0,0,0">
+                <TextBlock Text="Data" FontSize="12"/>
                 <Ellipse x:Name="DotData" Width="6" Height="6" Fill="{DynamicResource AmberTx}" Visibility="Collapsed"
                          HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-2,-8,0"/>
               </Grid>
@@ -1010,14 +1010,14 @@
         <!-- ===== MAPPING ===== -->
         <TabItem x:Name="TabMapping">
           <TabItem.Header>
-            <StackPanel ToolTip="Assign Navisworks sets to IFC classes and classification codes. Optional — Smart setup proposes the rules, this tab is where you edit them.">
-              <Viewbox Width="18" Height="18" HorizontalAlignment="Center">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTip="Assign Navisworks sets to IFC classes and classification codes. Optional — Smart setup proposes the rules, this tab is where you edit them.">
+              <Viewbox Width="15" Height="15" VerticalAlignment="Center">
                 <Path Data="M4,8 L17,8 M14,5 L17,8 L14,11 M20,16 L7,16 M10,13 L7,16 L10,19" StrokeThickness="2"
                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}"/>
               </Viewbox>
               <!-- The dot appears when pre-flight has a warning this tab fixes. -->
-              <Grid HorizontalAlignment="Center" Margin="0,4,0,0">
-                <TextBlock Text="Mapping" FontSize="11"/>
+              <Grid VerticalAlignment="Center" Margin="6,0,0,0">
+                <TextBlock Text="Mapping" FontSize="12"/>
                 <Ellipse x:Name="DotMapping" Width="6" Height="6" Fill="{DynamicResource AmberTx}" Visibility="Collapsed"
                          HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-2,-8,0"/>
               </Grid>
@@ -1154,14 +1154,14 @@
              same question: what is this model and where is it. -->
         <TabItem x:Name="TabCoords">
           <TabItem.Header>
-            <StackPanel ToolTip="What the model is called and where it sits: project, site, building and storey names, the base point and real-world georeferencing. All optional.">
-              <Viewbox Width="18" Height="18" HorizontalAlignment="Center">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" ToolTip="What the model is called and where it sits: project, site, building and storey names, the base point and real-world georeferencing. All optional.">
+              <Viewbox Width="15" Height="15" VerticalAlignment="Center">
                 <Path Data="M12,2 L12,6 M12,18 L12,22 M2,12 L6,12 M18,12 L22,12 M12,12 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0" StrokeThickness="2"
                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}"/>
               </Viewbox>
               <!-- The dot appears when pre-flight has a warning this tab fixes. -->
-              <Grid HorizontalAlignment="Center" Margin="0,4,0,0">
-                <TextBlock Text="Project" FontSize="11"/>
+              <Grid VerticalAlignment="Center" Margin="6,0,0,0">
+                <TextBlock Text="Project" FontSize="12"/>
                 <Ellipse x:Name="DotCoords" Width="6" Height="6" Fill="{DynamicResource AmberTx}" Visibility="Collapsed"
                          HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-2,-8,0"/>
               </Grid>

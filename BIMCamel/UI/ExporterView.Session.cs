@@ -78,11 +78,29 @@ namespace BIMCamel.UI
             finally { _applying = false; }
         }
 
+        private static readonly string VersionText = PluginVersion();
+
+        private static string PluginVersion()
+        {
+            var v = typeof(ExporterView).Assembly.GetName().Version;
+            return v == null ? "" : "v" + v.Major + "." + v.Minor + "." + Math.Max(v.Build, 0);
+        }
+
+        // "IFC Exporter v0.12.0 · Profile •": the version is dimmed so the name still leads.
         private void UpdateProfileLabel()
         {
-            if (string.IsNullOrEmpty(_ui.ProfileName)) { LblSubtitle.Text = "IFC Exporter"; return; }
-            bool changed = _profileJson.Length > 0 && ExportProfile.ToJson(Capture()) != _profileJson;
-            LblSubtitle.Text = "IFC Exporter · " + _ui.ProfileName + (changed ? "  •" : "");
+            string profile = "";
+            if (!string.IsNullOrEmpty(_ui.ProfileName))
+            {
+                bool changed = _profileJson.Length > 0 && ExportProfile.ToJson(Capture()) != _profileJson;
+                profile = " · " + _ui.ProfileName + (changed ? "  •" : "");
+            }
+            LblSubtitle.Inlines.Clear();
+            LblSubtitle.Inlines.Add(new System.Windows.Documents.Run("IFC Exporter"));
+            if (VersionText.Length > 0)
+                LblSubtitle.Inlines.Add(new System.Windows.Documents.Run(" " + VersionText)
+                    { Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF)), FontSize = 11 });
+            if (profile.Length > 0) LblSubtitle.Inlines.Add(new System.Windows.Documents.Run(profile));
         }
 
         private void LoadedProfile(string name, ExportProfile p)
