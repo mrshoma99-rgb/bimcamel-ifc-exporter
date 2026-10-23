@@ -91,7 +91,12 @@
       <Setter Property="Foreground" Value="{DynamicResource Text}"/>
       <Setter Property="CaretBrush" Value="{DynamicResource Text}"/>
       <Setter Property="FontSize" Value="13"/>
-      <Setter Property="Padding" Value="8,7"/>
+      <!-- The same 34 px as a ComboBox, so a text box and a drop-down side by side line up.
+           The padding is horizontal only: vertical padding on a fixed-height box is what
+           squeezed the grid cells' text area down to nothing. -->
+      <Setter Property="Padding" Value="9,0"/>
+      <Setter Property="MinHeight" Value="34"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="Template">
         <Setter.Value>
@@ -108,6 +113,24 @@
           </ControlTemplate>
         </Setter.Value>
       </Setter>
+    </Style>
+
+    <!-- A field inside a grid row or a rule card: 28 px, like the drop-downs next to it. -->
+    <Style x:Key="CellBox" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+      <Setter Property="MinHeight" Value="0"/>
+      <Setter Property="Height" Value="28"/>
+      <Setter Property="Padding" Value="7,0"/>
+      <Setter Property="FontSize" Value="12"/>
+    </Style>
+    <!-- A number inside a sentence ("Skip geometry smaller than [5] mm"): no taller than the
+         check box it follows. -->
+    <Style x:Key="InlineNum" TargetType="TextBox" BasedOn="{StaticResource CellBox}">
+      <Setter Property="Height" Value="24"/>
+      <Setter Property="Width" Value="52"/>
+      <Setter Property="Padding" Value="6,0"/>
+      <Setter Property="TextAlignment" Value="Right"/>
+      <Setter Property="Margin" Value="8,0,6,0"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
 
     <!-- ════ Secondary button ════ -->
@@ -205,14 +228,21 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="CheckBox">
-            <StackPanel Orientation="Horizontal" Background="Transparent">
+            <!-- A grid, not a horizontal stack: a stack gives the label infinite width, so a long
+                 one ran off the card instead of wrapping. -->
+            <Grid Background="Transparent">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
               <Border x:Name="box" Width="17" Height="17" CornerRadius="5" BorderThickness="2"
-                      BorderBrush="{DynamicResource BdStrong}" Background="Transparent" VerticalAlignment="Center">
+                      BorderBrush="{DynamicResource BdStrong}" Background="Transparent" VerticalAlignment="Top" Margin="0,0,0,0">
                 <Path x:Name="tick" Data="M2,6 L5,9 L10,3" Stroke="White" StrokeThickness="2"
                       Stretch="None" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center"/>
               </Border>
-              <ContentPresenter Margin="9,0,0,0" VerticalAlignment="Center"/>
-            </StackPanel>
+              <ContentPresenter Grid.Column="1" Margin="9,0,0,0" VerticalAlignment="Center">
+                <ContentPresenter.Resources>
+                  <Style TargetType="TextBlock"><Setter Property="TextWrapping" Value="Wrap"/></Style>
+                </ContentPresenter.Resources>
+              </ContentPresenter>
+            </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsChecked" Value="True">
                 <Setter TargetName="box" Property="Background" Value="{DynamicResource Accent}"/>
@@ -280,6 +310,7 @@
       <Setter Property="Foreground" Value="{DynamicResource Text}"/>
       <Setter Property="FontSize" Value="13"/>
       <Setter Property="Height" Value="34"/>
+      <Setter Property="Padding" Value="10,0,8,0"/>
       <Setter Property="VerticalContentAlignment" Value="Center"/>
       <Setter Property="Template">
         <Setter.Value>
@@ -290,7 +321,7 @@
                 <ToggleButton.Template>
                   <ControlTemplate TargetType="ToggleButton">
                     <Border x:Name="bd" Background="{DynamicResource Field}" BorderBrush="{DynamicResource FieldBd}"
-                            BorderThickness="1" CornerRadius="8" Padding="10,0,8,0">
+                            BorderThickness="1" CornerRadius="8" Padding="{Binding Padding, RelativeSource={RelativeSource AncestorType=ComboBox}}">
                       <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                         <ContentPresenter Grid.Column="0" Content="{Binding SelectionBoxItem, RelativeSource={RelativeSource AncestorType=ComboBox}}"
@@ -305,12 +336,17 @@
                   </ControlTemplate>
                 </ToggleButton.Template>
               </ToggleButton>
-              <TextBox x:Name="PART_EditableTextBox" Margin="11,0,26,0" VerticalAlignment="Center"
-                       Background="Transparent" Foreground="{DynamicResource Text}" Visibility="Hidden">
-                <TextBox.Template>
-                  <ControlTemplate TargetType="TextBox"><ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center"/></ControlTemplate>
-                </TextBox.Template>
-              </TextBox>
+              <!-- The typed text sits exactly where the picked text does: same padding, and the
+                   arrow's column kept clear. -->
+              <Grid Margin="{TemplateBinding Padding}">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/></Grid.ColumnDefinitions>
+                <TextBox x:Name="PART_EditableTextBox" MinHeight="0" Padding="0" VerticalAlignment="Center"
+                         Background="Transparent" Foreground="{DynamicResource Text}" Visibility="Hidden">
+                  <TextBox.Template>
+                    <ControlTemplate TargetType="TextBox"><ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center"/></ControlTemplate>
+                  </TextBox.Template>
+                </TextBox>
+              </Grid>
               <Popup x:Name="PART_Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}"
                      AllowsTransparency="True" Focusable="False" PopupAnimation="Slide">
                 <Border Background="{DynamicResource Card}" BorderBrush="{DynamicResource Bd}" BorderThickness="1"
@@ -329,6 +365,52 @@
           </ControlTemplate>
         </Setter.Value>
       </Setter>
+    </Style>
+
+    <Style x:Key="CellCombo" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+      <Setter Property="Height" Value="28"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Padding" Value="7,0,6,0"/>
+    </Style>
+
+    <!-- ════ Slim scroll bar ════ -->
+    <Style x:Key="ThumbStyle" TargetType="Thumb">
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Thumb">
+            <Border CornerRadius="3" Background="{DynamicResource BdStrong}"/>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="ScrollBar">
+      <Setter Property="Width" Value="8"/>
+      <Setter Property="MinWidth" Value="8"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ScrollBar">
+            <Track x:Name="PART_Track" IsDirectionReversed="True" Margin="1,2">
+              <Track.Thumb><Thumb Style="{StaticResource ThumbStyle}"/></Track.Thumb>
+            </Track>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style.Triggers>
+        <Trigger Property="Orientation" Value="Horizontal">
+          <Setter Property="Width" Value="Auto"/>
+          <Setter Property="MinWidth" Value="0"/>
+          <Setter Property="Height" Value="8"/>
+          <Setter Property="Template">
+            <Setter.Value>
+              <ControlTemplate TargetType="ScrollBar">
+                <Track x:Name="PART_Track" IsDirectionReversed="False" Margin="2,1">
+                  <Track.Thumb><Thumb Style="{StaticResource ThumbStyle}"/></Track.Thumb>
+                </Track>
+              </ControlTemplate>
+            </Setter.Value>
+          </Setter>
+        </Trigger>
+      </Style.Triggers>
     </Style>
 
     <!-- ════ ProgressBar ════ -->
@@ -383,7 +465,7 @@
               <Border Grid.Row="0" Background="{DynamicResource Nav}" BorderBrush="{DynamicResource Bd}" BorderThickness="0,0,0,1" Padding="9">
                 <UniformGrid Rows="1" IsItemsHost="True"/>
               </Border>
-              <ContentPresenter Grid.Row="1" ContentSource="SelectedContent"/>
+              <ContentPresenter Grid.Row="1" ContentSource="SelectedContent" TextElement.Foreground="{DynamicResource Text}"/>
             </Grid>
           </ControlTemplate>
         </Setter.Value>
@@ -417,7 +499,7 @@
       <Setter Property="Foreground" Value="{DynamicResource Muted}"/>
       <Setter Property="FontSize" Value="11"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="Padding" Value="8,7"/>
+      <Setter Property="Padding" Value="6,7"/>
       <Setter Property="BorderBrush" Value="{DynamicResource Bd}"/>
       <Setter Property="BorderThickness" Value="0,0,0,1"/>
     </Style>
@@ -572,7 +654,7 @@
                       <TextBlock Style="{StaticResource Lbl}" Text="Source units"/>
                       <ComboBox x:Name="CmbUnits" ToolTip="Length unit of the source model. 'Auto' reads it from the model — only override if the model's units are wrong."/>
                     </StackPanel>
-                    <StackPanel Grid.Row="2" Grid.Column="0">
+                    <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3">
                       <TextBlock Style="{StaticResource Lbl}" Text="Geometry quality"/>
                       <ComboBox x:Name="CmbQuality" ToolTip="Vertex welding tolerance and stored coordinate precision. 'Balanced' suits most models; 'Small file' welds more coarsely, 'High detail' preserves finer detail and writes larger files. Navisworks fixes the mesh tessellation when the NWC is made, so this cannot add detail that is not already there."/>
                     </StackPanel>
@@ -596,9 +678,18 @@
                   </StackPanel>
                   <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,9"
                              Text="One scan of the scope above prepares the whole export: finds your saved sets, samples property sets, fills the semantic roles (Data tab), proposes set→class rules (Mapping tab), and fills the pre-flight checks below. Anything you already set by hand is left alone."/>
-                  <Button Style="{StaticResource Btn}" Content="Smart setup: scan &amp; auto-fill" Click="OnSmartSetup" HorizontalAlignment="Left"
+                  <Button Style="{StaticResource Btn}" Margin="0" Content="Smart setup: scan &amp; auto-fill" Click="OnSmartSetup" HorizontalAlignment="Left"
                           ToolTip="Runs every auto-detect in sequence over the scope selected above. Takes roughly as long as collecting that scope once (geometry is not read); use Stop by the progress bar to interrupt it. Re-running only fills blanks — it never overwrites your entries. One nuance: a role or rule you deliberately blanked counts as blank, so it will be proposed again."/>
-                  <TextBlock x:Name="TxtSmartSummary" Style="{StaticResource Hint}" FontFamily="Consolas" Text=""/>
+                  <TextBlock x:Name="TxtSmartSummary" FontFamily="Consolas" Text="">
+                    <TextBlock.Style>
+                      <Style TargetType="TextBlock" BasedOn="{StaticResource Hint}">
+                        <Setter Property="Margin" Value="0,8,0,0"/>
+                        <Style.Triggers>
+                          <Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed"/></Trigger>
+                        </Style.Triggers>
+                      </Style>
+                    </TextBlock.Style>
+                  </TextBlock>
                 </StackPanel>
               </Border>
 
@@ -665,19 +756,19 @@
                   <StackPanel x:Name="AdvancedBody" Visibility="Collapsed" Margin="0,10,0,0">
                     <TextBlock Style="{StaticResource Lbl}" Text="File size &amp; speed" FontWeight="SemiBold" Margin="0,0,0,2"/>
                     <CheckBox x:Name="ChkInstancing" Content="Optimize repeated geometry (instancing)" ToolTip="Reuse identical geometry across elements to shrink the file and speed up export."/>
-                    <CheckBox x:Name="ChkMergeParts" Margin="26,0,0,0" Content="Merge multi-part elements (element-level instancing)" ToolTip="An element built from many fragments (a seat of a thousand parts) is written as ONE shape instead of one placed copy per fragment, and every identical element reuses that shape. Viewers then place one copy per element, not millions of tiny ones.&#x0a;&#x0a;Applies to elements with more than 16 parts. Elements with fewer keep per-part instancing.&#x0a;&#x0a;Needs instancing to be on."/>
-                    <CheckBox x:Name="ChkFastInstancing" Margin="26,0,0,5" Content="Fast instancing — trust type + size (experimental)" ToolTip="Skip re-reading the geometry of elements that look like a repeat of one already read (same tree type, size, fragment count and colour). Reading triangles is 80-90% of the export, and most models repeat their shapes many times, so this can be several times faster.&#x0a;&#x0a;It is a GUESS about the model, so it checks itself: every 20th repeat is read for real and compared. Any disagreement is reported, that shape is dropped, and the file stays correct. Turn this on only after a run reports zero mismatches on YOUR model.&#x0a;&#x0a;Needs instancing to be on."/>
+                    <CheckBox x:Name="ChkMergeParts" Margin="26,3,0,3" Content="Merge multi-part elements (element-level instancing)" ToolTip="An element built from many fragments (a seat of a thousand parts) is written as ONE shape instead of one placed copy per fragment, and every identical element reuses that shape. Viewers then place one copy per element, not millions of tiny ones.&#x0a;&#x0a;Applies to elements with more than 16 parts. Elements with fewer keep per-part instancing.&#x0a;&#x0a;Needs instancing to be on."/>
+                    <CheckBox x:Name="ChkFastInstancing" Margin="26,3,0,5" Content="Fast instancing — trust type + size (experimental)" ToolTip="Skip re-reading the geometry of elements that look like a repeat of one already read (same tree type, size, fragment count and colour). Reading triangles is 80-90% of the export, and most models repeat their shapes many times, so this can be several times faster.&#x0a;&#x0a;It is a GUESS about the model, so it checks itself: every 20th repeat is read for real and compared. Any disagreement is reported, that shape is dropped, and the file stays correct. Turn this on only after a run reports zero mismatches on YOUR model.&#x0a;&#x0a;Needs instancing to be on."/>
                     <CheckBox x:Name="ChkSkipEmptyProps" Content="Skip empty property values" ToolTip="Do not write properties whose value is blank. Each one costs a full entity carrying a single space, and blanks also stop otherwise-identical property sets from being shared."/>
                     <CheckBox x:Name="ChkShareTypeProps" Content="Share type-level properties (IFC4, needs a Type role)" ToolTip="Put the properties that are the same for every element of a type onto the IfcElementType, and write only what differs on each element - the standard IFC arrangement (type Psets shared, occurrence Psets override).&#x0a;&#x0a;This is the biggest remaining saving for property-heavy models, because a set with one per-element value (an Id or Mark) currently forces ALL its properties to be repeated per element.&#x0a;&#x0a;Off by default because it moves data to where a simpler IFC reader may not look. The report says how many elements it could not express exactly - zero means the export is faithful."/>
                     <StackPanel Orientation="Horizontal">
                       <CheckBox x:Name="ChkMinSize" Content="Skip geometry smaller than" VerticalAlignment="Center" ToolTip="Leave out parts below this size - washers, fasteners, screen-only detail. These are a large share of the triangle count on plant models and add nothing to a coordination deliverable.&#x0a;&#x0a;This REMOVES objects rather than simplifying them, so everything dropped is counted in the report."/>
-                      <TextBox x:Name="TxtMinSizeMm" Text="5" Width="46" Margin="8,0,6,0"/>
+                      <TextBox x:Name="TxtMinSizeMm" Text="5" Style="{StaticResource InlineNum}"/>
                       <TextBlock Text="mm" VerticalAlignment="Center" Foreground="{DynamicResource Muted}"/>
                     </StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0"
+                    <StackPanel Orientation="Horizontal"
                                 ToolTip="Split the output into multiple files once it grows past this size.">
                       <CheckBox x:Name="ChkSplit" Content="Split into files larger than" VerticalAlignment="Center"/>
-                      <TextBox x:Name="TxtSplitMb" Text="200" Width="58" Margin="8,0,6,0"/>
+                      <TextBox x:Name="TxtSplitMb" Text="200" Style="{StaticResource InlineNum}"/>
                       <TextBlock Text="MB" VerticalAlignment="Center" Foreground="{DynamicResource Muted}"/>
                     </StackPanel>
 
@@ -810,27 +901,27 @@
                   <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,8" Text="Rename a source property or move it into a different IFC property set. Pick the category to disambiguate same-named parameters."/>
                   <DataGrid x:Name="GridParams" AutoGenerateColumns="False" HeadersVisibility="Column" CanUserAddRows="False"
                             Background="Transparent" RowBackground="Transparent" BorderBrush="{DynamicResource FieldBd}" BorderThickness="1"
-                            GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource Bd}" RowHeight="40"
+                            GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource Bd}" RowHeight="36"
                             Foreground="{DynamicResource Text}" FontSize="12">
                     <DataGrid.Columns>
-                      <DataGridTemplateColumn Header="Source category" Width="*" MinWidth="92">
+                      <DataGridTemplateColumn Header="Category" Width="*" MinWidth="70">
                         <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                          <ComboBox ItemsSource="{Binding Categories}" SelectedItem="{Binding SourceCategory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                          <ComboBox ItemsSource="{Binding Categories}" SelectedItem="{Binding SourceCategory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource CellCombo}" Margin="2,0" VerticalAlignment="Center"/>
                         </DataTemplate></DataGridTemplateColumn.CellTemplate>
                       </DataGridTemplateColumn>
-                      <DataGridTemplateColumn Header="Source property" Width="*" MinWidth="92">
+                      <DataGridTemplateColumn Header="Property" Width="*" MinWidth="70">
                         <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                          <ComboBox IsEditable="True" ItemsSource="{Binding AvailableProps}" Text="{Binding SourceProperty, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                          <ComboBox IsEditable="True" ItemsSource="{Binding AvailableProps}" Text="{Binding SourceProperty, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource CellCombo}" Margin="2,0" VerticalAlignment="Center"/>
                         </DataTemplate></DataGridTemplateColumn.CellTemplate>
                       </DataGridTemplateColumn>
-                      <DataGridTemplateColumn Header="Target Pset" Width="*" MinWidth="84">
+                      <DataGridTemplateColumn Header="To pset" Width="*" MinWidth="70">
                         <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                          <ComboBox IsEditable="True" ItemsSource="{Binding Psets}" Text="{Binding TargetPset, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                          <ComboBox IsEditable="True" ItemsSource="{Binding Psets}" Text="{Binding TargetPset, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource CellCombo}" Margin="2,0" VerticalAlignment="Center"/>
                         </DataTemplate></DataGridTemplateColumn.CellTemplate>
                       </DataGridTemplateColumn>
-                      <DataGridTemplateColumn Header="Target name" Width="*" MinWidth="84">
+                      <DataGridTemplateColumn Header="As name" Width="*" MinWidth="70">
                         <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                          <ComboBox IsEditable="True" ItemsSource="{Binding ParamNames}" Text="{Binding TargetName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                          <ComboBox IsEditable="True" ItemsSource="{Binding ParamNames}" Text="{Binding TargetName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource CellCombo}" Margin="2,0" VerticalAlignment="Center"/>
                         </DataTemplate></DataGridTemplateColumn.CellTemplate>
                       </DataGridTemplateColumn>
                     </DataGrid.Columns>
@@ -875,28 +966,28 @@
                            Text="Each rule assigns one saved set to an IFC class and, optionally, a classification code. Smart setup proposes rules from set names; edit them here. A search set is already an IF/THEN rule — build it in Find Items, save it, map it. Unmapped elements export as IfcBuildingElementProxy. The set list reloads automatically when you open this tab."/>
                 <DataGrid x:Name="GridMap" AutoGenerateColumns="False" HeadersVisibility="Column" CanUserAddRows="False"
                           Background="Transparent" RowBackground="Transparent" BorderBrush="{DynamicResource FieldBd}" BorderThickness="1"
-                          GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource Bd}" RowHeight="40"
+                          GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource Bd}" RowHeight="36"
                           Foreground="{DynamicResource Text}" FontSize="12">
                   <DataGrid.Columns>
-                    <DataGridTemplateColumn Header="Navisworks set" Width="*" MinWidth="96">
+                    <DataGridTemplateColumn Header="Set" Width="*" MinWidth="80">
                       <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                        <ComboBox ItemsSource="{Binding Sets}" SelectedItem="{Binding Set, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                        <ComboBox ItemsSource="{Binding Sets}" SelectedItem="{Binding Set, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource CellCombo}" Margin="2,0" VerticalAlignment="Center"/>
                       </DataTemplate></DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="Export as IFC class" Width="*" MinWidth="96">
+                    <DataGridTemplateColumn Header="IFC class" Width="*" MinWidth="80">
                       <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                        <ComboBox ItemsSource="{Binding Classes}" SelectedItem="{Binding IfcClass, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
+                        <ComboBox ItemsSource="{Binding Classes}" SelectedItem="{Binding IfcClass, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource CellCombo}" Margin="2,0" VerticalAlignment="Center"/>
                       </DataTemplate></DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="Predefined type" Width="0.7*" MinWidth="78">
+                    <DataGridTemplateColumn Header="Predefined" Width="0.75*" MinWidth="64">
                       <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                        <ComboBox IsEditable="True" ItemsSource="{Binding PredefinedOptions}" Text="{Binding Predefined, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"
+                        <ComboBox IsEditable="True" ItemsSource="{Binding PredefinedOptions}" Text="{Binding Predefined, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource CellCombo}" Margin="2,0" VerticalAlignment="Center"
                                   ToolTip="IFC PredefinedType for this class. Pick from the values IFC4 defines for it, or type your own."/>
                       </DataTemplate></DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="Classification" Width="0.7*" MinWidth="78">
+                    <DataGridTemplateColumn Header="Code" Width="0.6*" MinWidth="56">
                       <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                        <TextBox Text="{Binding Classification, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"
+                        <TextBox Text="{Binding Classification, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource CellBox}" Margin="2,0" VerticalAlignment="Center"
                                  ToolTip="Classification code for every element in this set, e.g. a Uniclass or OmniClass code. Overrides the Classification property role."/>
                       </DataTemplate></DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
@@ -927,49 +1018,58 @@
                 </StackPanel>
                 <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,11" TextWrapping="Wrap"
                            Text="IF a property has a value THEN export as a class, with no search set needed. For example: Element / Category equals Walls → IfcWall. These rules only fill what the set rules above left empty, and the first matching rule wins. Scan on the Data tab to fill the property lists."/>
-                <DataGrid x:Name="GridPropRules" AutoGenerateColumns="False" HeadersVisibility="Column" CanUserAddRows="False"
-                          Background="Transparent" RowBackground="Transparent" BorderBrush="{DynamicResource FieldBd}" BorderThickness="1"
-                          GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource Bd}" RowHeight="40"
-                          Foreground="{DynamicResource Text}" FontSize="12">
-                  <DataGrid.Columns>
-                    <DataGridTemplateColumn Header="Category" Width="0.8*" MinWidth="80">
-                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                        <ComboBox ItemsSource="{Binding Categories}" SelectedItem="{Binding Category, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
-                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="Property" Width="0.8*" MinWidth="80">
-                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                        <ComboBox IsEditable="True" ItemsSource="{Binding AvailableProps}" Text="{Binding Property, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
-                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="Test" Width="0.6*" MinWidth="70">
-                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                        <ComboBox ItemsSource="{Binding Tests}" SelectedItem="{Binding Test, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"
-                                  ToolTip="How the value is compared. Never case-sensitive."/>
-                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="Value" Width="0.8*" MinWidth="70">
-                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                        <TextBox Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
-                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="IFC class" Width="*" MinWidth="90">
-                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                        <ComboBox ItemsSource="{Binding Classes}" SelectedItem="{Binding IfcClass, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
-                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="Predefined" Width="0.6*" MinWidth="70">
-                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                        <ComboBox IsEditable="True" ItemsSource="{Binding PredefinedOptions}" Text="{Binding Predefined, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
-                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="Classification" Width="0.6*" MinWidth="70">
-                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                        <TextBox Text="{Binding Classification, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Height="28" Margin="2,0" VerticalAlignment="Center"/>
-                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-                  </DataGrid.Columns>
-                </DataGrid>
+                <!-- One card per rule, read as a sentence: IF category / property test value, THEN
+                     class, predefined type, code. Seven grid columns did not fit a docked pane. -->
+                <ListBox x:Name="GridPropRules" BorderThickness="0" Background="Transparent"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                  <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                      <Setter Property="Margin" Value="0,0,0,8"/>
+                      <Setter Property="Template">
+                        <Setter.Value>
+                          <ControlTemplate TargetType="ListBoxItem">
+                            <Border x:Name="rb" BorderBrush="{DynamicResource Bd}" BorderThickness="1" CornerRadius="9" Padding="8">
+                              <ContentPresenter/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                              <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="rb" Property="BorderBrush" Value="{DynamicResource Accent}"/>
+                                <Setter TargetName="rb" Property="Background" Value="{DynamicResource NavActive}"/>
+                              </Trigger>
+                            </ControlTemplate.Triggers>
+                          </ControlTemplate>
+                        </Setter.Value>
+                      </Setter>
+                    </Style>
+                  </ListBox.ItemContainerStyle>
+                  <ListBox.ItemTemplate>
+                    <DataTemplate>
+                      <Grid>
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="30"/><ColumnDefinition Width="*"/><ColumnDefinition Width="4"/>
+                          <ColumnDefinition Width="*"/><ColumnDefinition Width="4"/><ColumnDefinition Width="0.8*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="6"/><RowDefinition Height="Auto"/><RowDefinition Height="6"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="IF" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Faint}" VerticalAlignment="Center"/>
+                        <ComboBox Grid.Row="0" Grid.Column="1" Style="{StaticResource CellCombo}" ItemsSource="{Binding Categories}"
+                                  SelectedItem="{Binding Category, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Property category, or any."/>
+                        <ComboBox Grid.Row="0" Grid.Column="3" Grid.ColumnSpan="3" Style="{StaticResource CellCombo}" IsEditable="True" ItemsSource="{Binding AvailableProps}"
+                                  Text="{Binding Property, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Property to test."/>
+                        <ComboBox Grid.Row="2" Grid.Column="1" Style="{StaticResource CellCombo}" ItemsSource="{Binding Tests}"
+                                  SelectedItem="{Binding Test, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="How the value is compared. Never case-sensitive."/>
+                        <TextBox Grid.Row="2" Grid.Column="3" Grid.ColumnSpan="3" Style="{StaticResource CellBox}"
+                                 Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Value to compare with."/>
+                        <TextBlock Grid.Row="4" Text="THEN" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Faint}" VerticalAlignment="Center"/>
+                        <ComboBox Grid.Row="4" Grid.Column="1" Style="{StaticResource CellCombo}" ItemsSource="{Binding Classes}"
+                                  SelectedItem="{Binding IfcClass, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="IFC class to export matching elements as."/>
+                        <ComboBox Grid.Row="4" Grid.Column="3" Style="{StaticResource CellCombo}" IsEditable="True" ItemsSource="{Binding PredefinedOptions}"
+                                  Text="{Binding Predefined, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="PredefinedType (optional)."/>
+                        <TextBox Grid.Row="4" Grid.Column="5" Style="{StaticResource CellBox}"
+                                 Text="{Binding Classification, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Classification code (optional), e.g. a Uniclass code."/>
+                      </Grid>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
                 <WrapPanel Margin="0,10,0,0">
                   <Button Style="{StaticResource Btn}" Content="+ Add rule" Click="OnPropRuleAdd" ToolTip="Add a rule that picks a class by a property value."/>
                   <Button Style="{StaticResource Btn}" Content="Remove selected" Click="OnPropRuleRemove"/>

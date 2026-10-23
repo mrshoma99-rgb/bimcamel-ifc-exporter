@@ -122,7 +122,7 @@ namespace BIMCamel.UI
             AddItems(CmbPropSource, new[] { "Geometry only", "Geometry + parent object (recommended for Revit)", "Geometry + all parents" });
             CmbPropSource.SelectionChanged += (_, _) => SyncPropSource();
             CmbPropSource.SelectedIndex = (int)PropSource.ParentObject;
-            AddItems(CmbBasePoint, new[] { "Geometry origin — recommended (real coords kept in georeferencing)", "Model origin (no offset — keeps world coords)", "Custom base point" }); CmbBasePoint.SelectedIndex = 0;
+            AddItems(CmbBasePoint, new[] { "Geometry origin (recommended)", "Model origin (keeps world coordinates)", "Custom base point" }); CmbBasePoint.SelectedIndex = 0;
 
             ChkGeoref.IsChecked = true;
             // v6. Compression is a pure win, so it defaults ON.

@@ -98,7 +98,7 @@ namespace UiSnapshot
             Items("CmbQuality", "Balanced (recommended)", "Small file", "High detail");
             Items("CmbPropSource", "Geometry + parent object (recommended)", "Geometry only", "Geometry + all parents");
             Items("CmbGroups", "No", "IfcGroup", "IfcSystem", "IfcZone");
-            Items("CmbBasePoint", "Geometry origin — recommended (real coords kept in georeferencing)", "Model origin", "Custom base point");
+            Items("CmbBasePoint", "Geometry origin (recommended)", "Model origin (keeps world coordinates)", "Custom base point");
             Items("CmbSavedSet", "Walls - External");
 
             // Checkboxes: the defaults the pane starts with.
@@ -149,7 +149,7 @@ namespace UiSnapshot
             if (F<ListBox>(v, "LstCategories") is ListBox lc)
                 lc.ItemsSource = new[] { "Element", "Identity Data", "Constraints", "Dimensions", "Phasing", "Item" }.Select((s, i) => new Item { Name = s, Checked = i != 4 }).ToList();
             foreach (var g in new[] { "GridParams", "GridMap", "GridPropRules" })
-                if (F<DataGrid>(v, g) is DataGrid dg) dg.ItemsSource = new[] { new Row(), new Row() };
+                if (F<ItemsControl>(v, g) is ItemsControl ic) ic.ItemsSource = new[] { new Row(), new Row() };
         }
 
         private static void Render(UserControl view, int width, string path, int viewportHeight = 0)
@@ -167,8 +167,10 @@ namespace UiSnapshot
                 var sv = ((TabItem)tabs.SelectedItem).Content as ScrollViewer;
                 if (sv?.Content is FrameworkElement content)
                 {
-                    var bottom = content.TranslatePoint(new Point(0, content.ActualHeight), view).Y;
-                    outH = (int)Math.Ceiling(bottom + 24);
+                    // The content is stretched to the viewport; its own height is what it asks for.
+                    content.Measure(new Size(content.ActualWidth, double.PositiveInfinity));
+                    var top = content.TranslatePoint(new Point(0, 0), view).Y;
+                    outH = (int)Math.Min(h, Math.Ceiling(top + content.DesiredSize.Height + 16));
                 }
             }
 
