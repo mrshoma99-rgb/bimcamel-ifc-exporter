@@ -1,0 +1,49 @@
+name: ui-snapshot
+
+# Renders every tab of the exporter pane to PNG (no Navisworks needed) so a layout change can
+# be looked at before it ships. The images are the "ui-snapshots" artifact of each run, and a
+# push also commits them to the branch ui-snapshots/<branch> so they can be fetched with git.
+
+on:
+  push:
+    paths: ['BIMCamel/UI/**', 'tools/UiSnapshot/**', '.github/workflows/ui-snapshot.yml']
+  pull_request:
+    paths: ['BIMCamel/UI/**', 'tools/UiSnapshot/**', '.github/workflows/ui-snapshot.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Render the pane
+        shell: pwsh
+        run: |
+          dotnet build tools/UiSnapshot/UiSnapshot.csproj -c Release -o out
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          ./out/UiSnapshot.exe ./out/ExporterView.xaml ./snapshots
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-snapshots
+          path: snapshots/*.png
+      - name: Commit snapshots to ui-snapshots/<branch>
+        if: github.event_name == 'push'
+        shell: pwsh
+        run: |
+          $branch = "ui-snapshots/${{ github.ref_name }}"
+          New-Item -ItemType Directory -Force pub | Out-Null
+          Copy-Item snapshots/*.png pub/
+          Set-Location pub
+          git init -q -b $branch
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "UI snapshots of ${{ github.sha }}"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" "HEAD:refs/heads/$branch"

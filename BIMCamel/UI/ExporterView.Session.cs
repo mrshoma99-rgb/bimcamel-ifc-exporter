@@ -57,7 +57,7 @@ namespace BIMCamel.UI
         private void ScheduleSave()
         {
             if (_applying || _defaults == null) return;
-            UpdateExportLabel();
+            UpdateExportLabel(); UpdateNamePreview();
             _saveTimer.Stop(); _saveTimer.Start();
         }
 
@@ -78,11 +78,29 @@ namespace BIMCamel.UI
             finally { _applying = false; }
         }
 
+        private static readonly string VersionText = PluginVersion();
+
+        private static string PluginVersion()
+        {
+            var v = typeof(ExporterView).Assembly.GetName().Version;
+            return v == null ? "" : "v" + v.Major + "." + v.Minor + "." + Math.Max(v.Build, 0);
+        }
+
+        // "IFC Exporter v0.12.0 · Profile •": the version is dimmed so the name still leads.
         private void UpdateProfileLabel()
         {
-            if (string.IsNullOrEmpty(_ui.ProfileName)) { LblSubtitle.Text = "IFC Exporter"; return; }
-            bool changed = _profileJson.Length > 0 && ExportProfile.ToJson(Capture()) != _profileJson;
-            LblSubtitle.Text = "IFC Exporter · " + _ui.ProfileName + (changed ? "  •" : "");
+            string profile = "";
+            if (!string.IsNullOrEmpty(_ui.ProfileName))
+            {
+                bool changed = _profileJson.Length > 0 && ExportProfile.ToJson(Capture()) != _profileJson;
+                profile = " · " + _ui.ProfileName + (changed ? "  •" : "");
+            }
+            LblSubtitle.Inlines.Clear();
+            LblSubtitle.Inlines.Add(new System.Windows.Documents.Run("IFC Exporter"));
+            if (VersionText.Length > 0)
+                LblSubtitle.Inlines.Add(new System.Windows.Documents.Run(" " + VersionText)
+                    { Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF)), FontSize = 11 });
+            if (profile.Length > 0) LblSubtitle.Inlines.Add(new System.Windows.Documents.Run(profile));
         }
 
         private void LoadedProfile(string name, ExportProfile p)
@@ -104,7 +122,7 @@ namespace BIMCamel.UI
         // ── the profile menu ─────────────────────────────────────────────────────
         private void OnProfileMenu(object sender, RoutedEventArgs e)
         {
-            var menu = new ContextMenu { PlacementTarget = BtnLoadProfile, Placement = PlacementMode.Bottom };
+            var menu = NewPaneMenu(BtnLoadProfile);
             void Item(string header, string tip, Action act)
             {
                 var mi = new MenuItem { Header = header, ToolTip = tip };
@@ -112,11 +130,11 @@ namespace BIMCamel.UI
                 menu.Items.Add(mi);
             }
             Item("Load profile from file…", "Replace every setting with a saved .json profile.", LoadProfileFromFile);
-            menu.Items.Add(new Separator());
+            menu.Items.Add(NewPaneMenuSeparator());
             Item("Preset: Coordination model", "A light IFC4 for clash and review: instancing, compression, properties from the parent object, no quantities. Mapping, roles, names and coordinates are kept.", () => ApplyPreset(Preset.Coordination));
             Item("Preset: Smallest file", "Everything that shrinks the file: coarser welding, shared type properties, tiny parts left out, no quantities. Mapping, roles, names and coordinates are kept.", () => ApplyPreset(Preset.Small));
             Item("Preset: Full data hand-off", "Everything the model carries: properties from all parent levels, materials, quantities, blank values kept. Mapping, roles, names and coordinates are kept.", () => ApplyPreset(Preset.FullData));
-            menu.Items.Add(new Separator());
+            menu.Items.Add(NewPaneMenuSeparator());
             Item("Reset all settings to defaults…", "Put every tab back the way a fresh install shows it, including mapping rules, roles and coordinates.", ResetAll);
             menu.IsOpen = true;
         }

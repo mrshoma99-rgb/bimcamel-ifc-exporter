@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Globalization;
 using System.Windows;
 using WF = System.Windows.Forms;
 
@@ -14,26 +13,6 @@ namespace BIMCamel.UI
     public partial class ExporterView
     {
         private readonly List<string> _lastOutputs = new List<string>();
-
-        /// <summary>Default for <see cref="FileNameFor"/>: what the exporter always called its files.</summary>
-        private const string DefaultNameTemplate = "{model}_{schema}";
-
-        /// <summary>
-        /// The output file name from the template in the Format card. Tokens: {model} the
-        /// Navisworks file, {schema} IFC4 / IFC2x3, {set} the batch set (the model name outside a
-        /// batch), {date} today as yyyy-MM-dd. A batch template with no {set} would write every
-        /// set to one name, so {set} is appended in that case.
-        /// </summary>
-        private string FileNameFor(string model, string schemaName, string? set)
-        {
-            string t = (TxtFileName.Text ?? "").Trim();
-            if (t.Length == 0) t = set != null ? "{set}_{schema}" : DefaultNameTemplate;
-            if (set != null && t.IndexOf("{set}", StringComparison.OrdinalIgnoreCase) < 0) t += "_{set}";
-            string name = t.Replace("{model}", model).Replace("{schema}", schemaName)
-                           .Replace("{set}", set ?? model)
-                           .Replace("{date}", DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
-            return Sanitize(name);
-        }
 
         /// <summary>Where the next save dialog opens: the folder of the last export, if it still exists.</summary>
         private string StartFolder()
