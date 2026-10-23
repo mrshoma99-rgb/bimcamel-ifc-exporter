@@ -17,7 +17,7 @@ its four levers have since shipped:
 | **F2** optional base quantities | **done** — the "Compute base quantities" checkbox |
 | **F3** property-set content dedup | **done** — `PsetDedup`, one `IfcPropertySet` per distinct content, one deferred `IfcRelDefinesByProperties` carrying every object that shares it |
 | **F4** type-property hoisting | **half** — `IfcElementType` + `IfcRelDefinesByType` are written, but `HasPropertySets` is `$` |
-| **F5** geometry decimation | **not started** |
+| **F5** geometry decimation | **not started** (built later: see the update under Z7) |
 
 So nobody knows what the file weighs now, or what dominates it. The tool to find out already exists
 and is on by default: **"Size & time breakdown in report"** runs `IfcProfiler`, which streams the
@@ -191,6 +191,12 @@ reported, alongside the existing `CollapsedByWeld` tally.
 
 **True decimation stays out of scope** until the byte profile says geometry actually dominates on a
 real model. Saying so here is the point: F5 was never justified by measurement.
+
+**Update.** Decimation was built afterwards as "Simplify meshes within _n_ mm" (`MeshDecimator`,
+off by default): half-edge collapses ordered by quadric error, each one checked against the
+distance tolerance, once per unique shape. The model that prompted it, Autodesk's ice stadium
+sample, turned out not to need it: its 149 M triangles were every instance's fragments being
+written into every element, fixed in `ComScope.OwnFragments`, after which it is 1.44 M.
 
 ---
 

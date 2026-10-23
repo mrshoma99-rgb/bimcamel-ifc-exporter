@@ -14,7 +14,8 @@ namespace BIMCamel.Tests
     /// <summary>
     /// Runs the instanced export on the active document with the exporter's default settings,
     /// no UI. Arguments: output path, merge-parts threshold (0 = off), schema (IFC4 | IFC2X3),
-    /// and optionally "Skip geometry smaller than" in millimetres (0 = keep everything).
+    /// and optionally "Skip geometry smaller than" and the simplification tolerance, both in
+    /// millimetres (0 = off).
     /// Writes "&lt;output&gt;.summary.txt" beside the IFC.
     /// </summary>
     [Plugin("HeadlessExport", "BCTST")]
@@ -30,6 +31,7 @@ namespace BIMCamel.Tests
                 int mergeAbove = parameters.Length > 1 ? int.Parse(parameters[1], CultureInfo.InvariantCulture) : 16;
                 var schema = parameters.Length > 2 && parameters[2].Equals("IFC2X3", StringComparison.OrdinalIgnoreCase) ? IfcSchema.Ifc2x3 : IfcSchema.Ifc4;
                 double minMm = parameters.Length > 3 ? double.Parse(parameters[3], CultureInfo.InvariantCulture) : 0;
+                double simplifyMm = parameters.Length > 4 ? double.Parse(parameters[4], CultureInfo.InvariantCulture) : 0;
                 var doc = Autodesk.Navisworks.Api.Application.ActiveDocument;
                 ExportIssues.Reset(); ExportTiming.Reset();
                 var (unitScale, unitName) = ModelSurvey.UnitsToMetre(doc.Units);
@@ -39,7 +41,7 @@ namespace BIMCamel.Tests
                 var sm = ItemCollector.MinCornerValid ? ItemCollector.LastMinCorner : ItemCollector.ScopeMinCorner(items);
                 var geomMin = (sm.x * unitScale, sm.y * unitScale, sm.z * unitScale);
                 // The UI's defaults: Balanced quality, props + materials, quantities on.
-                var opts = new ExtractOptions { Props = true, Materials = true, WeldTol = 1e-4, MinFragmentSize = minMm / 1000.0 };
+                var opts = new ExtractOptions { Props = true, Materials = true, WeldTol = 1e-4, MinFragmentSize = minMm / 1000.0, SimplifyTol = simplifyMm / 1000.0 };
                 var summary = new ExportSummary();
                 var sw = Stopwatch.StartNew();
                 var stream = InstancedExtractor.ExtractStream(items, unitScale, opts);
@@ -52,8 +54,11 @@ namespace BIMCamel.Tests
                 sb.AppendLine($"units       : {unitName}");
                 sb.AppendLine($"mergeAbove  : {mergeAbove}");
                 sb.AppendLine($"minSize mm  : {minMm}");
+                sb.AppendLine($"simplify mm : {simplifyMm}");
                 sb.AppendLine($"elements    : {summary.ElementCount}");
                 sb.AppendLine($"triangles   : {summary.TriangleCount}");
+                sb.AppendLine($"source tris : {summary.SourceTriangleCount}");
+                sb.AppendLine($"simplified  : {ExportTiming.SimplifiedMeshes} mesh(es), {ExportTiming.SimplifyTrisIn} -> {ExportTiming.SimplifyTrisOut} tris, {ExportTiming.SimplifyReused} reuse(s), {ExportTiming.Ms(ExportTiming.SimplifyTicks):0} ms");
                 sb.AppendLine($"unique geom : {summary.UniqueGeometries}");
                 sb.AppendLine($"instances   : {summary.InstanceCount}");
                 sb.AppendLine($"merged els  : {summary.MergedElements}");

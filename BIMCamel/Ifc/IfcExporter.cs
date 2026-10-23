@@ -14,6 +14,8 @@ namespace BIMCamel.Ifc
     public sealed class ExportSummary
     {
         public int ElementCount, TriangleCount;
+        /// <summary>Placed triangles before mesh simplification; equals TriangleCount when it is off.</summary>
+        public long SourceTriangleCount;
         public long FileSizeBytes;
         public IfcSchema Schema;
         public string Path = "";
@@ -177,7 +179,10 @@ namespace BIMCamel.Ifc
         }
 
         // ── per-file session + element writers (shared by single, split, and batch export) ──────
-        private struct GeomDef { public int RepMapId; public MeshQty Qty; public int Tri; }
+        private struct GeomDef { public int RepMapId; public MeshQty Qty; public int Tri, SrcTri; }
+
+        /// <summary>Triangles a mesh had before simplification.</summary>
+        private static int SourceTris(LocalMesh m) => m.SourceTriangles > 0 ? m.SourceTriangles : m.Indices.Count / 3;
 
         /// <summary>
         /// One output IFC file's writing state. The exporter rolls to a fresh Doc when the soft size
@@ -208,6 +213,7 @@ namespace BIMCamel.Ifc
             /// together are one deliverable. Guid, not its 22-char text, to keep it small.</summary>
             public readonly HashSet<Guid> Guids;
             public int Elem, Tris, Insts, UniqueGeom, MergedElems, MergedShapes;
+            public long SrcTris;
             public int Mapped, ProxyUnmapped, ProxyDegraded, GuidCollisions;
             public readonly Dictionary<string, int> ByEntity = new(StringComparer.Ordinal);
             private readonly string _path;
@@ -261,7 +267,7 @@ namespace BIMCamel.Ifc
                 W.WriteFooter();
                 _out.Dispose();   // flushes the writer, then finalises the archive
                 sum.Files.Add(_path);
-                sum.ElementCount += Elem; sum.TriangleCount += Tris;
+                sum.ElementCount += Elem; sum.TriangleCount += Tris; sum.SourceTriangleCount += SrcTris;
                 sum.InstanceCount += Insts; sum.UniqueGeometries += UniqueGeom;
                 sum.MergedElements += MergedElems; sum.MergedShapes += MergedShapes;
                 sum.MappedCount += Mapped; sum.ProxyUnmapped += ProxyUnmapped; sum.ProxyDegraded2x3 += ProxyDegraded;
@@ -313,6 +319,7 @@ namespace BIMCamel.Ifc
             d.Manifest.Put(guid, hm.Value, el.Name, el.TypeName);
 
             d.Tris += el.Indices.Count / 3; d.Elem++;
+            d.SrcTris += el.SourceTriangles > 0 ? el.SourceTriangles : el.Indices.Count / 3;
         }
 
         private static void WriteInstancedElement(Doc d, IfcSchema schema, IMeshWriter mw, InstancedElement el, CoordTransform identity, double minX, double minY, double minZ, bool computeQuantities, int index, int mergePartsAbove)
@@ -358,7 +365,7 @@ namespace BIMCamel.Ifc
                     // where it would be computed 6.7x more often (v5 E4).
                     var qy = computeQuantities ? MeshQuantities.Compute(lm.Vertices, lm.Indices, 1.0) : default;
                     ExportTiming.QtyWriteTicks += ExportTiming.Now - tq0;
-                    gd = new GeomDef { RepMapId = repMap, Qty = qy, Tri = lm.Indices.Count / 3 };
+                    gd = new GeomDef { RepMapId = repMap, Qty = qy, Tri = lm.Indices.Count / 3, SrcTri = SourceTris(lm) };
                     d.Geom[inst.Key] = gd; d.UniqueGeom++;
                 }
                 int cto = WriteTransform(w, inst, minX, minY, minZ, d.DirCache);
@@ -370,7 +377,7 @@ namespace BIMCamel.Ifc
                     area += gd.Qty.Area * s * s;        // area with the square
                     box.AddTransformed(gd.Qty, inst.Rotation, inst.Translation, minX, minY, minZ);
                 }
-                d.Tris += gd.Tri; d.Insts++;
+                d.Tris += gd.Tri; d.SrcTris += gd.SrcTri; d.Insts++;
             }
             int rep = WriteMappedShapeRep(w, d.S.Ctx, mapped);
             int prodShape = WriteProdShape(w, rep);
@@ -425,7 +432,7 @@ namespace BIMCamel.Ifc
             var rel = new double[parts.Count][];   // per part: 9 rotation (column-major) + 3 translation, anchor frame
             const ulong P0 = 1099511628211UL, P1 = 1099511628219UL;
             ulong h0 = 14695981039346656037UL, h1 = 1469598103934665600UL ^ 0x9E3779B97F4A7C15UL;
-            int tris = 0;
+            int tris = 0, written = 0, source = 0;
             for (int p = 0; p < parts.Count; p++)
             {
                 var r = RelativeTo(anchor.Rotation, s, anchor.Translation, parts[p]);
@@ -437,6 +444,8 @@ namespace BIMCamel.Ifc
                 for (int i = 0; i < 9; i++) Mix(ref h0, ref h1, (ulong)(long)Math.Round(r[i] * 1e6), P0, P1);
                 for (int i = 9; i < 12; i++) Mix(ref h0, ref h1, (ulong)(long)Math.Round(r[i] * 1e4), P0, P1);
                 tris += k.T;
+                written += parts[p].Mesh.Indices.Count / 3;   // k.T is the source shape's count
+                source += SourceTris(parts[p].Mesh);
             }
             var sig = new DedupKey(h0, h1, parts.Count, tris);
 
@@ -471,7 +480,7 @@ namespace BIMCamel.Ifc
                 long tq0 = ExportTiming.Now;
                 var qy = all != null ? MeshQuantities.Compute(all.Vertices, all.Indices, 1.0) : default;
                 ExportTiming.QtyWriteTicks += ExportTiming.Now - tq0;
-                gd = new GeomDef { RepMapId = repMap, Qty = qy, Tri = tris };
+                gd = new GeomDef { RepMapId = repMap, Qty = qy, Tri = written, SrcTri = source };
                 d.ElemGeom[sig] = gd; d.MergedShapes++;
             }
 
@@ -483,7 +492,7 @@ namespace BIMCamel.Ifc
                 area += gd.Qty.Area * s * s;
                 box.AddTransformed(gd.Qty, anchor.Rotation, anchor.Translation, minX, minY, minZ);
             }
-            d.Tris += gd.Tri; d.Insts++; d.MergedElems++;
+            d.Tris += gd.Tri; d.SrcTris += gd.SrcTri; d.Insts++; d.MergedElems++;
         }
 
         private static void Mix(ref ulong h0, ref ulong h1, ulong q, ulong p0, ulong p1)

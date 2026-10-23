@@ -180,6 +180,7 @@ namespace BIMCamel.UI
                         ChkQuantities.IsChecked = false;
                         ChkShareTypeProps.IsChecked = true;
                         ChkMinSize.IsChecked = true; TxtMinSizeMm.Text = "5";
+                        ChkSimplify.IsChecked = true; TxtSimplifyMm.Text = "10";
                         ChkProfile.IsChecked = false;
                         break;
                     case Preset.FullData:
