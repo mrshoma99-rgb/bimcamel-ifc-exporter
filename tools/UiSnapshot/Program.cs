@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Markup;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -16,6 +17,7 @@ namespace UiSnapshot
     {
         public string Name { get; set; } = "";
         public bool Checked { get; set; }
+        public string Detail { get; set; } = "";
     }
 
     /// <summary>One object with every property the three grids bind to.</summary>
@@ -41,6 +43,7 @@ namespace UiSnapshot
         public string Property { get; set; } = "Category";
         public string Test { get; set; } = "equals";
         public string Value { get; set; } = "Walls";
+        public int Number { get; set; } = 1;
     }
 
     internal static class Program
@@ -59,7 +62,7 @@ namespace UiSnapshot
 
             Fill(view);
 
-            foreach (int width in new[] { 440, 360 })
+            foreach (int width in new[] { 480, 360 })
             {
                 var tabs = (TabControl)view.FindName("Tabs");
                 for (int i = 0; i < tabs.Items.Count; i++)
@@ -71,7 +74,15 @@ namespace UiSnapshot
                 tabs.SelectedIndex = 0;
             }
             // What a user sees on opening the pane: a fixed viewport with the footer.
-            Render(view, 440, Path.Combine(outDir, "viewport-440x820.png"), 820);
+            Render(view, 480, Path.Combine(outDir, "viewport-480x820.png"), 820);
+            // Dark theme, with the values ExporterView.ApplyTheme sets.
+            Dark(view);
+            Render(view, 480, Path.Combine(outDir, "viewport-480x820-dark.png"), 820);
+            tabsDark(view, outDir);
+            Light(view);
+            // The batch scope, with its set list and output folder.
+            ShowBatch(view);
+            Render(view, 480, Path.Combine(outDir, "480-export-batch.png"));
             try { RenderTokenMenu(view, Path.Combine(outDir, "token-menu.png")); }
             catch (Exception ex) { Console.WriteLine("token menu: " + ex); }
             Console.WriteLine("Wrote " + Directory.GetFiles(outDir, "*.png").Length + " snapshots to " + Path.GetFullPath(outDir));
@@ -82,147 +93,221 @@ namespace UiSnapshot
 
         private static void Fill(UserControl v)
         {
-            // Title bar subtitle, as UpdateProfileLabel writes it.
-            if (F<TextBlock>(v, "LblSubtitle") is TextBlock sub)
+            if (F<Image>(v, "LogoMark") is Image logo)
             {
-                sub.Inlines.Clear();
-                sub.Inlines.Add(new System.Windows.Documents.Run("IFC Exporter"));
-                sub.Inlines.Add(new System.Windows.Documents.Run(" v0.12.0") { Foreground = new SolidColorBrush(Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF)), FontSize = 11 });
+                var png = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "mark_white.png");
+                if (File.Exists(png)) logo.Source = new BitmapImage(new Uri(png));
             }
+            F<TextBlock>(v, "LblSubtitle").Text = "v0.12.5 · Coordination";
 
             // File name editor, as ExporterView.FileName.cs builds it: Model file _ Schema _ Date.
             var chips = F<WrapPanel>(v, "NameChips");
-            if (chips != null)
+            void Chip(string label, bool live = true)
             {
-                void Chip(string label)
-                {
-                    var b = new Border { Style = (Style)v.FindResource("NameChip") };
-                    var sp = new StackPanel { Orientation = Orientation.Horizontal };
-                    var t = new TextBlock { Text = label, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
-                    t.SetResourceReference(TextBlock.ForegroundProperty, "BadgeAutoTx");
-                    var x = new TextBlock { Text = "×", Margin = new Thickness(6, 0, 3, 0), VerticalAlignment = VerticalAlignment.Center };
-                    x.SetResourceReference(TextBlock.ForegroundProperty, "BadgeAutoTx");
-                    sp.Children.Add(t); sp.Children.Add(x); b.Child = sp; chips.Children.Add(b);
-                }
-                void Text(string s, double min = 0)
-                {
-                    var tb = new TextBox { Style = (Style)v.FindResource("NameText"), Text = s };
-                    if (min > 0) tb.MinWidth = min;
-                    chips.Children.Add(tb);
-                }
-                Chip("Model file"); Text("_"); Chip("Schema"); Text("_rev-A_"); Chip("Date"); Text("", 40);
-                F<TextBlock>(v, "LblNamePreview").Text = "→ PTS_Protos_CC_IFC4_rev-A_2026-10-23.ifczip";
+                var b = new Border { Style = (Style)v.FindResource(live ? "NameChip" : "NameChipOff") };
+                var sp = new StackPanel { Orientation = Orientation.Horizontal };
+                sp.Children.Add(new TextBlock { Text = label, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 3, 0) });
+                foreach (var g in new[] { "‹", "›", "×" }) sp.Children.Add(new Button { Style = (Style)v.FindResource("ChipCtl"), Content = g });
+                b.Child = sp; chips.Children.Add(b);
             }
+            void Text(string t, double min = 0)
+            {
+                var tb = new TextBox { Style = (Style)v.FindResource("NameText"), Text = t };
+                if (min > 0) tb.MinWidth = min;
+                chips.Children.Add(tb);
+            }
+            Chip("Model file"); Text("_"); Chip("Schema"); Text("_"); Chip("Date"); Text("_"); Chip("Set name", false); Text("", 40);
+            F<System.Windows.Documents.Run>(v, "LblNamePreview").Text = "Tower_Federated_IFC4_2026-10-23.ifczip";
+
             var scope = F<StackPanel>(v, "ScopeOptions");
             string[] labels = { "Whole model (visible)", "Current selection", "Active section box", "Saved set / search set", "Multiple sets → one IFC each (batch)" };
+            string[] hints = { "7 models", "1,204 selected", "", "12 sets", "3 of 7 ticked" };
             for (int i = 0; i < labels.Length; i++)
-                scope.Children.Add(new RadioButton { Content = labels[i], GroupName = "scope", IsChecked = i == 0, Style = (Style)v.FindResource("OptionCard") });
-            F<TextBlock>(v, "LblScopeHint").Text = "12,408 elements selected in Navisworks.";
+            {
+                var row = new Grid();
+                row.ColumnDefinitions.Add(new ColumnDefinition());
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                row.Children.Add(new TextBlock { Text = labels[i], TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center });
+                var hint = new TextBlock { Text = hints[i], FontSize = 12, FontWeight = FontWeights.Normal, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = (Brush)v.FindResource("Muted") };
+                Grid.SetColumn(hint, 1); row.Children.Add(hint);
+                scope.Children.Add(new RadioButton { Content = row, GroupName = "scope", IsChecked = i == 0, Style = (Style)v.FindResource("OptionCard") });
+            }
 
             void Items(string name, params string[] items)
             {
                 var c = F<ComboBox>(v, name);
                 if (c == null) return;
-                foreach (var s in items) c.Items.Add(s);
+                foreach (var t in items) c.Items.Add(t);
                 c.SelectedIndex = 0;
             }
-            Items("CmbSchema", "IFC4 (recommended)", "IFC2x3");
-            Items("CmbUnits", "Auto (from model)", "Millimetres", "Metres");
-            Items("CmbQuality", "Balanced (recommended)", "Small file", "High detail");
-            Items("CmbPropSource", "Geometry + parent object (recommended)", "Geometry only", "Geometry + all parents");
-            Items("CmbGroups", "No", "IfcGroup", "IfcSystem", "IfcZone");
+            Items("CmbUnits", "Auto (from model)", "Millimeters", "Meters");
+            Items("CmbGroups", "(nothing)", "IfcGroup", "IfcSystem", "IfcZone");
             Items("CmbBasePoint", "Geometry origin (recommended)", "Model origin (keeps world coordinates)", "Custom base point");
-            Items("CmbSavedSet", "Walls - External");
+            Items("CmbSavedSet", "External Walls");
+            F<ListBox>(v, "CmbSchema").SelectedIndex = 0;
+            F<ListBox>(v, "CmbQuality").SelectedIndex = 1;
+            F<ListBox>(v, "CmbPropSource").SelectedIndex = 1;
 
-            // Checkboxes: the defaults the pane starts with.
+            // Switches: the defaults the pane starts with.
             foreach (var n in new[] { "ChkZip", "ChkInstancing", "ChkMergeParts", "ChkSkipEmptyProps", "ChkValidate", "ChkProfile",
                                       "ChkProps", "ChkMaterials", "ChkQuantities", "ChkAutoClassify", "ChkGeoref" })
                 if (F<CheckBox>(v, n) is CheckBox cb) cb.IsChecked = true;
+            foreach (var n in new[] { "TxtSurveyE", "TxtSurveyN", "TxtSurveyElev", "TxtRot" }) F<TextBox>(v, n).Text = "0";
+            F<System.Windows.Documents.Run>(v, "LblPreview").Text = "0.000, 0.000, 0.000 m";
+            F<TextBox>(v, "TxtProject").Tag = "Tower_Federated";
+            F<TextBlock>(v, "TxtSmartSummary").Text =
+                "Sets found     : 12\nScope          : Whole model — 48,112 element(s)\nProperty sets  : 10 discovered (Data tab)\n" +
+                "Semantic roles : 3 filled, 0 kept as you set them\nMapping rules  : 4 added, 0 filled in, 8 set(s) unmatched\n" +
+                "Full check     : 41,980 mapped · 6,132 proxy\nReview the AUTO sections on Data and Mapping, then Export.";
 
-            if (F<ToggleButton>(v, "TglAdvanced") is ToggleButton t) { t.IsChecked = true; t.Tag = "2 changed"; }
+            if (F<ToggleButton>(v, "TglAdvanced") is ToggleButton t) { t.IsChecked = true; t.Tag = "defaults"; }
             if (F<FrameworkElement>(v, "AdvancedBody") is FrameworkElement ab) ab.Visibility = Visibility.Visible;
 
-            // Pre-flight rows, as RenderPreflight builds them.
+            // Pre-flight rows, as ExporterView.PreflightRow builds them.
             var pf = F<StackPanel>(v, "PreflightHost");
-            void Pre(string tone, string text, string jump)
+            void Pre(string tone, string head, string body, string jump)
             {
-                var g = new Grid { Margin = new Thickness(0, 2, 0, 2) };
-                g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                g.ColumnDefinitions.Add(new ColumnDefinition());
-                var dot = new TextBlock { Text = "●", FontSize = 9, Foreground = (Brush)v.FindResource(tone), Margin = new Thickness(0, 3, 7, 0), VerticalAlignment = VerticalAlignment.Top };
-                var body = new TextBlock { FontSize = 11.5, TextWrapping = TextWrapping.Wrap, Foreground = (Brush)v.FindResource("Text"), LineHeight = 15 };
-                body.Inlines.Add(text);
-                if (jump != null) { body.Inlines.Add("  "); body.Inlines.Add(new System.Windows.Documents.Hyperlink(new System.Windows.Documents.Run(jump)) { Foreground = (Brush)v.FindResource("Accent"), TextDecorations = null }); }
-                Grid.SetColumn(body, 1); g.Children.Add(dot); g.Children.Add(body); pf.Children.Add(g);
+                string edge = tone == "ok" ? "Ok" : tone == "amber" ? "AmberTx" : "Faint";
+                string bg = tone == "ok" ? "OkBg" : tone == "amber" ? "AmberBg" : "Card2";
+                string bd = tone == "ok" ? "OkBd" : tone == "amber" ? "AmberBd" : "Bd";
+                var outer = new Border { CornerRadius = new CornerRadius(7), Padding = new Thickness(3, 0, 0, 0), Margin = new Thickness(0, 0, 0, 6), Background = (Brush)v.FindResource(edge) };
+                var inner = new Border { CornerRadius = new CornerRadius(0, 7, 7, 0), BorderThickness = new Thickness(0, 1, 1, 1), Padding = new Thickness(10, 7, 10, 8),
+                                         Background = (Brush)v.FindResource(bg), BorderBrush = (Brush)v.FindResource(bd) };
+                outer.Child = inner;
+                var dock = new DockPanel();
+                if (jump != null)
+                {
+                    var link = new Button { Style = (Style)v.FindResource("LinkBtn"), Content = jump, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(10, 0, 0, 0) };
+                    DockPanel.SetDock(link, Dock.Right); dock.Children.Add(link);
+                }
+                var text = new StackPanel();
+                text.Children.Add(new TextBlock { Text = head, FontSize = 12.5, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap, Foreground = (Brush)v.FindResource("Text") });
+                if (tone == "amber")
+                    text.Children.Add(new TextBlock { Text = body, FontSize = 12, TextWrapping = TextWrapping.Wrap, LineHeight = 17, Margin = new Thickness(0, 2, 0, 0), Foreground = (Brush)v.FindResource("Muted") });
+                dock.Children.Add(text); inner.Child = dock; pf.Children.Add(outer);
             }
-            Pre("Ok", "Schema IFC4 · units millimetres (from model)", null);
-            Pre("AmberTx", "Mapping — 8,120 matched a rule · 4,288 did not (34.6%) and export as proxy", "→ Mapping");
-            Pre("Ok", "Storeys — 6 distinct levels", null);
-            Pre("Muted", "Georeferencing off — coordinates are local", "→ Project");
+            Pre("ok", "IFC4 · units read from the model", "", null);
+            Pre("amber", "Federated units differ", "2 of 7 models declare metres, the rest millimetres. One scale applies to the whole export, so one discipline would ship at the wrong size.", "Project");
+            Pre("grey", "No georeferencing set", "", null);
+            Pre("grey", "Not measured yet", "", null);
 
             // Role rows, as AddRoleRow builds them.
             var roles = F<StackPanel>(v, "RoleHost");
-            foreach (var label in new[] { "Type → IfcElementType + ObjectType", "Level → IfcBuildingStorey", "Material → IfcMaterial",
-                                          "Classification → IfcClassificationReference", "Element name → IFC Name (blank = the Navisworks name)" })
+            var roleData = new[]
             {
-                var border = new Border { BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(9), Padding = new Thickness(10), Margin = new Thickness(0, 0, 0, 9) };
-                border.SetResourceReference(Border.BorderBrushProperty, "Bd");
+                ("Type → IfcElementType + ObjectType", "Element", "Family and Type", "filled by Smart setup", "Accent"),
+                ("Level → IfcBuildingStorey", "Element", "Level", "filled by Smart setup", "Accent"),
+                ("Material → IfcMaterial", "", "", "blank · role off", "Muted"),
+                ("Classification → IfcClassificationReference", "Element", "Assembly Code", "set by you", "Muted"),
+                ("Element name → IFC Name (blank = the Navisworks name)", "", "", "blank · role off", "Muted"),
+            };
+            foreach (var (label, c, p, tag, tone) in roleData)
+            {
+                var border = new Border { BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(9), Padding = new Thickness(10, 9, 10, 10), Margin = new Thickness(0, 0, 0, 8),
+                                          BorderBrush = (Brush)v.FindResource("Bd"), Background = (Brush)v.FindResource("Card2") };
                 var sp = new StackPanel();
-                sp.Children.Add(new TextBlock { Text = label, FontSize = 12, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 7) });
+                var head = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
+                var tg = new TextBlock { Text = tag, FontSize = 12, Margin = new Thickness(10, 0, 0, 0), Foreground = (Brush)v.FindResource(tone) };
+                DockPanel.SetDock(tg, Dock.Right); head.Children.Add(tg);
+                head.Children.Add(new TextBlock { Text = label, FontSize = 12, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+                sp.Children.Add(head);
                 var grid = new Grid();
                 grid.ColumnDefinitions.Add(new ColumnDefinition());
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(6) });
                 grid.ColumnDefinitions.Add(new ColumnDefinition());
-                var cat = new ComboBox { IsEditable = true, Height = 30, Text = "Element" };
-                var par = new ComboBox { IsEditable = true, Height = 30, Text = "Family and Type" };
+                var cat = new ComboBox { IsEditable = true, Text = c, Tag = "(any category)" };
+                var par = new ComboBox { IsEditable = true, Text = p, Tag = "Property" };
                 Grid.SetColumn(par, 2); grid.Children.Add(cat); grid.Children.Add(par);
                 sp.Children.Add(grid); border.Child = sp; roles.Children.Add(border);
             }
 
-            if (F<ListBox>(v, "LstCategories") is ListBox lc)
-                lc.ItemsSource = new[] { "Element", "Identity Data", "Constraints", "Dimensions", "Phasing", "Item" }.Select((s, i) => new Item { Name = s, Checked = i != 4 }).ToList();
+            var cats = new[] { ("Element", "41 properties"), ("Revit Type", "38 properties"), ("Pset_WallCommon", "9 properties"), ("Dimensions", "12 properties"),
+                               ("Identity Data", "15 properties"), ("Phasing", "3 properties"), ("Item", "tree bookkeeping"), ("Transform", "tree bookkeeping"), ("Geometry", "tree bookkeeping") };
+            F<ListBox>(v, "LstCategories").ItemsSource = cats.Select(x => new Item { Name = x.Item1, Detail = x.Item2, Checked = x.Item2 != "tree bookkeeping" }).ToList();
+            F<TextBlock>(v, "LblCatCount").Text = "6 of 9 property sets will be exported";
+            F<TextBlock>(v, "LblCatsSub").Text = "From the last scan. Unticked sets are left out of the IFC; tree bookkeeping starts unticked.";
+            var sets = new[] { "External Walls", "Floors – Structure", "Doors", "Ducts – Supply", "Level 02 – Structure", "Level 02 - Structure", "Pipes – Heating" };
+            F<ListBox>(v, "LstBatch").ItemsSource = sets.Select((x, i) => new Item { Name = x, Checked = i < 3, Detail = Regex.Replace(x, @"[^\w]+", "_").Trim('_') + ".ifczip" }).ToList();
+            F<TextBlock>(v, "LblBatchCount").Text = "3 of 7 sets ticked · one IFC each";
+
             foreach (var g in new[] { "GridParams", "GridMap", "GridPropRules" })
-                if (F<ItemsControl>(v, g) is ItemsControl ic) ic.ItemsSource = new[] { new Row(), new Row() };
+                if (F<ItemsControl>(v, g) is ItemsControl ic) ic.ItemsSource = new[] { new Row { Number = 1 }, new Row { Number = 2, Classification = "" } };
         }
 
-        /// <summary>The + Token menu, built like ExporterView.OnAddToken builds it, in the Saved set scope.</summary>
+        private static void tabsDark(UserControl view, string outDir)
+        {
+            var tabs = (TabControl)view.FindName("Tabs");
+            for (int i = 1; i < tabs.Items.Count; i++)
+            {
+                tabs.SelectedIndex = i;
+                Render(view, 480, Path.Combine(outDir, $"dark-{i}-{((TabItem)tabs.Items[i]).Name}.png"));
+            }
+            tabs.SelectedIndex = 0;
+        }
+
+        private static readonly string[] DarkPalette =
+        {
+            "Accent=#3AA0F0", "AccentHover=#5BB3F5", "AccentPress=#2A8AD6", "Bg=#15171B", "Pane=#1C1F24", "Card=#23272E", "Card2=#262B32",
+            "Text=#E7EAEE", "Muted=#9AA3AD", "Faint=#8C95A0", "Bd=#333941", "BdStrong=#3D444D", "Field=#2B3138", "FieldBd=#3D444D",
+            "Nav=#282D34", "NavActive=#1F2D3D", "Track=#2E343B", "FamBatch=#A9CF5C", "Ok=#46C97E", "OkBg=#12301F", "OkBd=#245638",
+            "AmberBg=#3A2F12", "AmberBd=#5C4A1E", "AmberTx=#F0C66A", "RedBg=#3A1D1D", "RedBd=#5C2B2B", "RedTx=#F08C84",
+            "ConsoleBg=#0A0C10", "ConsoleTx=#BFE0C8", "BadgeReqBg=#12301F", "BadgeReqBd=#245638", "BadgeReqTx=#46C97E",
+            "BadgeOptBg=#282D34", "BadgeOptBd=#333941", "BadgeOptTx=#9AA3AD", "BadgeAutoBg=#152836", "BadgeAutoBd=#274966", "BadgeAutoTx=#7CC0F5",
+        };
+        private static readonly System.Collections.Generic.Dictionary<string, object> LightSaved = new System.Collections.Generic.Dictionary<string, object>();
+
+        private static void Dark(UserControl v)
+        {
+            foreach (var kv in DarkPalette)
+            {
+                var parts = kv.Split('=');
+                LightSaved[parts[0]] = v.Resources[parts[0]];
+                v.Resources[parts[0]] = new SolidColorBrush((Color)ColorConverter.ConvertFromString(parts[1]));
+            }
+            LightSaved["BrandBar"] = v.Resources["BrandBar"];
+            v.Resources["BrandBar"] = new LinearGradientBrush((Color)ColorConverter.ConvertFromString("#1B5E92"), (Color)ColorConverter.ConvertFromString("#2277B8"), 0);
+        }
+
+        private static void Light(UserControl v)
+        {
+            foreach (var kv in LightSaved) v.Resources[kv.Key] = kv.Value;
+        }
+
+        private static void ShowBatch(UserControl v)
+        {
+            var scope = F<StackPanel>(v, "ScopeOptions");
+            ((RadioButton)scope.Children[4]).IsChecked = true;
+            F<FrameworkElement>(v, "BatchRow").Visibility = Visibility.Visible;
+            F<TextBlock>(v, "LblExportBtn").Text = "Export 3 set(s) → IFC4 .ifczip";
+            var tabs = (TabControl)v.FindName("Tabs");
+            tabs.SelectedIndex = 0;
+        }
+
+        /// <summary>The + Token pop-up, filled like ExporterView.OnAddToken fills it, in the Whole model scope.</summary>
         private static void RenderTokenMenu(UserControl view, string path)
         {
             var tokens = new[]
             {
-                ("Model file", "The Navisworks file name, without its extension.", true),
-                ("Project", "The project name from the Project tab (the model file name when that is blank).", true),
-                ("Schema", "IFC4 or IFC2x3.", true),
-                ("Set name", "The saved set or search set being exported. Filled in the Saved set and batch scopes.", true),
-                ("Selected element", "The selected element's name, with +N when more are selected. Filled in the Current selection scope.", false),
-                ("Scope", "What was exported: model, selection, section-box, set or batch.", true),
-                ("Date", "The export date, as 2026-10-23.", true),
-                ("Time", "The export time, as 1430.", true),
-                ("User", "Your Windows user name.", true),
+                ("Model file", "Tower_Federated", true), ("Project", "Tower", true), ("Schema", "IFC4", true),
+                ("Set name", "not in this scope", false), ("Selected element", "not in this scope", false), ("Scope", "model", true),
+                ("Date", "2026-10-23", true), ("Time", "1437", true), ("User", "jdoe", true),
             };
-            // A ContextMenu cannot be parented, so draw the same card the PaneMenu template draws
-            // and fill it with MenuItems in the PaneMenuItem style.
-            var list = new StackPanel();
-            foreach (var (label, tip, live) in tokens)
+            var list = F<StackPanel>(view, "TokenList");
+            foreach (var (label, sample, live) in tokens)
             {
-                var head = new StackPanel { Width = 250 };
-                head.Children.Add(new TextBlock { Text = label, FontWeight = FontWeights.SemiBold });
-                head.Children.Add(new TextBlock
-                {
-                    Text = live ? tip : "Empty in this scope. " + tip,
-                    FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 1, 0, 0),
-                    Foreground = (Brush)view.Resources["Muted"],
-                });
-                list.Children.Add(new MenuItem { Header = head, Opacity = live ? 1 : 0.55, Style = (Style)view.Resources["PaneMenuItem"] });
+                var row = new DockPanel();
+                var s = new TextBlock { Text = sample, FontSize = 12, Margin = new Thickness(12, 0, 0, 0), Foreground = (Brush)view.FindResource("Muted") };
+                DockPanel.SetDock(s, Dock.Right); row.Children.Add(s);
+                row.Children.Add(new TextBlock { Text = label });
+                list.Children.Add(new Button { Style = (Style)view.FindResource("TokenRow"), Content = row, Opacity = live ? 1 : 0.55 });
             }
-            var menu = new Border
-            {
-                Background = (Brush)view.Resources["Card"], BorderBrush = (Brush)view.Resources["BdStrong"],
-                BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(9), Padding = new Thickness(4),
-                Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 12, ShadowDepth = 2, Opacity = 0.16 },
-                Child = list,
-            };
-            var host = new Border { Background = (Brush)view.Resources["Pane"], Padding = new Thickness(12), Child = menu };
+            // A Popup does not render off screen, so draw its card on its own.
+            var popup = F<System.Windows.Controls.Primitives.Popup>(view, "TokenPopup");
+            var card = (Border)popup.Child;
+            popup.Child = null;
+            BindingOperations.ClearBinding(card, FrameworkElement.WidthProperty);
+            card.Width = 440;
+            var host = new Border { Background = (Brush)view.Resources["Pane"], Padding = new Thickness(12), Child = card };
             host.Resources.MergedDictionaries.Add(view.Resources);
             host.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
             host.Arrange(new Rect(host.DesiredSize));

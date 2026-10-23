@@ -86,21 +86,17 @@ namespace BIMCamel.UI
             return v == null ? "" : "v" + v.Major + "." + v.Minor + "." + Math.Max(v.Build, 0);
         }
 
-        // "IFC Exporter v0.12.0 · Profile •": the version is dimmed so the name still leads.
+        // "v0.12.5 · Profile •" under the title: the dot means changed since the profile was loaded.
         private void UpdateProfileLabel()
         {
             string profile = "";
             if (!string.IsNullOrEmpty(_ui.ProfileName))
             {
                 bool changed = _profileJson.Length > 0 && ExportProfile.ToJson(Capture()) != _profileJson;
-                profile = " · " + _ui.ProfileName + (changed ? "  •" : "");
+                profile = _ui.ProfileName + (changed ? " •" : "");
             }
-            LblSubtitle.Inlines.Clear();
-            LblSubtitle.Inlines.Add(new System.Windows.Documents.Run("IFC Exporter"));
-            if (VersionText.Length > 0)
-                LblSubtitle.Inlines.Add(new System.Windows.Documents.Run(" " + VersionText)
-                    { Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF)), FontSize = 11 });
-            if (profile.Length > 0) LblSubtitle.Inlines.Add(new System.Windows.Documents.Run(profile));
+            LblSubtitle.Text = VersionText.Length > 0 && profile.Length > 0 ? VersionText + " · " + profile
+                             : VersionText.Length > 0 ? VersionText : profile;
         }
 
         private void LoadedProfile(string name, ExportProfile p)
@@ -170,12 +166,12 @@ namespace BIMCamel.UI
                 switch (preset)
                 {
                     case Preset.Coordination:
-                        CmbQuality.SelectedIndex = 0;
+                        Quality = 0;
                         CmbPropSource.SelectedIndex = (int)PropSource.ParentObject;
                         ChkQuantities.IsChecked = false;
                         break;
                     case Preset.Small:
-                        CmbQuality.SelectedIndex = 1;
+                        Quality = 1;
                         CmbPropSource.SelectedIndex = (int)PropSource.ParentObject;
                         ChkQuantities.IsChecked = false;
                         ChkShareTypeProps.IsChecked = true;
@@ -184,7 +180,7 @@ namespace BIMCamel.UI
                         ChkProfile.IsChecked = false;
                         break;
                     case Preset.FullData:
-                        CmbQuality.SelectedIndex = 0;
+                        Quality = 0;
                         CmbPropSource.SelectedIndex = (int)PropSource.AllParents;
                         ChkQuantities.IsChecked = true;
                         ChkSkipEmptyProps.IsChecked = false;

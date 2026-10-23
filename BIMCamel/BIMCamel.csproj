@@ -16,7 +16,7 @@
     <!-- Assembly version, read at runtime by the update check and About box. Bump in lockstep
          with dist/RELEASE_VERSION on every release (the release workflow also stamps it
          explicitly via -p:Version). -->
-    <Version>0.12.4</Version>
+    <Version>0.12.5</Version>
 
     <!--
       Per-year build: a plug-in must be compiled against the API of the release it runs in
@@ -119,6 +119,7 @@
        independent of where the bundle is installed. (Still also shipped as a loose ribbon icon.) -->
   <ItemGroup>
     <Resource Include="Resources\camel_32.png" />
+    <Resource Include="Resources\mark_white.png" />
   </ItemGroup>
 
   <!-- ── Dev convenience: deploy to the per-user .bundle on Debug builds only.
