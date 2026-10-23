@@ -272,7 +272,7 @@ namespace BIMCamel.Data
         {
             if (Source == PropSource.Geometry) return NoItems;
             ModelItem? parent;
-            try { parent = item.Parent; } catch { return NoItems; }
+            try { parent = Collect.ItemTree.Parent(item); } catch { return NoItems; }
             if (parent == null) return NoItems;
             if (_ancestorChains.TryGetValue(parent, out var cached)) return cached;
 
@@ -283,7 +283,7 @@ namespace BIMCamel.Data
                 var a = parent;
                 for (int guard = 0; a != null && guard < 256; guard++)
                 {
-                    var up = a.Parent;
+                    var up = Collect.ItemTree.Parent(a);
                     if (up == null) break;                       // a is the file node
                     if (Source == PropSource.ParentObject)
                     {

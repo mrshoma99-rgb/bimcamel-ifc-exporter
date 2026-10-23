@@ -303,7 +303,7 @@ namespace BIMCamel.Collect
             if (paths != null && paths.TryGetValue(item, out var known)) return known;
 
             string self = item.DisplayName ?? item.ClassName ?? "";
-            var parent = item.Parent;
+            var parent = ItemTree.Parent(item);
             string path;
             if (parent == null) path = self;
             else if (paths != null) path = PathOf(parent, paths) + "/" + self;
@@ -311,7 +311,7 @@ namespace BIMCamel.Collect
             {
                 // Uncached: one walk up, then join root-first — the same string as the memo builds.
                 var parts = new List<string> { self };
-                for (var a = parent; a != null; a = a.Parent) parts.Add(a.DisplayName ?? a.ClassName ?? "");
+                for (var a = parent; a != null; a = ItemTree.Parent(a)) parts.Add(a.DisplayName ?? a.ClassName ?? "");
                 parts.Reverse();
                 path = string.Join("/", parts);
             }
@@ -500,7 +500,9 @@ namespace BIMCamel.Collect
                     P.AddTime(P.K.ScanChildren, t);
                     if (!more) break;
                     hadChildren = true;
-                    if (CollectFrom(e.Current, w)) any = true;
+                    var child = e.Current;
+                    ItemTree.Saw(child, item);   // so nobody has to ask Navisworks for it later
+                    if (CollectFrom(child, w)) any = true;
                     t = P.Now;
                 }
             }
@@ -533,6 +535,7 @@ namespace BIMCamel.Collect
             foreach (var child in item.Children)
             {
                 hadChildren = true;
+                ItemTree.Saw(child, item);
                 if (CollectFromCapped(child, w, limit)) any = true;
                 if (w.Result.Count >= limit) return true;
             }

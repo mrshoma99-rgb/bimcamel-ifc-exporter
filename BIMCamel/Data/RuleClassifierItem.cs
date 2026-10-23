@@ -93,7 +93,7 @@ namespace BIMCamel.Data
             n.ClassDisplayName = node.ClassDisplayName;
             n.DisplayName = node.DisplayName;
             n.HasModel = node.HasModel;
-            if (!n.HasModel) n.Parent = node.Parent;
+            if (!n.HasModel) n.Parent = Collect.ItemTree.Parent(node);
             return n;
         }
 

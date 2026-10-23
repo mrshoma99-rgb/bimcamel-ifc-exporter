@@ -87,7 +87,7 @@ namespace BIMCamel.Geometry
                 if (bb == null) return null;
 
                 long t = Probe.Now;
-                string parent = item.Parent?.DisplayName ?? "", cls = item.ClassDisplayName ?? item.ClassName ?? "";
+                string parent = Collect.ItemTree.Parent(item)?.DisplayName ?? "", cls = item.ClassDisplayName ?? item.ClassName ?? "";
                 Probe.Add(Probe.K.ShapeNames, t);
                 _key.Length = 0;
                 _key.Append(parent).Append('\u0001')

@@ -43,6 +43,7 @@ namespace BIMCamel.Geometry
             SelToItem,         // ComApiBridge.ToModelItem, one per path
             SelMap,            // path map: ModelItem hashing and equality
             SelSingle,         // per-item conversion for items the chunk map missed
+            SelDirect,         // ComApiBridge.ToInwOaPath, one item straight to its path
             PathId,            // path.ArrayData read and turned into an id
             Fragments,         // path.Fragments(): getting and stepping through the list
             FragPathId,        // each fragment's path.ArrayData, when an instance group is indexed
@@ -140,6 +141,7 @@ namespace BIMCamel.Geometry
         {
             for (int i = 0; i <= ScanLast; i++) { _ticks[i] = 0; _calls[i] = 0; }
             _scanning = true;
+            Collect.ItemTree.ResetCounts();
             _scanStart = Env.Take();
             _scanEnd = _exportEnd = default;
         }
@@ -242,7 +244,7 @@ namespace BIMCamel.Geometry
             [K.ScanKeyPath] = "key: tree path", [K.ScanKeyMemo] = "key memo", [K.ScanMaps] = "rule maps",
             [K.ScanBox] = "BoundingBox", [K.ScanPump] = "UI pump",
             [K.SelConvert] = "ToInwOpSelection", [K.SelPaths] = "Paths()", [K.SelToItem] = "ToModelItem",
-            [K.SelMap] = "path map", [K.SelSingle] = "per-item convert", [K.PathId] = "path id",
+            [K.SelMap] = "path map", [K.SelSingle] = "per-item convert", [K.SelDirect] = "ToInwOaPath", [K.PathId] = "path id",
             [K.Fragments] = "Fragments()", [K.FragPathId] = "fragment path id", [K.ItemName] = "DisplayName",
             [K.ItemGuid] = "InstanceGuid", [K.ItemKey] = "item key", [K.Colour] = "colour",
             [K.Box] = "BoundingBox", [K.ShapeNames] = "shape key names", [K.Triangles] = "triangles",
@@ -273,6 +275,7 @@ namespace BIMCamel.Geometry
             sb.AppendLine(scan ? "  ── scan, per call ──" : "  ── export read thread, per call ──");
             if (scan) EnvLine(sb, _scanStart, _scanEnd); else EnvLine(sb, _scanEnd, _exportEnd);
             if (scan && _keyMemo >= 0) sb.AppendLine($"  key memo    : {_keyMemo:N0} item(s) remembered this session");
+            if (!scan) sb.AppendLine($"  parents     : {Collect.ItemTree.Hits:N0} looked up, {Collect.ItemTree.Reads:N0} read from Navisworks (scan and export)");
             sb.AppendLine($"  {"call",-18}{"ms",10}{"calls",13}{"µs/call",10}{"share",7}");
             foreach (int i in rows)
             {

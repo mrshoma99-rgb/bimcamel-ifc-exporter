@@ -54,6 +54,7 @@ namespace BIMCamel.Collect
             if (token == _docToken) return;
             _docToken = token;
             _keys = new ItemCollector.ItemKeyCache();
+            ItemTree.Clear();
             DropMaps();
         }
 
