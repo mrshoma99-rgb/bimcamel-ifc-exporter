@@ -83,7 +83,7 @@ namespace BIMCamel.Geometry
         {
             try
             {
-                var bb = item.BoundingBox();
+                var bb = ItemBox.Of(item);
                 if (bb == null) return null;
 
                 _key.Length = 0;

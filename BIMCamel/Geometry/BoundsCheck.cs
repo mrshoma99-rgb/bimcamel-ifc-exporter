@@ -26,8 +26,7 @@ namespace BIMCamel.Geometry
                                  double minX, double minY, double minZ, double maxX, double maxY, double maxZ)
         {
             if (!(minX <= maxX)) return;   // nothing measured (or NaN)
-            BoundingBox3D? bb;
-            try { bb = item.BoundingBox(); } catch { return; }
+            var bb = ItemBox.Of(item);
             if (bb == null) return;
             double nx0 = bb.Min.X * scale, ny0 = bb.Min.Y * scale, nz0 = bb.Min.Z * scale;
             double nx1 = bb.Max.X * scale, ny1 = bb.Max.Y * scale, nz1 = bb.Max.Z * scale;

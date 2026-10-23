@@ -211,17 +211,24 @@ namespace BIMCamel.Geometry
             if (o.PropRules != null)
             {
                 string? pk = el.ClassKey, pc = hasCode && o.ClassificationMap!.ContainsKey(key) ? el.ClassCode : null;
+                long tr = ExportTiming.Now;
                 Data.PropertyRules.Apply(item, o.PropRules, ref pk, ref pc);
+                ExportTiming.PropRuleTicks += ExportTiming.Now - tr;
                 el.ClassKey = pk; if (!string.IsNullOrEmpty(pc)) el.ClassCode = pc!;
             }
             if (hasGroup && o.GroupMap!.TryGetValue(key, out var gn)) el.GroupName = gn;
             // No set rule claimed it: try the fixed rules (category, IFC class, name words) before
             // it falls to IfcBuildingElementProxy. Counted inside HarvestTicks — it is a property read.
-            if (o.AutoClassify && string.IsNullOrEmpty(el.ClassKey)
-                && Data.RuleClassifier.ClassifyItem(item, o.ClassifyUnitScale, o.CategoryCache) is { } guess)
+            if (o.AutoClassify && string.IsNullOrEmpty(el.ClassKey))
             {
-                el.ClassKey = guess.ClassKey;
-                el.Properties = Data.RuleClassifier.Apply(guess, el.Properties, o.Props);
+                long tk = ExportTiming.Now;
+                var guess = Data.RuleClassifier.ClassifyItem(item, o.ClassifyUnitScale, o.CategoryCache);
+                ExportTiming.ClassifyTicks += ExportTiming.Now - tk;
+                if (guess is { } guessed)
+                {
+                    el.ClassKey = guessed.ClassKey;
+                    el.Properties = Data.RuleClassifier.Apply(guessed, el.Properties, o.Props);
+                }
             }
             ExportTiming.HarvestTicks += ExportTiming.Now - th;
 
