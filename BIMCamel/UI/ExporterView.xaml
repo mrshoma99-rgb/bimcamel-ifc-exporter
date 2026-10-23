@@ -133,6 +133,27 @@
       <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
 
+    <!-- One rule = one card: rules have 4-6 fields, which a grid row squeezed
+         into unreadable slivers at docked-pane widths. -->
+    <Style x:Key="RuleCard" TargetType="ListBoxItem">
+      <Setter Property="Margin" Value="0,0,0,8"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ListBoxItem">
+            <Border x:Name="rb" BorderBrush="{DynamicResource Bd}" BorderThickness="1" CornerRadius="9" Padding="8">
+              <ContentPresenter/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsSelected" Value="True">
+                <Setter TargetName="rb" Property="BorderBrush" Value="{DynamicResource Accent}"/>
+                <Setter TargetName="rb" Property="Background" Value="{DynamicResource NavActive}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
     <!-- File name editor: a token chip and the plain text between chips. -->
     <Style x:Key="NameChip" TargetType="Border">
       <Setter Property="Background" Value="{DynamicResource BadgeAutoBg}"/>
@@ -558,8 +579,16 @@
         <Grid Margin="10,0,8,0">
           <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
           <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-            <Image x:Name="LogoImg" Width="22" Height="22" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
-            <TextBlock Text="BIMCamel" Foreground="White" FontWeight="Bold" FontSize="14.5" Margin="6,0,0,0" VerticalAlignment="Center"/>
+            <!-- BIMCamel wordmark, from the website's logo-text.svg (viewBox 0 0 520 120),
+                 cropped to the drawn area and filled white for the blue bar. -->
+            <Viewbox x:Name="LogoMark" Height="19" Stretch="Uniform" VerticalAlignment="Center" ToolTip="BIMCamel">
+              <Canvas Width="472" Height="76">
+                <Canvas Canvas.Left="-24" Canvas.Top="-16">
+                  <Path Fill="White" Data="F0 M72,76l-4,0l0,-4l4,0l0,4Zm24,-4l4,0l0,4l-4,0l0,-4Zm-48,0l0,20l-8,0l0,-4l4,0l0,-16l4,0Zm-4,0l-4,0l0,-4l4,0l0,4Zm48,-8l4,0l0,8l-4,0l0,-8Zm-16,12l0,16l-8,0l0,-4l4,0l0,-12l4,0Zm16,-12l-8,0l0,28l-4,0l0,-16l-4,0l0,-8l-20,0l0,24l-4,0l0,-20l-4,0l0,-8l-12,0l0,-4l-4,0l0,-12l4,0l0,-16l-4,0l0,4l-8,0l0,-12l4,0l0,-4l8,0l0,-4l4,0l0,4l4,0l0,-4l4,0l0,16l-4,0l0,12l8,0l0,-4l4,0l0,-4l4,0l0,-4l20,0l0,4l4,0l0,4l4,0l0,4l4,0l0,20Zm-12,-16l-4,0l0,4l-8,0l0,4l8,0l0,-4l4,0l0,-4Z"/>
+                  <Path Fill="White" Data="F1 M152,92l-36,0l0,-60l36,-0l0,12l12,0l0,8l-12,0l0,-8l-24,0l0,8l24,0l0,12l12,0l0,16l-12,0l0,-16l-24,0l0,16l24,0l0,12Z M192,91.913l-24,0.087l0,-12l8,0l0,-36l-8,0l0,-12l24,-0l0,12l-4,0l0,36l4,0l-0,11.913Z M252,92l-12,0l0,-40l-8,0l0,12l-12,0l0,-12l12,0l0,-8l8,0l0,-12l12,0l0,60Zm-43.714,-0.087l-12.286,0.087l0,-60l12,0l0,12l12,0l0,8l-12,0l0.286,39.913Z M308,92l-40,-0.087l0,-11.913l32,-0l0,-12l12,0l0,12l-4,0l0,12Zm-40,-12l-12,0l0,-36l12,-0l0,36Zm44,-28l-12,0l0,-8l-32,0l-0,-11.801l40,-0.199l0,12l4,0l0,8Z M360.286,91.913l-32.571,0l0.286,-11.913l-12,0l0,-12l12,-0l0,-4l20,0l0,-12l12,0l0.286,39.913Zm-32.286,-11.913l20,0l0,-12l-20,0l0,12Zm20,-28l-32,0l0,-8l32,0l0,8Z M436,92l-12,0l0,-32l12,0l0,32Zm-28,0l-4.286,-0.087l-7.714,0.087l0,-32l12,0l0,32Zm-32,0l-12,0l0,-44l32,0l-0,12l-20,0l0,32Zm48,-32l-16,0l0,-12l16,0l0,12Z M480,92l-28,0l0,-12l16,-0l0,-4l12,0l0,16Zm-28,-12l-12,0l0,-20l12,0l0,-12l28,0l0,16l-12,0l0,4l-16,0l0,12Zm0,-16l16,0l0,-4l-16,0l0,4Z M484,32l12,0l0,60l-12,0Z"/>
+                </Canvas>
+              </Canvas>
+            </Viewbox>
           </StackPanel>
           <TextBlock Grid.Column="1" x:Name="LblSubtitle" Text="IFC Exporter" Foreground="#E6FFFFFF" FontSize="12.5" Margin="8,1,8,0"
                      VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
@@ -1004,35 +1033,32 @@
                 </StackPanel>
                 <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,11" TextWrapping="Wrap"
                            Text="Each rule assigns one saved set to an IFC class and, optionally, a classification code. Smart setup proposes rules from set names; edit them here. A search set is already an IF/THEN rule — build it in Find Items, save it, map it. Unmapped elements export as IfcBuildingElementProxy. The set list reloads automatically when you open this tab."/>
-                <DataGrid x:Name="GridMap" AutoGenerateColumns="False" HeadersVisibility="Column" CanUserAddRows="False"
-                          Background="Transparent" RowBackground="Transparent" BorderBrush="{DynamicResource FieldBd}" BorderThickness="1"
-                          GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource Bd}" RowHeight="36"
-                          Foreground="{DynamicResource Text}" FontSize="12">
-                  <DataGrid.Columns>
-                    <DataGridTemplateColumn Header="Set" Width="*" MinWidth="80">
-                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                        <ComboBox ItemsSource="{Binding Sets}" SelectedItem="{Binding Set, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource CellCombo}" Margin="2,0" VerticalAlignment="Center"/>
-                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="IFC class" Width="*" MinWidth="80">
-                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                        <ComboBox ItemsSource="{Binding Classes}" SelectedItem="{Binding IfcClass, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource CellCombo}" Margin="2,0" VerticalAlignment="Center"/>
-                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="Predefined" Width="0.75*" MinWidth="64">
-                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                        <ComboBox IsEditable="True" ItemsSource="{Binding PredefinedOptions}" Text="{Binding Predefined, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource CellCombo}" Margin="2,0" VerticalAlignment="Center"
-                                  ToolTip="IFC PredefinedType for this class. Pick from the values IFC4 defines for it, or type your own."/>
-                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="Code" Width="0.6*" MinWidth="56">
-                      <DataGridTemplateColumn.CellTemplate><DataTemplate>
-                        <TextBox Text="{Binding Classification, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource CellBox}" Margin="2,0" VerticalAlignment="Center"
-                                 ToolTip="Classification code for every element in this set, e.g. a Uniclass or OmniClass code. Overrides the Classification property role."/>
-                      </DataTemplate></DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-                  </DataGrid.Columns>
-                </DataGrid>
+                <ListBox x:Name="GridMap" BorderThickness="0" Background="Transparent" ItemContainerStyle="{StaticResource RuleCard}"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate>
+                      <Grid>
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="36"/><ColumnDefinition Width="*"/><ColumnDefinition Width="4"/>
+                          <ColumnDefinition Width="*"/><ColumnDefinition Width="4"/><ColumnDefinition Width="0.8*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="6"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="SET" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Faint}" VerticalAlignment="Center"/>
+                        <ComboBox Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="5" Style="{StaticResource CellCombo}" ItemsSource="{Binding Sets}"
+                                  SelectedItem="{Binding Set, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Saved selection set or search set."/>
+                        <TextBlock Grid.Row="2" Text="AS" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Faint}" VerticalAlignment="Center"/>
+                        <ComboBox Grid.Row="2" Grid.Column="1" Style="{StaticResource CellCombo}" ItemsSource="{Binding Classes}"
+                                  SelectedItem="{Binding IfcClass, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="IFC class to export the set's elements as."/>
+                        <ComboBox Grid.Row="2" Grid.Column="3" Style="{StaticResource CellCombo}" IsEditable="True" ItemsSource="{Binding PredefinedOptions}"
+                                  Text="{Binding Predefined, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                  ToolTip="IFC PredefinedType for this class (optional). Pick from the values IFC4 defines for it, or type your own."/>
+                        <TextBox Grid.Row="2" Grid.Column="5" Style="{StaticResource CellBox}"
+                                 Text="{Binding Classification, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 ToolTip="Classification code for every element in this set (optional), e.g. a Uniclass or OmniClass code. Overrides the Classification property role."/>
+                      </Grid>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
                 <!-- ONE toolbar, directly under the grid it edits. The old layout
                      had a second button row below the console, so related actions
                      sandwiched unrelated content. -->
@@ -1060,28 +1086,8 @@
                            Text="IF a property has a value THEN export as a class, with no search set needed. For example: Element / Category equals Walls → IfcWall. These rules only fill what the set rules above left empty, and the first matching rule wins. Scan on the Data tab to fill the property lists."/>
                 <!-- One card per rule, read as a sentence: IF category / property test value, THEN
                      class, predefined type, code. Seven grid columns did not fit a docked pane. -->
-                <ListBox x:Name="GridPropRules" BorderThickness="0" Background="Transparent"
+                <ListBox x:Name="GridPropRules" BorderThickness="0" Background="Transparent" ItemContainerStyle="{StaticResource RuleCard}"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                  <ListBox.ItemContainerStyle>
-                    <Style TargetType="ListBoxItem">
-                      <Setter Property="Margin" Value="0,0,0,8"/>
-                      <Setter Property="Template">
-                        <Setter.Value>
-                          <ControlTemplate TargetType="ListBoxItem">
-                            <Border x:Name="rb" BorderBrush="{DynamicResource Bd}" BorderThickness="1" CornerRadius="9" Padding="8">
-                              <ContentPresenter/>
-                            </Border>
-                            <ControlTemplate.Triggers>
-                              <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="rb" Property="BorderBrush" Value="{DynamicResource Accent}"/>
-                                <Setter TargetName="rb" Property="Background" Value="{DynamicResource NavActive}"/>
-                              </Trigger>
-                            </ControlTemplate.Triggers>
-                          </ControlTemplate>
-                        </Setter.Value>
-                      </Setter>
-                    </Style>
-                  </ListBox.ItemContainerStyle>
                   <ListBox.ItemTemplate>
                     <DataTemplate>
                       <Grid>

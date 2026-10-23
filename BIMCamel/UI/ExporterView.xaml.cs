@@ -66,7 +66,6 @@ namespace BIMCamel.UI
         public ExporterView()
         {
             InitializeComponent();
-            SetLogo();
             BuildScopeOptions();
             BuildRoleRows();
             InitControls();
@@ -88,24 +87,6 @@ namespace BIMCamel.UI
             };
             // Non-blocking, once-a-day update check; prompts on the UI thread if a newer release exists.
             UpdateCheck.Run(action => Dispatcher.BeginInvoke(action));
-        }
-
-        // Show the real BIMCamel logo. Prefer the embedded resource; fall back to the loose icon next
-        // to the assembly (the bundle ships Resources\camel_32.png alongside the DLL).
-        private void SetLogo()
-        {
-            try { LogoImg.Source = new BitmapImage(new Uri("pack://application:,,,/BIMCamel;component/Resources/camel_mark.png")); return; }
-            catch { }
-            try
-            {
-                var dir = System.IO.Path.GetDirectoryName(typeof(ExporterView).Assembly.Location);
-                if (dir != null)
-                {
-                    var p = System.IO.Path.Combine(dir, "Resources", "camel_mark.png");
-                    if (System.IO.File.Exists(p)) LogoImg.Source = new BitmapImage(new Uri(p));
-                }
-            }
-            catch { }
         }
 
         private void OnDismissWarning(object sender, RoutedEventArgs e) => WarnBanner.Visibility = Visibility.Collapsed;
@@ -221,6 +202,14 @@ namespace BIMCamel.UI
             GridParams.ItemsSource = _paramRows;
             GridMap.ItemsSource = _mapRows;
             GridPropRules.ItemsSource = _propRules;
+            // Rule cards are made of combos and boxes that swallow the click, so
+            // focusing any field selects its card for Remove / move up / move down.
+            foreach (var list in new ListBox[] { GridMap, GridPropRules })
+                list.AddHandler(UIElement.PreviewGotKeyboardFocusEvent, new KeyboardFocusChangedEventHandler((o, e) =>
+                {
+                    for (var d = e.NewFocus as DependencyObject; d != null && !ReferenceEquals(d, o); d = VisualTreeHelper.GetParent(d))
+                        if (d is ListBoxItem item) { item.IsSelected = true; return; }
+                }));
 
             // shared catalogs for the grids
             ParamRow.SharedCategories.Clear(); ParamRow.SharedCategories.Add(AnyCat);

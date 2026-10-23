@@ -119,7 +119,6 @@
        independent of where the bundle is installed. (Still also shipped as a loose ribbon icon.) -->
   <ItemGroup>
     <Resource Include="Resources\camel_32.png" />
-    <Resource Include="Resources\camel_mark.png" />
   </ItemGroup>
 
   <!-- ── Dev convenience: deploy to the per-user .bundle on Debug builds only.

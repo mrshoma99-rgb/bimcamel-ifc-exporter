@@ -80,9 +80,6 @@ namespace UiSnapshot
 
         private static void Fill(UserControl v)
         {
-            var mark = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "camel_mark.png");
-            if (F<Image>(v, "LogoImg") is Image logo && File.Exists(mark)) logo.Source = new BitmapImage(new Uri(mark));
-
             // File name editor, as ExporterView.FileName.cs builds it: Model file _ Schema _ Date.
             var chips = F<WrapPanel>(v, "NameChips");
             if (chips != null)
