@@ -18,7 +18,7 @@ Thanks to everyone who has contributed to BIMCamel.
 - **Hamada** ([@themodmin](https://github.com/themodmin)) — testing & QA.
 - **Vilhelm Hjert** ([@VilhelmH-git](https://github.com/VilhelmH-git)) — instanced-fragment fix (each element
   takes only its own fragments), element-level instancing for many-part elements, and the headless
-  export test harness.
+  export test harness, and tolerance-checked mesh simplification.
 
 ## AI assistance
 

@@ -48,8 +48,21 @@ namespace BIMCamel.Collect
             public readonly Action<int>? OnProgress;
             public readonly bool WantMin;
             public int Visited;
-            public Walk(List<ModelItem> result, bool includeHidden, Action<int>? onProgress, bool wantMin)
-            { Result = result; IncludeHidden = includeHidden; OnProgress = onProgress; WantMin = wantMin; }
+            /// <summary>
+            /// Subtrees already walked, and whether each contributed. Only for walks that start from
+            /// an arbitrary item list (a selection, a set's members, search results): those lists
+            /// routinely hold a node AND some of its descendants — a search whose condition holds on
+            /// a pipe and on its branches, a selection made from such a search — and walking each
+            /// entry independently walked the shared subtrees again and collected their leaves
+            /// twice. Twice in the scope is exported twice: the same element, same GlobalId.
+            /// The whole-model walks start from disjoint roots and leave this null.
+            /// </summary>
+            public readonly Dictionary<ModelItem, bool>? Done;
+            public Walk(List<ModelItem> result, bool includeHidden, Action<int>? onProgress, bool wantMin, bool dedup = false)
+            {
+                Result = result; IncludeHidden = includeHidden; OnProgress = onProgress; WantMin = wantMin;
+                if (dedup) Done = new Dictionary<ModelItem, bool>();
+            }
         }
 
         private static void BeginWalk() { MinCornerValid = true; _mnX = _mnY = _mnZ = double.MaxValue; }
@@ -89,7 +102,7 @@ namespace BIMCamel.Collect
         {
             BeginWalk();
             var result = new List<ModelItem>();
-            var w = new Walk(result, true, onProgress, wantMinCorner);
+            var w = new Walk(result, true, onProgress, wantMinCorner, dedup: true);
             CollectLeaves(items, w);
             EndWalk(w);
             return result;
@@ -209,12 +222,14 @@ namespace BIMCamel.Collect
             BeginWalk();
             try
             {
+                long ts = Geometry.ExportTiming.Now;
                 ModelItemCollection? mic =
                     set.HasExplicitModelItems ? set.ExplicitModelItems :
                     set.Search != null ? set.Search.FindAll(doc, false) : null;
+                Geometry.ExportTiming.SetSearchTicks += Geometry.ExportTiming.Now - ts;
                 if (mic != null)
                 {
-                    var w = new Walk(result, true, onProgress, wantMinCorner);
+                    var w = new Walk(result, true, onProgress, wantMinCorner, dedup: true);
                     CollectLeaves(mic, w);
                     EndWalk(w);
                 }
@@ -357,7 +372,10 @@ namespace BIMCamel.Collect
                     // for a search set the FindAll and the walk of its results are
                     // the slow half, and passing no callback here left the UI
                     // unpumped — and unstoppable — for all of it.
+                {
                     resolved[rule.Set] = leaves = GetItemsFromSet(doc, rule.Set, onProgress);
+                    Geometry.ExportTiming.SetMembers += leaves.Count;
+                }
                 foreach (var leaf in leaves)
                 {
                     var k = ItemKey(leaf, keyCache);
@@ -424,6 +442,15 @@ namespace BIMCamel.Collect
         /// part still exports as its separate child bodies, exactly as before.
         /// </summary>
         private static bool CollectFrom(ModelItem item, Walk w)
+        {
+            if (w.Done == null) return CollectFromCore(item, w);
+            if (w.Done.TryGetValue(item, out bool prior)) { Geometry.ExportTiming.OverlapsSkipped++; return prior; }
+            bool any = CollectFromCore(item, w);
+            w.Done[item] = any;
+            return any;
+        }
+
+        private static bool CollectFromCore(ModelItem item, Walk w)
         {
             w.Visited++;
             if ((w.Visited & 0x3FF) == 0) w.OnProgress?.Invoke(w.Visited);

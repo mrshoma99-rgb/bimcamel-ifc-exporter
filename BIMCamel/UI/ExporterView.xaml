@@ -877,6 +877,11 @@
                       <TextBox x:Name="TxtMinSizeMm" Text="5" Style="{StaticResource InlineNum}"/>
                       <TextBlock Text="mm" VerticalAlignment="Center" Foreground="{DynamicResource Muted}"/>
                     </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                      <CheckBox x:Name="ChkSimplify" Content="Simplify meshes within" VerticalAlignment="Center" ToolTip="Reduce heavily tessellated objects before they are written: triangles are removed from flat and gently curved regions while no surface moves further than this distance. Each unique shape is simplified once and every copy of it reuses the result.&#x0a;&#x0a;Unlike 'Skip geometry smaller than' nothing is left out - every object is still there, with fewer triangles. Off by default because it changes the shapes; the report gives the triangle count before and after."/>
+                      <TextBox x:Name="TxtSimplifyMm" Text="10" Style="{StaticResource InlineNum}"/>
+                      <TextBlock Text="mm" VerticalAlignment="Center" Foreground="{DynamicResource Muted}"/>
+                    </StackPanel>
                     <StackPanel Orientation="Horizontal"
                                 ToolTip="Split the output into multiple files once it grows past this size.">
                       <CheckBox x:Name="ChkSplit" Content="Split into files larger than" VerticalAlignment="Center"/>
