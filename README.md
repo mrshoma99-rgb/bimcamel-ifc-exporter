@@ -12,6 +12,43 @@ export — BIMCamel fills that gap without the slowness and setup friction of th
 
 ---
 
+## What's new in v0.12.0
+
+**[Download v0.12.0](../../releases/tag/v0.12.0)**
+
+- **Correct geometry on instanced models.** Each element now writes only its own fragments.
+  Before, an instanced node wrote every copy's geometry: Autodesk's ice stadium sample went from
+  709 MB (149 M triangles) to **27 MB (1.44 M triangles)**. Elements built from many small parts
+  are merged into one shape that identical elements share (#41).
+- **Properties from the parent object.** Revit keeps its *Element* tab one node above the
+  geometry, and SmartPlant 3D / E3D keep theirs higher still. **Read properties from** adds
+  them to each element, so Revit data no longer goes missing (#44).
+- **Faster parameter scanning.** Smart setup and Scan get through big models quicker (#43).
+- **Rule-based auto-classification.** Elements no rule covers are classified from the IFC class
+  they already state, their Revit category, or whole words in their names, instead of all
+  becoming `IfcBuildingElementProxy`. It uses fixed rules only, runs fully offline and records
+  the deciding rule on each element (#46).
+- **Reworked panel** (#42):
+  - The Export tab is laid out in order: scope, format, Smart setup, Pre-flight, then
+    Advanced options.
+  - **Rules by property value** (*Category equals Walls → IfcWall*) map classes and codes
+    without building a search set.
+  - **Element name** picks the property used as each element's IFC Name (*Mark*, *Tag*…).
+  - **Property set search**, plus **CSV import/export** of parameter mappings.
+  - Settings are remembered between sessions, with presets in the profile menu.
+  - A **Project** tab replaces Coordinates and Structure.
+  - The file name accepts a template (`{model}`, `{schema}`, `{set}`, `{date}`), and the report
+    has **Open file** / **Open folder** / **Save report** buttons.
+- **Cleaner, smaller IFC files** (#45):
+  - Text is escaped correctly, including backslashes and non-ASCII names.
+  - A GlobalId is never written twice, and elements without a GUID get a stable one from their
+    tree path.
+  - The report checks every element against Navisworks' own bounding box.
+  - Each shared Navisworks node is read once, which speeds up instanced models.
+  - Property values, colour styles and the map origin are written once and shared.
+
+---
+
 ## Highlights
 
 - **Streaming, memory-bounded engine.** Exports huge models without the out-of-memory crashes that
