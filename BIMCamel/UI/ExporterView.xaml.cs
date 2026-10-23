@@ -2079,7 +2079,7 @@ namespace BIMCamel.UI
             if (tone == Tone.Amber || TglCheckDetails.IsChecked == true)
             {
                 var b = new TextBlock { Text = body, FontSize = 12, TextWrapping = TextWrapping.Wrap, LineHeight = 17, Margin = new Thickness(0, 2, 0, 0) };
-                b.SetResourceReference(TextBlock.ForegroundProperty, tone == Tone.Amber ? "Text" : "Muted");
+                b.SetResourceReference(TextBlock.ForegroundProperty, "Muted");
                 text.Children.Add(b);
             }
             dock.Children.Add(text);

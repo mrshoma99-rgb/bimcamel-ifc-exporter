@@ -233,9 +233,13 @@
           <ControlTemplate TargetType="TextBox">
             <Border x:Name="b" Background="{DynamicResource Field}" BorderBrush="{DynamicResource FieldBd}"
                     BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8">
-              <Grid Margin="{TemplateBinding Padding}" VerticalAlignment="Center">
-                <TextBlock x:Name="ph" Text="{TemplateBinding Tag}" Foreground="{DynamicResource Faint}" Margin="2,0,0,0"
-                           IsHitTestVisible="False" Visibility="Collapsed" TextTrimming="CharacterEllipsis"/>
+              <!-- The text box applies its Padding to the text itself, so only the placeholder
+                   needs it here. -->
+              <Grid VerticalAlignment="Center">
+                <Border Margin="{TemplateBinding Padding}" Padding="2,0,0,0" IsHitTestVisible="False">
+                  <TextBlock x:Name="ph" Text="{TemplateBinding Tag}" Foreground="{DynamicResource Faint}"
+                             Visibility="Collapsed" TextTrimming="CharacterEllipsis"/>
+                </Border>
                 <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center"/>
               </Grid>
             </Border>

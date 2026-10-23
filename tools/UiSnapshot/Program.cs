@@ -75,6 +75,11 @@ namespace UiSnapshot
             }
             // What a user sees on opening the pane: a fixed viewport with the footer.
             Render(view, 480, Path.Combine(outDir, "viewport-480x820.png"), 820);
+            // Dark theme, with the values ExporterView.ApplyTheme sets.
+            Dark(view);
+            Render(view, 480, Path.Combine(outDir, "viewport-480x820-dark.png"), 820);
+            tabsDark(view, outDir);
+            Light(view);
             // The batch scope, with its set list and output folder.
             ShowBatch(view);
             Render(view, 480, Path.Combine(outDir, "480-export-batch.png"));
@@ -178,7 +183,7 @@ namespace UiSnapshot
                 var text = new StackPanel();
                 text.Children.Add(new TextBlock { Text = head, FontSize = 12.5, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap, Foreground = (Brush)v.FindResource("Text") });
                 if (tone == "amber")
-                    text.Children.Add(new TextBlock { Text = body, FontSize = 12, TextWrapping = TextWrapping.Wrap, LineHeight = 17, Margin = new Thickness(0, 2, 0, 0), Foreground = (Brush)v.FindResource("Text") });
+                    text.Children.Add(new TextBlock { Text = body, FontSize = 12, TextWrapping = TextWrapping.Wrap, LineHeight = 17, Margin = new Thickness(0, 2, 0, 0), Foreground = (Brush)v.FindResource("Muted") });
                 dock.Children.Add(text); inner.Child = dock; pf.Children.Add(outer);
             }
             Pre("ok", "IFC4 · units read from the model", "", null);
@@ -227,6 +232,45 @@ namespace UiSnapshot
 
             foreach (var g in new[] { "GridParams", "GridMap", "GridPropRules" })
                 if (F<ItemsControl>(v, g) is ItemsControl ic) ic.ItemsSource = new[] { new Row { Number = 1 }, new Row { Number = 2, Classification = "" } };
+        }
+
+        private static void tabsDark(UserControl view, string outDir)
+        {
+            var tabs = (TabControl)view.FindName("Tabs");
+            for (int i = 1; i < tabs.Items.Count; i++)
+            {
+                tabs.SelectedIndex = i;
+                Render(view, 480, Path.Combine(outDir, $"dark-{i}-{((TabItem)tabs.Items[i]).Name}.png"));
+            }
+            tabs.SelectedIndex = 0;
+        }
+
+        private static readonly string[] DarkPalette =
+        {
+            "Accent=#3AA0F0", "AccentHover=#5BB3F5", "AccentPress=#2A8AD6", "Bg=#15171B", "Pane=#1C1F24", "Card=#23272E", "Card2=#262B32",
+            "Text=#E7EAEE", "Muted=#9AA3AD", "Faint=#8C95A0", "Bd=#333941", "BdStrong=#3D444D", "Field=#2B3138", "FieldBd=#3D444D",
+            "Nav=#282D34", "NavActive=#1F2D3D", "Track=#2E343B", "FamBatch=#A9CF5C", "Ok=#46C97E", "OkBg=#12301F", "OkBd=#245638",
+            "AmberBg=#3A2F12", "AmberBd=#5C4A1E", "AmberTx=#F0C66A", "RedBg=#3A1D1D", "RedBd=#5C2B2B", "RedTx=#F08C84",
+            "ConsoleBg=#0A0C10", "ConsoleTx=#BFE0C8", "BadgeReqBg=#12301F", "BadgeReqBd=#245638", "BadgeReqTx=#46C97E",
+            "BadgeOptBg=#282D34", "BadgeOptBd=#333941", "BadgeOptTx=#9AA3AD", "BadgeAutoBg=#152836", "BadgeAutoBd=#274966", "BadgeAutoTx=#7CC0F5",
+        };
+        private static readonly System.Collections.Generic.Dictionary<string, object> LightSaved = new System.Collections.Generic.Dictionary<string, object>();
+
+        private static void Dark(UserControl v)
+        {
+            foreach (var kv in DarkPalette)
+            {
+                var parts = kv.Split('=');
+                LightSaved[parts[0]] = v.Resources[parts[0]];
+                v.Resources[parts[0]] = new SolidColorBrush((Color)ColorConverter.ConvertFromString(parts[1]));
+            }
+            LightSaved["BrandBar"] = v.Resources["BrandBar"];
+            v.Resources["BrandBar"] = new LinearGradientBrush((Color)ColorConverter.ConvertFromString("#1B5E92"), (Color)ColorConverter.ConvertFromString("#2277B8"), 0);
+        }
+
+        private static void Light(UserControl v)
+        {
+            foreach (var kv in LightSaved) v.Resources[kv.Key] = kv.Value;
         }
 
         private static void ShowBatch(UserControl v)
