@@ -84,7 +84,7 @@ namespace BIMCamel.Data
         /// (same static-tally pattern as ExportIssues); <see cref="Reset"/> runs at its start.</summary>
         public static readonly Dictionary<string, int> Counts = new Dictionary<string, int>(StringComparer.Ordinal);
 
-        public static void Reset() => Counts.Clear();
+        public static void Reset() { Counts.Clear(); _ancestors.Clear(); }
 
         /// <summary>Counts the guess and, when properties are being exported, records it on the
         /// element. Returns the (possibly new) property list.</summary>

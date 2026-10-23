@@ -17,8 +17,8 @@ out/runner/BIMCamelHeadlessRunner.exe "$N\Samples\ice stadium.nwd" out/harness/B
 
 - The fourth argument is the merge threshold: elements with more parts than this are written as
   one shape (element-level instancing). `0` turns it off, which is the old per-fragment output.
-- The fifth (schema, `IFC4` or `IFC2X3`) and sixth ("Skip geometry smaller than", in mm) are
-  optional.
+- The fifth (schema, `IFC4` or `IFC2X3`), sixth ("Skip geometry smaller than", in mm) and
+  seventh ("Simplify meshes within", in mm) are optional; `0` is off.
 - The test build is renamed `BIMCamelDev` so it is never confused with the BIMCamel bundle that
   Navisworks loads by itself.
 - Model, add-in and output must be under your user profile or a readable install folder:

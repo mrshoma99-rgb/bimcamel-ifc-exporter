@@ -29,6 +29,15 @@ namespace BIMCamel.Geometry
         public static long UiPumps;           // number of pumps
         public static long ForeignFragmentsSkipped; // other instances' fragments left out (ComScope.OwnFragments)
         public static long OwnFragmentFallbacks;    // paths where no fragment matched, so all were kept
+        public static long SimplifyTicks;     // MeshDecimator, per UNIQUE mesh (instanced) or element (plain)
+        public static long SimplifiedMeshes;  // meshes run through it
+        public static long SimplifyTrisIn, SimplifyTrisOut;   // their triangles before / after
+        public static long SimplifyReused;    // instanced: meshes served from the simplified-mesh table
+
+        public static void SimplifyCount(int before, int after, long ticks)
+        {
+            SimplifiedMeshes++; SimplifyTrisIn += before; SimplifyTrisOut += after; SimplifyTicks += ticks;
+        }
         public static long GroupLookups;      // paths whose fragments came from an instance group's index
         public static long GroupReadsShared;  // fragment reads replaced by the group's mesh
         public static long GroupVerifications;// sampled re-reads checking a shared mesh
@@ -37,6 +46,11 @@ namespace BIMCamel.Geometry
         // E1 (fast instancing): how well the pre-read identity guess held up.
         public static long GeomReadsSkipped;  // fragment reads avoided by a candidate-key hit
         public static long GeomVerifications; // sampled full reads done to check a cached candidate
+        public static long ComMapTicks;       // inside ComConvertTicks: Paths() + ToModelItem per path
+        public static long BoxTicks;          // item BoundingBox() reads (one per element since v7)
+        public static long BoxReads;          // ... and how many were made
+        public static long PropRuleTicks;     // inside HarvestTicks: property-value class rules
+        public static long ClassifyTicks;     // inside HarvestTicks: auto-classify of unmapped items
         public static long GeomMismatches;    // verifications that DISAGREED — the guess was wrong
         public static long GeomEvictions;     // candidates dropped for the memory budget
 
@@ -56,6 +70,9 @@ namespace BIMCamel.Geometry
         public static long NodesVisited;      // tree nodes touched by the walk
         public static long SetsResolved;      // distinct sets actually resolved
         public static long SampledItems;      // items the property scan actually read
+        public static long SetSearchTicks;    // inside SetResolveTicks: Search.FindAll alone
+        public static long SetMembers;        // leaves the mapping sets resolved to
+        public static long OverlapsSkipped;   // list entries already covered by an earlier entry's walk
 
         // ── after the file is closed ───────────────────────────────────────────────────────
         public static long ValidateTicks;     // structural validation of the written file(s)
@@ -66,9 +83,12 @@ namespace BIMCamel.Geometry
             Fragments = ComConverts = 0;
             UiTicks = 0; UiPumps = 0;
             ForeignFragmentsSkipped = OwnFragmentFallbacks = 0;
+            SimplifyTicks = SimplifiedMeshes = SimplifyTrisIn = SimplifyTrisOut = SimplifyReused = 0;
             GroupLookups = GroupReadsShared = GroupVerifications = GroupMismatches = 0;
             GeomReadsSkipped = GeomVerifications = GeomMismatches = GeomEvictions = 0;
             GeomWriteTicks = PropWriteTicks = QtyWriteTicks = 0;
+            ComMapTicks = BoxTicks = BoxReads = PropRuleTicks = ClassifyTicks = 0;
+            ItemBox.Reset();
             ValidateTicks = 0;
         }
 
@@ -78,6 +98,7 @@ namespace BIMCamel.Geometry
         {
             CollectTicks = SetResolveTicks = MinCornerTicks = PropScanTicks = 0;
             NodesVisited = SetsResolved = SampledItems = 0;
+            SetSearchTicks = SetMembers = OverlapsSkipped = 0;
         }
 
         public static long Now => Stopwatch.GetTimestamp();

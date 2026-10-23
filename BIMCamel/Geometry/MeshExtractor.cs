@@ -42,11 +42,18 @@ namespace BIMCamel.Geometry
         /// triangle count on plant models and contribute nothing to a coordination deliverable.
         ///
         /// This REMOVES objects rather than approximating them, which is why it is off by default
-        /// and why every dropped fragment is counted and reported. True mesh decimation is a
-        /// different thing and is deliberately not here: v3 A7 established we can only coarsen, and
-        /// the weld tolerance already is a vertex-clustering decimator.
+        /// and why every dropped fragment is counted and reported. Approximating is
+        /// <see cref="SimplifyTol"/>.
         /// </summary>
         public double MinFragmentSize;
+
+        /// <summary>
+        /// Mesh simplification tolerance, IN THE VERTICES' OWN UNITS like <see cref="WeldTol"/>
+        /// (0 = off, the default). Each welded mesh is reduced by <see cref="MeshDecimator"/> so no
+        /// surface moves further than this. Instanced path: once per unique local mesh, and every
+        /// instance reuses the result. Plain path: once per element.
+        /// </summary>
+        public double SimplifyTol;
 
         public HashSet<string>? PsetFilter;
         public Dictionary<string, string>? ClassMap; // itemKey → classKey (encoded class|predef)
@@ -88,6 +95,8 @@ namespace BIMCamel.Geometry
         public string Level = "";             // → IfcBuildingStorey
         public string MaterialName = "";      // → IfcMaterial
         public string ClassCode = "";         // → IfcClassificationReference
+        /// <summary>Triangles before simplification; 0 = not simplified (same as Indices).</summary>
+        public int SourceTriangles;
 
         /// <summary>Base quantities, measured while welding (v5 E4). Null when quantities were not
         /// requested — the exporter then falls back to its own pass.</summary>
@@ -193,6 +202,20 @@ namespace BIMCamel.Geometry
             // That used to sail through here and get dropped, uncounted, by the exporter.
             if (idx.Count == 0) { ExportIssues.CollapsedByWeld++; return null; }
 
+            int sourceTris = 0;
+            if (o.SimplifyTol > 0)
+            {
+                ts = ExportTiming.Now;
+                int before = idx.Count / 3;
+                if (MeshDecimator.Simplify(ref verts, ref idx, o.SimplifyTol))
+                {
+                    sourceTris = before;
+                    // The quantities describe what is written, as on the instanced path.
+                    if (measuredOk) measured = MeshQuantities.Compute(verts, idx, o.QtyScale);
+                }
+                ExportTiming.SimplifyCount(before, idx.Count / 3, ExportTiming.Now - ts);
+            }
+
             string key = hasClass || hasCode || hasGroup ? ItemCollector.ItemKey(item, o.KeyCache) : "";
             var em = new ElementMesh
             {
@@ -200,6 +223,7 @@ namespace BIMCamel.Geometry
                 InstanceGuid = item.InstanceGuid,
                 Vertices = verts,
                 Indices = idx,
+                SourceTriangles = sourceTris,
                 Material = o.Materials ? PropertyHarvester.GetMaterial(item) : null,
                 ClassKey = hasClass && o.ClassMap!.TryGetValue(key, out var ck) ? ck : null,
                 Quantities = measuredOk ? measured : (MeshQty?)null
@@ -220,17 +244,24 @@ namespace BIMCamel.Geometry
             if (o.PropRules != null)
             {
                 string? pk = em.ClassKey, pc = hasCode && o.ClassificationMap!.ContainsKey(key) ? em.ClassCode : null;
+                long tr = ExportTiming.Now;
                 PropertyRules.Apply(item, o.PropRules, ref pk, ref pc);
+                ExportTiming.PropRuleTicks += ExportTiming.Now - tr;
                 em.ClassKey = pk; if (!string.IsNullOrEmpty(pc)) em.ClassCode = pc!;
             }
             if (hasGroup && o.GroupMap!.TryGetValue(key, out var gn)) em.GroupName = gn;
             // No set rule claimed it: try the fixed rules (category, IFC class, name words) before
             // it falls to IfcBuildingElementProxy. Counted inside HarvestTicks — it is a property read.
-            if (o.AutoClassify && string.IsNullOrEmpty(em.ClassKey)
-                && RuleClassifier.ClassifyItem(item, o.ClassifyUnitScale, o.CategoryCache) is { } guess)
+            if (o.AutoClassify && string.IsNullOrEmpty(em.ClassKey))
             {
-                em.ClassKey = guess.ClassKey;
-                em.Properties = RuleClassifier.Apply(guess, em.Properties, o.Props);
+                long tk = ExportTiming.Now;
+                var guess = RuleClassifier.ClassifyItem(item, o.ClassifyUnitScale, o.CategoryCache);
+                ExportTiming.ClassifyTicks += ExportTiming.Now - tk;
+                if (guess is { } guessed)
+                {
+                    em.ClassKey = guessed.ClassKey;
+                    em.Properties = RuleClassifier.Apply(guessed, em.Properties, o.Props);
+                }
             }
             ExportTiming.HarvestTicks += ExportTiming.Now - ts;
             return em;

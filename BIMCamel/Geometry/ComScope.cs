@@ -67,15 +67,22 @@ namespace BIMCamel.Geometry
                 InwOpSelection sel = ComApiBridge.ToInwOpSelection(coll);
                 ExportTiming.ComConverts++;
 
-                foreach (InwOaPath3 path in sel.Paths())
+                // Timed on its own: one bridge call per path, so on a big chunk this — not the
+                // conversion above — may be the bulk of the line.
+                long tm = ExportTiming.Now;
+                try
                 {
-                    ModelItem? owner;
-                    try { owner = ComApiBridge.ToModelItem(path); }
-                    catch { continue; }
-                    if (owner == null) continue;
-                    if (!map.TryGetValue(owner, out var lst)) { lst = new List<InwOaPath3>(); map[owner] = lst; }
-                    lst.Add(path);
+                    foreach (InwOaPath3 path in sel.Paths())
+                    {
+                        ModelItem? owner;
+                        try { owner = ComApiBridge.ToModelItem(path); }
+                        catch { continue; }
+                        if (owner == null) continue;
+                        if (!map.TryGetValue(owner, out var lst)) { lst = new List<InwOaPath3>(); map[owner] = lst; }
+                        lst.Add(path);
+                    }
                 }
+                finally { ExportTiming.ComMapTicks += ExportTiming.Now - tm; }
             }
             catch
             {

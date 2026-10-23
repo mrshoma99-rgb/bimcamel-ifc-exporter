@@ -164,6 +164,8 @@ namespace BIMCamel.UI
             // Type-level sharing MOVES data to where a simpler reader may not look, and the size
             // filter REMOVES objects — both change what a recipient sees, so both default OFF.
             (ChkSkipEmptyProps, true), (ChkShareTypeProps, false), (ChkMinSize, false),
+            // Simplification changes the shapes a recipient sees, so it is opt-in like the size filter.
+            (ChkSimplify, false),
             (ChkSplit, false),
         };
 
@@ -870,12 +872,10 @@ namespace BIMCamel.UI
                 var scanSw = Stopwatch.StartNew();
                 ET.ResetScan();
                 BeginBusyMarquee("Collecting elements…");
-                // wantMinCorner: the walk folds each collected leaf's bounding box into a running
-                // minimum, so the separate per-element ScopeMinCorner pass disappears (v5 S1). Asked
-                // for only when the base point actually comes from the geometry.
-                bool wantMin = coords.Mode == BasePointMode.GeometryOrigin;
+                // The walk no longer reads a bounding box per leaf for the base point: on a 188k-leaf
+                // E3D selection that was most of a 181 s Collect. ScopeMin below samples instead.
                 long tc = ET.Now;
-                var items = ResolveScope(doc, CollectTick, wantMin);
+                var items = ResolveScope(doc, CollectTick);
                 ET.CollectTicks += ET.Now - tc;
                 if (items == null) return;
                 if (items.Count == 0) { SetStatus("No geometry elements in scope."); return; }
@@ -886,8 +886,7 @@ namespace BIMCamel.UI
                 var opts = BuildExtractOptions(maps);
                 opts.KeyCache = _scan.Keys;
 
-                if (wantMin && !ItemCollector.MinCornerValid) { SetStatus("Computing model extents…"); PumpUi(Dispatcher); }
-                var sm = ScopeMin(items, coords, n => CollectTick(n));
+                var sm = ScopeMin(doc, items, coords, n => CollectTick(n));
                 var geomMin = (sm.x * unitScale, sm.y * unitScale, sm.z * unitScale);
                 scanSw.Stop();
 
@@ -1027,6 +1026,9 @@ namespace BIMCamel.UI
             double minSizeMetres = ChkMinSize.IsChecked == true
                 && double.TryParse(TxtMinSizeMm.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out var mm) && mm > 0
                 ? mm / 1000.0 : 0;
+            double simplifyMetres = ChkSimplify.IsChecked == true
+                && double.TryParse(TxtSimplifyMm.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out var smm) && smm > 0
+                ? smm / 1000.0 : 0;
 
             // v5 E7: the extractor runs here, on the Navisworks UI thread (the read API is STA and
             // cannot move); the writer runs behind ExportPipeline on a background thread. Both
@@ -1040,6 +1042,7 @@ namespace BIMCamel.UI
                 opts.QtyScale = 0;
                 opts.FastInstancing = ChkFastInstancing.IsChecked == true;
                 opts.MinFragmentSize = minSizeMetres;
+                opts.SimplifyTol = simplifyMetres;
                 int mergeAbove = ChkMergeParts.IsChecked == true ? MergePartsAbove : 0;
                 var stream = InstancedExtractor.ExtractStream(items, unitScale, opts, p => Tick(p, items.Count, verb));
                 ExportPipeline.Run(stream, s =>
@@ -1051,6 +1054,7 @@ namespace BIMCamel.UI
                 // Plain: one element, one weld, one measurement — folded into the weld (v5 E4).
                 opts.QtyScale = quantities ? unitScale : 0;
                 opts.MinFragmentSize = minSizeMetres / unitScale;
+                opts.SimplifyTol = simplifyMetres / unitScale;
                 var stream = MeshExtractor.ExtractStream(items, opts, p => Tick(p, items.Count, verb));
                 ExportPipeline.Run(stream, s =>
                     IfcExporter.Export(basePath, schema, s, author, unitScale, coords, quantities, coordDecimals, geomMin, names, splitLimit, summary, shareTypeProps));
@@ -1174,28 +1178,35 @@ namespace BIMCamel.UI
         }
 
         /// <summary>
-        /// The scope's minimum corner in MODEL units, for the geometry-origin base point (v5 S1).
+        /// The scope's minimum corner in MODEL units, for the geometry-origin base point.
         ///
-        /// Three tiers, cheapest first:
-        ///  1. The base point does not come from the geometry at all (model origin, or a custom
-        ///     survey point) — <c>ComputeOffset</c> ignores this value entirely, so computing it is
-        ///     pure waste. Skipped: zero bounding-box reads.
-        ///  2. The walk already accumulated it (v5 S1) — free.
-        ///  3. Anything else (a section-box scope, a batch union — results the walk post-processed)
-        ///     falls back to the original per-item pass, which is still correct, just not free.
+        /// It only has to be NEAR the geometry: the placement chain puts every element back at its
+        /// world position whatever the origin is, so the corner decides how many digits the stored
+        /// coordinates carry and nothing else. Reading every leaf's <c>BoundingBox()</c> for an
+        /// exact minimum cost a COM call per element (most of a 181 s Collect on a 188k-leaf E3D
+        /// selection), so:
+        ///  1. Not the geometry origin (model origin, custom point) — not needed at all.
+        ///  2. Whole model — the model roots' boxes, a handful of calls; the base-point preview has
+        ///     always shown exactly this value.
+        ///  3. Any narrower scope — the minimum over an even-strided sample of at most
+        ///     <see cref="MinCornerSample"/> leaves, so a selection far from the rest of a
+        ///     federation keeps small coordinates. A leaf below the sampled corner simply gets a
+        ///     slightly negative local coordinate, which IFC allows.
         /// </summary>
-        private static (double x, double y, double z) ScopeMin(List<ModelItem> items, CoordOptions coords, Action<int>? onProgress)
+        private (double x, double y, double z) ScopeMin(Document doc, List<ModelItem> items, CoordOptions coords, Action<int>? onProgress)
         {
             if (coords.Mode != BasePointMode.GeometryOrigin) return (0, 0, 0);
 
             long t = ET.Now;
             try
             {
-                if (ItemCollector.MinCornerValid) return ItemCollector.LastMinCorner;
-                return ItemCollector.ScopeMinCorner(items, onProgress);
+                if (ScopeIndex() == 0) { var m = ModelMinCorner(doc); return (m.Item1, m.Item2, m.Item3); }
+                return ItemCollector.ScopeMinCorner(Spread(items, MinCornerSample), onProgress);
             }
             finally { ET.MinCornerTicks += ET.Now - t; }
         }
+
+        private const int MinCornerSample = 2048;
 
         private CoordOptions BuildCoords() => new CoordOptions
         {
@@ -1244,8 +1255,12 @@ namespace BIMCamel.UI
             // during a pump, and making the user wait out the rest of the interval
             // is the difference between "Stop" and "Stop, eventually".
             ThrowIfCancelled();
+            // 400 ms, not 120: each pump lets Navisworks repaint, and with a large selection
+            // highlighted a repaint is not free. In the export, pumps cost ~18 ms each on the PTS
+            // E3D model; at 120 ms that would be ~15% of a three-minute walk. Stop still lands
+            // within half a second.
             long ms = _tickClock.ElapsedMilliseconds;
-            if (ms - _lastTickMs < 120) return;
+            if (ms - _lastTickMs < 400) return;
             _lastTickMs = ms;
             LblStatus.Text = $"Scanning… {visited:N0} items"; PumpUi(Dispatcher);
         }
@@ -1940,7 +1955,14 @@ namespace BIMCamel.UI
             sb.AppendLine($"Site offset : [{s.OffsetX:N3}, {s.OffsetY:N3}, {s.OffsetZ:N3}] m");
             sb.AppendLine($"Georef      : {GeorefLine(s, schema)}");
             sb.AppendLine($"Elements    : {s.ElementCount:N0}");
-            sb.AppendLine($"Triangles   : {s.TriangleCount:N0}");
+            sb.AppendLine(s.SourceTriangleCount > s.TriangleCount
+                ? $"Triangles   : {s.TriangleCount:N0}  (simplified from {s.SourceTriangleCount:N0}, {100.0 * s.TriangleCount / s.SourceTriangleCount:0.#} %)"
+                : $"Triangles   : {s.TriangleCount:N0}");
+            // Unique meshes (instanced) or elements (plain): what the simplifier itself saw.
+            if (ET.SimplifiedMeshes > 0)
+                sb.AppendLine($"Simplify    : {ET.SimplifiedMeshes:N0} mesh(es), {ET.SimplifyTrisIn:N0} → {ET.SimplifyTrisOut:N0} triangles before placement"
+                              + (ET.SimplifyReused > 0 ? $" · {ET.SimplifyReused:N0} reuse(s)" : "")
+                              + $" · {ET.Ms(ET.SimplifyTicks):N0} ms");
             // Anything that did not reach the IFC is stated explicitly — elements used to vanish
             // with no trace anywhere in the UI or the report.
             var issues = BIMCamel.Geometry.ExportIssues.Report();
@@ -1998,9 +2020,11 @@ namespace BIMCamel.UI
                 double ct = ET.Ms(ET.CollectTicks), sr = ET.Ms(ET.SetResolveTicks);
                 double mc = ET.Ms(ET.MinCornerTicks), ps = ET.Ms(ET.PropScanTicks);
                 double sother = scanMs - ct - sr - mc - ps; if (sother < 0) sother = 0;
-                sb.AppendLine($"  Collect     : {ct,10:N0} ms   ({ET.NodesVisited:N0} nodes)");
-                sb.AppendLine($"  Set resolve : {sr,10:N0} ms   ({ET.SetsResolved:N0} rule(s))");
-                sb.AppendLine($"  Min corner  : {mc,10:N0} ms" + (ET.MinCornerTicks == 0 ? "   (folded into the walk, or not needed)" : ""));
+                sb.AppendLine($"  Collect     : {ct,10:N0} ms   ({ET.NodesVisited:N0} nodes"
+                              + (ET.OverlapsSkipped > 0 ? $", {ET.OverlapsSkipped:N0} overlapping entr(ies) walked once" : "") + ")");
+                sb.AppendLine($"  Set resolve : {sr,10:N0} ms   ({ET.SetsResolved:N0} rule(s), {ET.SetMembers:N0} member leaves)");
+                if (ET.SetSearchTicks > 0) sb.AppendLine($"    searches  : {ET.Ms(ET.SetSearchTicks),10:N0} ms   (Navisworks Search.FindAll)");
+                sb.AppendLine($"  Min corner  : {mc,10:N0} ms" + (ET.MinCornerTicks == 0 ? "   (not needed)" : ""));
                 if (ET.PropScanTicks > 0) sb.AppendLine($"  Prop scan   : {ps,10:N0} ms   ({ET.SampledItems:N0} sampled)");
                 sb.AppendLine($"  Other       : {sother,10:N0} ms");
             }
@@ -2015,6 +2039,7 @@ namespace BIMCamel.UI
             double readSide = com + rd + hv + wl + qc + ui;
             double other = ms - readSide; if (other < 0) other = 0;
             sb.AppendLine($"  COM convert : {com,10:N0} ms   ({ET.ComConverts:N0} conversion(s))");
+            if (ET.ComMapTicks > 0) sb.AppendLine($"    map back  : {ET.Ms(ET.ComMapTicks),10:N0} ms   (paths → items)");
             sb.AppendLine($"  Geometry rd : {rd,10:N0} ms   ({ET.Fragments:N0} fragments)");
             if (ET.ForeignFragmentsSkipped > 0 || ET.OwnFragmentFallbacks > 0)
                 sb.AppendLine($"  Instances   : {ET.ForeignFragmentsSkipped:N0} fragment(s) of other instances left out" +
@@ -2023,6 +2048,9 @@ namespace BIMCamel.UI
                 sb.AppendLine($"  Shared reads: {ET.GroupReadsShared:N0} fragment read(s) reused from Navisworks instances · "
                               + $"{ET.GroupVerifications:N0} re-checked, {ET.GroupMismatches:N0} mismatch(es)");
             sb.AppendLine($"  Prop harvest: {hv,10:N0} ms");
+            if (ET.PropRuleTicks > 0) sb.AppendLine($"    prop rules: {ET.Ms(ET.PropRuleTicks),10:N0} ms");
+            if (ET.ClassifyTicks > 0) sb.AppendLine($"    auto-class: {ET.Ms(ET.ClassifyTicks),10:N0} ms");
+            if (ET.BoxReads > 0) sb.AppendLine($"  Bounding box: {ET.Ms(ET.BoxTicks),10:N0} ms   ({ET.BoxReads:N0} read(s), one per element)");
             sb.AppendLine($"  Weld        : {wl,10:N0} ms");
             sb.AppendLine($"  Qty compute : {qc,10:N0} ms");
             sb.AppendLine($"  UI pump     : {ui,10:N0} ms   ({ET.UiPumps:N0} pumps)");
@@ -2136,6 +2164,7 @@ namespace BIMCamel.UI
             SkipEmptyProps = ChkSkipEmptyProps.IsChecked == true,
             PropSource = CmbPropSource.SelectedIndex,
             MinSize = ChkMinSize.IsChecked == true, MinSizeMm = (TxtMinSizeMm.Text ?? "").Trim(),
+            Simplify = ChkSimplify.IsChecked == true, SimplifyMm = (TxtSimplifyMm.Text ?? "").Trim(),
             Validate = ChkValidate.IsChecked == true, Quantities = ChkQuantities.IsChecked == true, NoAutoClassify = ChkAutoClassify.IsChecked != true, Mapping = GridToText(),
             Crs = (TxtCrs.Text ?? "").Trim(), SurveyE = ParseD(TxtSurveyE.Text), SurveyN = ParseD(TxtSurveyN.Text), SurveyElev = ParseD(TxtSurveyElev.Text),
             Roles = RolesToText(), ParamRules = ParamRulesToText(), PropRules = PropRulesToText(),
@@ -2164,6 +2193,8 @@ namespace BIMCamel.UI
             ChkSkipEmptyProps.IsChecked = p.SkipEmptyProps;
             CmbPropSource.SelectedIndex = Clamp(p.PropSource, CmbPropSource.Items.Count);
             ChkMinSize.IsChecked = p.MinSize;
+            ChkSimplify.IsChecked = p.Simplify;
+            if (!string.IsNullOrWhiteSpace(p.SimplifyMm)) TxtSimplifyMm.Text = p.SimplifyMm;
             if (!string.IsNullOrWhiteSpace(p.MinSizeMm)) TxtMinSizeMm.Text = p.MinSizeMm;
             TxtCrs.Text = p.Crs ?? ""; TxtSurveyE.Text = Inv(p.SurveyE); TxtSurveyN.Text = Inv(p.SurveyN); TxtSurveyElev.Text = Inv(p.SurveyElev);
             if (!string.IsNullOrWhiteSpace(p.ProjectName)) TxtProject.Text = p.ProjectName;
