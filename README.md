@@ -12,9 +12,9 @@ export — BIMCamel fills that gap without the slowness and setup friction of th
 
 ---
 
-## What's new in v0.12.0
+## What's new in v0.12
 
-**[Download v0.12.0](../../releases/tag/v0.12.0)**
+**[Download the latest release](../../releases/latest)**
 
 <p>
   <img src="docs/images/pane-export.png" alt="The exporter pane: Export tab with scope, format and the token file name" width="300">
