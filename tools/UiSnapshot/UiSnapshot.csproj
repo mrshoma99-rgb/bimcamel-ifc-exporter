@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+  <!-- Renders the exporter pane's XAML to PNGs without Navisworks, so layout changes can be
+       looked at in CI. It loads ExporterView.xaml with its event hookups stripped and fills the
+       parts the code-behind normally builds (scope options, role rows, grid rows) with samples. -->
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <UseWPF>true</UseWPF>
+    <LangVersion>10.0</LangVersion>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="..\..\BIMCamel\UI\ExporterView.xaml" Link="ExporterView.xaml" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
