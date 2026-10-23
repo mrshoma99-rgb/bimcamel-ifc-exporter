@@ -32,9 +32,20 @@ namespace BIMCamel.Profiles
         /// without it a many-part element writes one mapped item per fragment.</summary>
         [DataMember] public bool MergeParts = true;
 
-        // DataContract deserialization runs no constructor or field initializer, so the default
-        // above only holds for a new profile. This makes it hold for an older one too.
-        [OnDeserializing] private void SetMergeDefault(StreamingContext _) { MergeParts = true; }
+        /// <summary>Mesh simplification (Geometry quality). OFF for a profile written before it
+        /// existed: it changes the shapes a recipient sees, so it is never switched on silently.</summary>
+        [DataMember] public bool Simplify;
+        /// <summary>Its tolerance in millimetres, as typed.</summary>
+        [DataMember] public string SimplifyMm = "10";
+
+        // DataContract deserialization runs no constructor or field initializer, so the defaults
+        // above only hold for a new profile. This makes them hold for an older one too.
+        [OnDeserializing] private void SetDefaults(StreamingContext _)
+        {
+            MergeParts = true;
+            Simplify = false;
+            SimplifyMm = "10";
+        }
 
         // ── v6 file size. Zip and SkipEmptyProps default TRUE for a profile written before v6,
         // because they are pure wins; the two that change what a recipient sees default FALSE.

@@ -31,7 +31,9 @@ export — BIMCamel fills that gap without the slowness and setup friction of th
 ## Features
 
 - **Geometry** — tessellated meshes via the COM geometry path; vertex welding; quality presets
-  (Small file / Balanced / High detail) with coordinate precision tied to the weld tolerance.
+  (Small file / Balanced / High detail) with coordinate precision tied to the weld tolerance;
+  optional mesh simplification within a distance tolerance (off by default), once per unique
+  shape, with triangles before and after in the report.
 - **Scope** — whole model, current selection, active section box, a saved/search set, or
   **batch: multiple sets → one IFC each**.
 - **Size splitting** — cap output size (e.g. 200 MB); larger exports roll into `name_001.ifc`,

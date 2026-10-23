@@ -465,7 +465,13 @@ stores repeated geometry once — on repetitive models that is both a much
 smaller file and a faster export. **Geometry quality** trades weld
 tolerance and coordinate precision ("Small file" / "Balanced" / "High
 detail") — it cannot add detail Navisworks didn't keep, since tessellation
-is fixed when the NWC is made.
+is fixed when the NWC is made. It can take detail away: **Simplify meshes
+within _n_ mm** (Advanced options → File size & speed; off by default,
+on at 10 mm in the Smallest file preset) removes triangles from flat and gently
+curved regions while no surface moves further than _n_ mm, simplifying each
+unique shape once for all its copies. Nothing is left out, unlike "Skip
+geometry smaller than"; the report gives the triangle count before and
+after.
 
 ## 14. Limitations — what this exporter cannot do
 
