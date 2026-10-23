@@ -66,13 +66,14 @@ namespace BIMCamel.UI
         public ExporterView()
         {
             InitializeComponent();
+            InitLogo();
             BuildScopeOptions();
             BuildRoleRows();
             InitControls();
             InitGridsAndLists();
             InitNameEditor();
             InitSession();
-            Loaded += (_, _) => { AttachDocumentEvents(); UpdateScopeHint(); PreviewBasePoint(); RefreshModelStatus(); RefreshSets(); RenderPreflight(); };
+            Loaded += (_, _) => { AttachDocumentEvents(); RefreshModelStatus(); RefreshSets(); UpdateScopeHint(); PreviewBasePoint(); RenderPreflight(); };
             Unloaded += (_, _) => DetachDocumentEvents();
             // The set list self-refreshes when the Mapping tab opens (replacing
             // the old per-tab Refresh buttons), and the pre-flight rows refresh
@@ -108,17 +109,47 @@ namespace BIMCamel.UI
 
         private void OnDismissWarning(object sender, RoutedEventArgs e) => WarnBanner.Visibility = Visibility.Collapsed;
 
+        private void OnAbout(object sender, RoutedEventArgs e) => AboutDialog.Show();
+
+        /// <summary>The white camel in the brand bar, embedded in the assembly so it shows wherever
+        /// the bundle is installed.</summary>
+        private void InitLogo()
+        {
+            try { LogoMark.Source = new BitmapImage(new Uri("pack://application:,,,/BIMCamel;component/Resources/mark_white.png", UriKind.Absolute)); }
+            catch { LogoMark.Visibility = Visibility.Collapsed; }
+        }
+
+        /// <summary>Quality as profiles store it (0 Balanced, 1 Small file, 2 High detail). The
+        /// segments read Small / Balanced / High left to right, so the two orders differ; the swap
+        /// is its own inverse.</summary>
+        private static readonly int[] QualityOrder = { 1, 0, 2 };
+        private int Quality
+        {
+            get { int i = CmbQuality.SelectedIndex; return i < 0 ? 0 : QualityOrder[i]; }
+            set => CmbQuality.SelectedIndex = QualityOrder[Clamp(value, QualityOrder.Length)];
+        }
+
+        /// <summary>A segmented or radio list always has one choice: Ctrl+click would otherwise
+        /// leave it with none.</summary>
+        private static void KeepOneSelected(ListBox list)
+        {
+            list.SelectionChanged += (_, e) =>
+            {
+                if (list.SelectedIndex < 0 && e.RemovedItems.Count > 0) list.SelectedItem = e.RemovedItems[0];
+            };
+        }
+
         // ── one-time setup ──────────────────────────────────────────────────────
         private void InitControls()
         {
-            AddItems(CmbSchema, new[] { "IFC4", "IFC2x3" }); CmbSchema.SelectedIndex = 0;
+            CmbSchema.SelectedIndex = 0;
             AddItems(CmbUnits, new[] { "Auto (from model)", "Millimeters", "Centimeters", "Meters", "Feet", "Inches" }); CmbUnits.SelectedIndex = 0;
             AddItems(CmbGroups, new[] { "(nothing)", "IfcGroup", "IfcSystem", "IfcZone" }); CmbGroups.SelectedIndex = 0;
-            AddItems(CmbQuality, new[] { "Balanced", "Small file", "High detail" }); CmbQuality.SelectedIndex = 0;
-            // Order = PropSource values (stored in profiles). A fresh pane defaults to the parent
+            Quality = 0;
+            foreach (var list in new[] { CmbSchema, CmbQuality, CmbPropSource }) KeepOneSelected(list);
+            // Item order = PropSource values (stored in profiles). A fresh pane defaults to the parent
             // object, because geometry-only misses Revit's Element tab entirely; a profile saved
             // before the option existed loads as 0 and keeps exporting exactly what it used to.
-            AddItems(CmbPropSource, new[] { "Geometry only", "Geometry + parent object (recommended for Revit)", "Geometry + all parents" });
             CmbPropSource.SelectionChanged += (_, _) => SyncPropSource();
             CmbPropSource.SelectedIndex = (int)PropSource.ParentObject;
             AddItems(CmbBasePoint, new[] { "Geometry origin (recommended)", "Model origin (keeps world coordinates)", "Custom base point" }); CmbBasePoint.SelectedIndex = 0;
@@ -139,10 +170,12 @@ namespace BIMCamel.UI
             TxtElev.TextChanged += (_, _) => PreviewBasePoint();
             void SyncProps() => LstCategories.IsEnabled = CmbPropSource.IsEnabled = ChkProps.IsChecked == true;
             ChkProps.Checked += (_, _) => SyncProps(); ChkProps.Unchecked += (_, _) => SyncProps(); SyncProps();
-            void SyncDetails() => CheckDetails.Visibility = TglCheckDetails.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+            // Details shows every pre-flight row's explanation as well as the full check breakdown.
+            void SyncDetails() { CheckDetails.Visibility = TglCheckDetails.IsChecked == true ? Visibility.Visible : Visibility.Collapsed; RenderPreflight(); }
             TglCheckDetails.Checked += (_, _) => { SyncDetails(); TglCheckDetails.Content = "Hide details"; };
             TglCheckDetails.Unchecked += (_, _) => { SyncDetails(); TglCheckDetails.Content = "Show details"; };
-            void SyncGeoref() => GeorefRow.Visibility = ChkGeoref.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+            // The fields stay in view, dimmed, so what would be written is still readable.
+            void SyncGeoref() { bool on = ChkGeoref.IsChecked == true; GeorefRow.IsEnabled = on; GeorefRow.Opacity = on ? 1 : 0.45; }
             ChkGeoref.Checked += (_, _) => SyncGeoref(); ChkGeoref.Unchecked += (_, _) => SyncGeoref(); SyncGeoref();
         }
 
@@ -195,13 +228,13 @@ namespace BIMCamel.UI
         private void UpdateAdvancedSummary()
         {
             int changed = AdvancedDefaults().Count(x => (x.box.IsChecked == true) != x.def);
-            TglAdvanced.Tag = changed == 0 ? "" : changed == 1 ? "1 changed" : changed + " changed";
+            TglAdvanced.Tag = changed == 0 ? "defaults" : changed + " changed";
         }
 
         private void OnResetAdvanced(object sender, RoutedEventArgs e)
         {
             ApplyAdvancedDefaults();
-            TxtMinSizeMm.Text = "5"; TxtSplitMb.Text = "200";
+            TxtMinSizeMm.Text = "5"; TxtSimplifyMm.Text = "10"; TxtSplitMb.Text = "200";
             SetStatus("Advanced options reset to defaults.");
         }
 
@@ -221,8 +254,16 @@ namespace BIMCamel.UI
             GridParams.ItemsSource = _paramRows;
             GridMap.ItemsSource = _mapRows;
             GridPropRules.ItemsSource = _propRules;
+            WireRuleList(GridMap, _mapRows, draggable: true);
+            WireRuleList(GridPropRules, _propRules, draggable: true);
+            WireRuleList(GridParams, _paramRows, draggable: false);
+            LstCategories.AddHandler(System.Windows.Controls.Primitives.ToggleButton.CheckedEvent, new RoutedEventHandler((_, _) => UpdateCatCount()));
+            LstCategories.AddHandler(System.Windows.Controls.Primitives.ToggleButton.UncheckedEvent, new RoutedEventHandler((_, _) => UpdateCatCount()));
+            LstBatch.AddHandler(System.Windows.Controls.Primitives.ToggleButton.CheckedEvent, new RoutedEventHandler((_, _) => UpdateBatchCount()));
+            LstBatch.AddHandler(System.Windows.Controls.Primitives.ToggleButton.UncheckedEvent, new RoutedEventHandler((_, _) => UpdateBatchCount()));
+            ChkZip.Checked += (_, _) => UpdateBatchNames(); ChkZip.Unchecked += (_, _) => UpdateBatchNames();
             // Rule cards are made of combos and boxes that swallow the click, so
-            // focusing any field selects its card for Remove / move up / move down.
+            // focusing any field selects its card, for Alt+arrow moves.
             foreach (var list in new ListBox[] { GridMap, GridPropRules })
                 list.AddHandler(UIElement.PreviewGotKeyboardFocusEvent, new KeyboardFocusChangedEventHandler((o, e) =>
                 {
@@ -262,9 +303,18 @@ namespace BIMCamel.UI
             };
             for (int i = 0; i < labels.Length; i++)
             {
+                // Label left, a live count or state right (UpdateScopeHint fills it).
+                var row = new Grid();
+                row.ColumnDefinitions.Add(new ColumnDefinition());
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                row.Children.Add(new TextBlock { Text = labels[i], TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center });
+                var hint = new TextBlock { FontSize = 12, FontWeight = FontWeights.Normal, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+                hint.SetResourceReference(TextBlock.ForegroundProperty, "Muted");
+                Grid.SetColumn(hint, 1); row.Children.Add(hint);
+                _scopeHints.Add(hint);
                 var rb = new RadioButton
                 {
-                    Content = labels[i], GroupName = "scope", IsChecked = i == 0,
+                    Content = row, GroupName = "scope", IsChecked = i == 0,
                     Style = (Style)FindResource("OptionCard"), ToolTip = tips[i]
                 };
                 rb.Checked += (_, _) => UpdateScopeHint();
@@ -272,6 +322,8 @@ namespace BIMCamel.UI
                 ScopeOptions.Children.Add(rb);
             }
         }
+
+        private readonly List<TextBlock> _scopeHints = new List<TextBlock>();
 
         private int ScopeIndex()
         {
@@ -293,25 +345,53 @@ namespace BIMCamel.UI
             var border = new Border
             {
                 BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(9), Padding = new Thickness(10), Margin = new Thickness(0, 0, 0, 9)
+                CornerRadius = new CornerRadius(9), Padding = new Thickness(10, 9, 10, 10), Margin = new Thickness(0, 0, 0, 8)
             };
             // A resource REFERENCE, not the brush resolved now, so the row follows a theme switch.
             border.SetResourceReference(Border.BorderBrushProperty, "Bd");
+            border.SetResourceReference(Border.BackgroundProperty, "Card2");
             var sp = new StackPanel();
-            sp.Children.Add(new TextBlock { Text = label, FontSize = 12, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 7) });
+            var head = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
+            var tag = new TextBlock { FontSize = 12, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Top };
+            DockPanel.SetDock(tag, Dock.Right);
+            head.Children.Add(tag);
+            head.Children.Add(new TextBlock { Text = label, FontSize = 12, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+            sp.Children.Add(head);
             var grid = new Grid();
             grid.ColumnDefinitions.Add(new ColumnDefinition());
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(6) });
             grid.ColumnDefinitions.Add(new ColumnDefinition());
-            var cat = new ComboBox { IsEditable = true, ItemsSource = _roleCats, Height = 30, ToolTip = "Source category that carries this role (scan first to populate)." };
-            var par = new ComboBox { IsEditable = true, Height = 30, ToolTip = "Source property that carries this role. Leave blank to turn the role off." };
+            var cat = new ComboBox { IsEditable = true, ItemsSource = _roleCats, Tag = AnyCat, ToolTip = "Source category that carries this role (scan first to populate)." };
+            var par = new ComboBox { IsEditable = true, Tag = "Property", ToolTip = "Source property that carries this role. Leave blank to turn the role off." };
             Grid.SetColumn(cat, 0); Grid.SetColumn(par, 2);
             grid.Children.Add(cat); grid.Children.Add(par);
             sp.Children.Add(grid);
             border.Child = sp;
             RoleHost.Children.Add(border);
             cat.SelectionChanged += (_, _) => PopulateParamCombo(par, cat.Text, keepText: false);
+            _roleTags[par] = tag;
+            // A role the user types over is theirs from then on.
+            par.AddHandler(System.Windows.Controls.Primitives.TextBoxBase.TextChangedEvent, new TextChangedEventHandler((_, _) =>
+            {
+                if (!_fillingRole && _roleAuto.TryGetValue(par, out var v) && v != par.Text) _roleAuto.Remove(par);
+                UpdateRoleTag(par);
+            }));
+            UpdateRoleTag(par);
             return (cat, par);
+        }
+
+        /// <summary>Property combo → the value Smart setup put there, while it is still that value.</summary>
+        private readonly Dictionary<ComboBox, string> _roleAuto = new Dictionary<ComboBox, string>();
+        private readonly Dictionary<ComboBox, TextBlock> _roleTags = new Dictionary<ComboBox, TextBlock>();
+        private bool _fillingRole;
+
+        /// <summary>Who decided this role: Smart setup, the user, or nobody (role off).</summary>
+        private void UpdateRoleTag(ComboBox par)
+        {
+            if (!_roleTags.TryGetValue(par, out var tag)) return;
+            if (string.IsNullOrWhiteSpace(par.Text)) { tag.Text = "blank · role off"; tag.SetResourceReference(TextBlock.ForegroundProperty, "Muted"); }
+            else if (_roleAuto.ContainsKey(par)) { tag.Text = "filled by Smart setup"; tag.SetResourceReference(TextBlock.ForegroundProperty, "Accent"); }
+            else { tag.Text = "set by you"; tag.SetResourceReference(TextBlock.ForegroundProperty, "Muted"); }
         }
 
         private static void AddItems(ComboBox cmb, IEnumerable<string> items) { foreach (var i in items) cmb.Items.Add(i); }
@@ -323,33 +403,43 @@ namespace BIMCamel.UI
         {
             _dark = dark;
             // The button shows the theme a click switches TO.
-            IcoTheme.Data = System.Windows.Media.Geometry.Parse(_dark ? "M12,7 A5,5 0 1 0 12.01,7 Z M12,1 L12,3 M12,21 L12,23 M1,12 L3,12 M21,12 L23,12 M4.2,4.2 L5.6,5.6 M18.4,18.4 L19.8,19.8 M4.2,19.8 L5.6,18.4 M18.4,5.6 L19.8,4.2" : "M20,14 A8,8 0 1 1 10,4 A6,6 0 0 0 20,14 Z");
-            void Set(string key, string hex) => Resources[key] = new SolidColorBrush((System.Windows.Media.Color)ColorConverter.ConvertFromString(hex));
+            IcoTheme.Tag = _dark
+                ? System.Windows.Media.Geometry.Parse("M12,7 A5,5 0 1 0 12.01,7 Z M12,1 L12,3 M12,21 L12,23 M1,12 L3,12 M21,12 L23,12 M4.2,4.2 L5.6,5.6 M18.4,18.4 L19.8,19.8 M4.2,19.8 L5.6,18.4 M18.4,5.6 L19.8,4.2")
+                : FindResource("G_theme");
+            System.Windows.Media.Color C(string hex) => (System.Windows.Media.Color)ColorConverter.ConvertFromString(hex);
+            void Set(string key, string hex) => Resources[key] = new SolidColorBrush(C(hex));
+            void Brand(string a, string b) => Resources["BrandBar"] = new LinearGradientBrush(C(a), C(b), 0);
             if (_dark)
             {
                 Set("Accent", "#3AA0F0"); Set("AccentHover", "#5BB3F5"); Set("AccentPress", "#2A8AD6");
                 Set("Bg", "#15171B"); Set("Pane", "#1C1F24"); Set("Card", "#23272E"); Set("Card2", "#262B32");
-                Set("Text", "#E7EAEE"); Set("Muted", "#9AA3AD"); Set("Faint", "#6B7480");
-                Set("Bd", "#333941"); Set("BdStrong", "#3D444D"); Set("Field", "#1B1E23"); Set("FieldBd", "#3D444D");
-                Set("Nav", "#1A1D22"); Set("NavActive", "#1F2D3D");
+                Set("Text", "#E7EAEE"); Set("Muted", "#9AA3AD"); Set("Faint", "#8C95A0");
+                Set("Bd", "#333941"); Set("BdStrong", "#3D444D"); Set("Field", "#2B3138"); Set("FieldBd", "#3D444D");
+                Set("Nav", "#282D34"); Set("NavActive", "#1F2D3D"); Set("Track", "#2E343B"); Set("FamBatch", "#A9CF5C");
+                Set("Ok", "#46C97E"); Set("OkBg", "#12301F"); Set("OkBd", "#245638");
                 Set("AmberBg", "#3A2F12"); Set("AmberBd", "#5C4A1E"); Set("AmberTx", "#F0C66A");
-                Set("ConsoleBg", "#0A0C10"); Set("ConsoleTx", "#BFE0C8"); Set("Ok", "#46C97E");
-                Set("BadgeReqBg", "#16352A"); Set("BadgeReqTx", "#5FD394");
-                Set("BadgeOptBg", "#2C3138"); Set("BadgeOptTx", "#A7B0BA");
-                Set("BadgeAutoBg", "#173049"); Set("BadgeAutoTx", "#6DB8F5");
+                Set("RedBg", "#3A1D1D"); Set("RedBd", "#5C2B2B"); Set("RedTx", "#F08C84");
+                Set("ConsoleBg", "#0A0C10"); Set("ConsoleTx", "#BFE0C8");
+                Set("BadgeReqBg", "#12301F"); Set("BadgeReqBd", "#245638"); Set("BadgeReqTx", "#46C97E");
+                Set("BadgeOptBg", "#282D34"); Set("BadgeOptBd", "#333941"); Set("BadgeOptTx", "#9AA3AD");
+                Set("BadgeAutoBg", "#152836"); Set("BadgeAutoBd", "#274966"); Set("BadgeAutoTx", "#7CC0F5");
+                Brand("#1B5E92", "#2277B8");
             }
             else
             {
                 Set("Accent", "#0070C0"); Set("AccentHover", "#0D83DA"); Set("AccentPress", "#005A9C");
                 Set("Bg", "#EEF1F5"); Set("Pane", "#F7F8FA"); Set("Card", "#FFFFFF"); Set("Card2", "#FBFCFD");
-                Set("Text", "#1F2329"); Set("Muted", "#6B7480"); Set("Faint", "#9AA3AD");
+                Set("Text", "#1F2329"); Set("Muted", "#5C646F"); Set("Faint", "#767E89");
                 Set("Bd", "#E1E5EA"); Set("BdStrong", "#CDD3DA"); Set("Field", "#FFFFFF"); Set("FieldBd", "#CDD3DA");
-                Set("Nav", "#F0F2F5"); Set("NavActive", "#E6F0FA");
+                Set("Nav", "#EAEDF1"); Set("NavActive", "#E6F0FA"); Set("Track", "#D8DDE3"); Set("FamBatch", "#4D7C0F");
+                Set("Ok", "#1A8F4C"); Set("OkBg", "#E4F6EC"); Set("OkBd", "#B7E3C9");
                 Set("AmberBg", "#FFF7E6"); Set("AmberBd", "#FFE1A8"); Set("AmberTx", "#8A5A00");
-                Set("ConsoleBg", "#0E1116"); Set("ConsoleTx", "#CFE3D5"); Set("Ok", "#1A8F4C");
-                Set("BadgeReqBg", "#E4F6EC"); Set("BadgeReqTx", "#1A8F4C");
-                Set("BadgeOptBg", "#ECEFF3"); Set("BadgeOptTx", "#6B7480");
-                Set("BadgeAutoBg", "#E6F0FA"); Set("BadgeAutoTx", "#0070C0");
+                Set("RedBg", "#FDECEC"); Set("RedBd", "#F3C6C6"); Set("RedTx", "#B3261E");
+                Set("ConsoleBg", "#0E1116"); Set("ConsoleTx", "#CFE3D5");
+                Set("BadgeReqBg", "#E4F6EC"); Set("BadgeReqBd", "#B7E3C9"); Set("BadgeReqTx", "#1A8F4C");
+                Set("BadgeOptBg", "#EAEDF1"); Set("BadgeOptBd", "#E1E5EA"); Set("BadgeOptTx", "#5C646F");
+                Set("BadgeAutoBg", "#E6F0FA"); Set("BadgeAutoBd", "#BBD8F2"); Set("BadgeAutoTx", "#0F5FA0");
+                Brand("#0070C0", "#0D83DA");
             }
             // The pre-flight rows are code-built with resolved brushes, so they
             // do not retint through DynamicResource — rebuild them.
@@ -362,32 +452,75 @@ namespace BIMCamel.UI
             int idx = ScopeIndex();
             SavedSetRow.Visibility = idx == 3 ? Visibility.Visible : Visibility.Collapsed;
             BatchRow.Visibility = idx == 4 ? Visibility.Visible : Visibility.Collapsed;
-            switch (idx)
+            if (idx == 3 || idx == 4) RefreshSets();
+            int selected = SelectedCount();
+            // The amber line under the rows only says what is missing; the rows carry the counts.
+            LblScopeHint.Text = idx == 1 && selected == 0 ? "Select items in Navisworks first."
+                              : idx == 3 && _sets.Count == 0 ? "This document has no saved sets or search sets."
+                              : "";
+            if (_scopeHints.Count == 5)
             {
-                case 1:
-                    int selected = SelectedCount();
-                    LblScopeHint.Text = selected > 0 ? $"{selected:N0} item(s) selected in Navisworks" : "→ select items in Navisworks first";
-                    break;
-                case 2: LblScopeHint.Text = "→ enable a section box in Navisworks first"; break;
-                case 3: LblScopeHint.Text = "→ pick a saved set below"; RefreshSets(); break;
-                case 4: LblScopeHint.Text = "→ tick sets below; each becomes its own IFC (choose an output folder)"; RefreshSets(); break;
-                default: LblScopeHint.Text = ""; break;
+                int models = NavApp.ActiveDocument?.Models.Count ?? 0;
+                _scopeHints[0].Text = models > 1 ? $"{models} models" : "";
+                _scopeHints[1].Text = selected > 0 ? $"{selected:N0} selected" : "nothing selected";
+                _scopeHints[2].Text = "";
+                _scopeHints[3].Text = _sets.Count == 1 ? "1 set" : $"{_sets.Count:N0} sets";
             }
+            UpdateBatchCount();
             RefreshNameEditor();
         }
 
         private void RefreshModelStatus()
         {
             var doc = NavApp.ActiveDocument;
-            if (doc == null || doc.Models.Count == 0) { LblModel.Text = "No model open"; LblModel.SetResourceReference(TextBlock.ForegroundProperty, "Muted"); return; }
-            LblModel.SetResourceReference(TextBlock.ForegroundProperty, "Ok");
+            // The model's name is not on show any more; it is the title's tooltip and what a blank
+            // project name becomes.
+            if (doc == null || doc.Models.Count == 0) { LblTitle.ToolTip = "No model open"; TxtProject.Tag = ""; return; }
             string name = ModelBaseName(doc);
-            LblModel.Text = "● " + name + (doc.Models.Count > 1 ? $" · {doc.Models.Count} models" : "");
+            LblTitle.ToolTip = name + (doc.Models.Count > 1 ? $" · {doc.Models.Count} models" : "");
+            TxtProject.Tag = name;
         }
 
         // ── button handlers ───────────────────────────────────────────────────────
-        private void OnBatchAll(object s, RoutedEventArgs e) { foreach (var c in _batchItems) c.Checked = true; }
-        private void OnBatchNone(object s, RoutedEventArgs e) { foreach (var c in _batchItems) c.Checked = false; }
+        // All and None act on the sets the search shows; ticks of hidden ones are kept.
+        private void OnBatchAll(object s, RoutedEventArgs e) { foreach (var c in VisibleBatch()) c.Checked = true; UpdateBatchCount(); }
+        private void OnBatchNone(object s, RoutedEventArgs e) { foreach (var c in VisibleBatch()) c.Checked = false; UpdateBatchCount(); }
+        private IEnumerable<CheckItem> VisibleBatch()
+        {
+            var f = (TxtBatchFilter.Text ?? "").Trim();
+            return f.Length == 0 ? _batchItems : _batchItems.Where(c => c.Name.IndexOf(f, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+        }
+        private void OnBatchFilter(object s, TextChangedEventArgs e)
+        {
+            var f = (TxtBatchFilter.Text ?? "").Trim();
+            var view = System.Windows.Data.CollectionViewSource.GetDefaultView(_batchItems);
+            view.Filter = f.Length == 0 ? null : (Predicate<object>)(o => o is CheckItem c && c.Name.IndexOf(f, StringComparison.OrdinalIgnoreCase) >= 0);
+            bool none = f.Length > 0 && !VisibleBatch().Any();
+            LblBatchEmpty.Text = none ? $"No set matches “{f}”." : "";
+            LblBatchEmpty.Visibility = none ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        /// <summary>"3 of 7 sets ticked", in the batch box, on its scope row and on the Export button.</summary>
+        private void UpdateBatchCount()
+        {
+            int ticked = _batchItems.Count(b => b.Checked);
+            LblBatchCount.Text = $"{ticked} of {_batchItems.Count} sets ticked · one IFC each";
+            if (_scopeHints.Count == 5) _scopeHints[4].Text = $"{ticked} of {_batchItems.Count} ticked";
+            UpdateExportLabel();
+        }
+
+        /// <summary>Each batch row shows the file it would write.</summary>
+        private void UpdateBatchNames()
+        {
+            string ext = ChkZip.IsChecked == true ? ".ifczip" : ".ifc";
+            foreach (var b in _batchItems) b.Detail = Sanitize(b.Name) + ext;
+        }
+
+        private void UpdateCatCount()
+        {
+            int on = _cats.Count(c => c.Checked);
+            LblCatCount.Text = _cats.Count == 0 ? "Every property set will be exported" : $"{on} of {_cats.Count} property sets will be exported";
+        }
         private void OnScanSelection(object s, RoutedEventArgs e) { _cancelRequested = false; ScanSelection(); }
         private void OnCatsAll(object s, RoutedEventArgs e) { foreach (var c in VisibleCats()) c.Checked = true; }
         private void OnCatsNone(object s, RoutedEventArgs e) { foreach (var c in VisibleCats()) c.Checked = false; }
@@ -399,36 +532,91 @@ namespace BIMCamel.UI
         private void OnCatFilter(object s, TextChangedEventArgs e)
         {
             var f = (TxtCatFilter.Text ?? "").Trim();
-            LblCatFilterHint.Visibility = f.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
             var view = System.Windows.Data.CollectionViewSource.GetDefaultView(_cats);
             view.Filter = f.Length == 0 ? null : (Predicate<object>)(o => o is CheckItem c && c.Name.IndexOf(f, StringComparison.OrdinalIgnoreCase) >= 0);
         }
         private void OnParamAdd(object s, RoutedEventArgs e) => _paramRows.Add(new ParamRow { SourceCategory = AnyCat });
-        private void OnParamRemove(object s, RoutedEventArgs e) { if (GridParams.SelectedItem is ParamRow r) _paramRows.Remove(r); }
         private void OnMapAdd(object s, RoutedEventArgs e) => _mapRows.Add(new MapRow());
-        private void OnMapRemove(object s, RoutedEventArgs e) { if (GridMap.SelectedItem is MapRow r) _mapRows.Remove(r); }
         private void OnMapClear(object s, RoutedEventArgs e) => _mapRows.Clear();
-        private void OnMapUp(object s, RoutedEventArgs e) => MoveMapRow(-1);
-        private void OnMapDown(object s, RoutedEventArgs e) => MoveMapRow(+1);
-        private void MoveMapRow(int delta)
-        {
-            if (!(GridMap.SelectedItem is MapRow r)) { SetStatus("Select a rule to move."); return; }
-            int i = _mapRows.IndexOf(r), j = i + delta;
-            if (i < 0 || j < 0 || j >= _mapRows.Count) return;
-            _mapRows.Move(i, j);
-            GridMap.SelectedItem = r;
-        }
         private void OnPropRuleAdd(object s, RoutedEventArgs e) => _propRules.Add(new PropRuleRow { Category = AnyCat });
-        private void OnPropRuleRemove(object s, RoutedEventArgs e) { if (GridPropRules.SelectedItem is PropRuleRow r) _propRules.Remove(r); }
-        private void OnPropRuleUp(object s, RoutedEventArgs e) => MovePropRule(-1);
-        private void OnPropRuleDown(object s, RoutedEventArgs e) => MovePropRule(+1);
-        private void MovePropRule(int delta)
+
+        /// <summary>
+        /// One behaviour for every list of rule cards: × removes the card, cards are numbered,
+        /// and (for rule lists, where order decides which rule wins) the grip drags a card to a
+        /// new place and Alt+↑/↓ moves the focused one.
+        /// </summary>
+        private void WireRuleList<T>(ListBox list, ObservableCollection<T> rows, bool draggable) where T : class, INumbered
         {
-            if (!(GridPropRules.SelectedItem is PropRuleRow r)) { SetStatus("Select a rule to move."); return; }
-            int i = _propRules.IndexOf(r), j = i + delta;
-            if (i < 0 || j < 0 || j >= _propRules.Count) return;
-            _propRules.Move(i, j);
-            GridPropRules.SelectedItem = r;
+            void Renumber() { for (int i = 0; i < rows.Count; i++) rows[i].Number = i + 1; }
+            rows.CollectionChanged += (_, _) => Renumber();
+            Renumber();
+
+            list.AddHandler(System.Windows.Controls.Primitives.ButtonBase.ClickEvent, new RoutedEventHandler((_, e) =>
+            {
+                if (e.OriginalSource is Button b && "remove".Equals(b.Tag) && b.DataContext is T r) { rows.Remove(r); e.Handled = true; }
+            }));
+            if (!draggable) return;
+
+            list.PreviewKeyDown += (_, e) =>
+            {
+                if (Keyboard.Modifiers != ModifierKeys.Alt || !(e.SystemKey == Key.Up || e.SystemKey == Key.Down)) return;
+                if (!(list.SelectedItem is T r)) return;
+                int i = rows.IndexOf(r), j = i + (e.SystemKey == Key.Up ? -1 : 1);
+                if (i >= 0 && j >= 0 && j < rows.Count) rows.Move(i, j);
+                e.Handled = true;
+            };
+
+            System.Windows.Point? down = null; T? dragged = null;
+            list.PreviewMouseLeftButtonDown += (_, e) =>
+            {
+                down = null; dragged = null;
+                for (var d = e.OriginalSource as DependencyObject; d != null && !ReferenceEquals(d, list); d = VisualTreeHelper.GetParent(d))
+                    if (d is FrameworkElement fe && "grip".Equals(fe.Tag) && fe.DataContext is T r) { down = e.GetPosition(list); dragged = r; return; }
+            };
+            list.PreviewMouseMove += (_, e) =>
+            {
+                if (down == null || dragged == null || e.LeftButton != MouseButtonState.Pressed) return;
+                var d = e.GetPosition(list) - down.Value;
+                if (Math.Abs(d.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(d.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+                var item = dragged; down = null; dragged = null;
+                var src = list.ItemContainerGenerator.ContainerFromItem(item) as ListBoxItem;
+                if (src != null) src.Tag = "drag";
+                try { DragDrop.DoDragDrop(list, new DataObject("BIMCamelRule", item), DragDropEffects.Move); }
+                finally { if (src != null) src.Tag = null; ClearDropMarks(list); }
+            };
+            ListBoxItem? TargetOf(DragEventArgs e)
+            {
+                for (var d = e.OriginalSource as DependencyObject; d != null && !ReferenceEquals(d, list); d = VisualTreeHelper.GetParent(d))
+                    if (d is ListBoxItem it) return it;
+                return null;
+            }
+            list.DragOver += (_, e) =>
+            {
+                if (!(e.Data.GetData("BIMCamelRule") is T)) { e.Effects = DragDropEffects.None; e.Handled = true; return; }
+                e.Effects = DragDropEffects.Move; e.Handled = true;
+                var target = TargetOf(e);
+                ClearDropMarks(list, keep: target);
+                if (target != null && !"drag".Equals(target.Tag)) target.Tag = "drop";
+            };
+            list.DragLeave += (_, _) => ClearDropMarks(list);
+            list.Drop += (_, e) =>
+            {
+                ClearDropMarks(list);
+                if (!(e.Data.GetData("BIMCamelRule") is T r)) return;
+                var target = TargetOf(e);
+                int from = rows.IndexOf(r);
+                // Dropping on card k puts the dragged card at k; off the cards, at the end.
+                int to = target?.DataContext is T t ? rows.IndexOf(t) : rows.Count - 1;
+                if (from >= 0 && to >= 0 && from != to) rows.Move(from, to);
+                list.SelectedItem = r;
+                e.Handled = true;
+            };
+        }
+
+        private static void ClearDropMarks(ListBox list, ListBoxItem? keep = null)
+        {
+            foreach (var o in list.Items)
+                if (list.ItemContainerGenerator.ContainerFromItem(o) is ListBoxItem it && !ReferenceEquals(it, keep) && "drop".Equals(it.Tag)) it.Tag = null;
         }
         private void OnPreviewMapping(object s, RoutedEventArgs e)
         {
@@ -444,6 +632,14 @@ namespace BIMCamel.UI
             TxtCoordReport.Text = ("Federated model origins\n──────────────────────────────\n" + ModelSurvey.FederationReport(doc)).Replace("\n", Environment.NewLine);
             CoordReportBox.Visibility = Visibility.Visible;
             SetStatus("Federation report ready below.");
+        }
+
+        /// <summary>Show the storeys the export will create; they come from the check, so run it
+        /// first when it has not run.</summary>
+        private void OnCheckStoreys(object s, RoutedEventArgs e)
+        {
+            StoreysBox.Visibility = Visibility.Visible;
+            if (_preflight == null) OnPreviewMapping(s, e);
         }
 
         // ── smart setup ───────────────────────────────────────────────────────────
@@ -612,7 +808,12 @@ namespace BIMCamel.UI
             var known = new HashSet<string>(_cats.Select(c => c.Name), StringComparer.OrdinalIgnoreCase);
             _cats.Clear();
             foreach (var c in cats)
-                _cats.Add(new CheckItem(c, known.Contains(c) ? !unticked.Contains(c) : !IsBookkeeping(c)));
+                _cats.Add(new CheckItem(c, known.Contains(c) ? !unticked.Contains(c) : !IsBookkeeping(c))
+                {
+                    Detail = IsBookkeeping(c) ? "tree bookkeeping" : _catParams[c].Count == 1 ? "1 property" : $"{_catParams[c].Count} properties"
+                });
+            LblCatsSub.Text = "From the last scan. Unticked sets are left out of the IFC; tree bookkeeping starts unticked.";
+            UpdateCatCount();
 
             // grid catalogs (categories + the property-name suggestion list)
             ParamRow.SharedCategories.Clear(); ParamRow.SharedCategories.Add(AnyCat); foreach (var c in cats) ParamRow.SharedCategories.Add(c);
@@ -702,10 +903,17 @@ namespace BIMCamel.UI
                 _lastRolesKept++;
                 return;
             }
-            cat.Text = string.IsNullOrEmpty(guess.Category) ? "" : guess.Category;
-            PopulateParamCombo(par, cat.Text, keepText: false);
-            par.Text = guess.Name ?? "";
-            if (!string.IsNullOrWhiteSpace(par.Text)) _lastRolesFilled++;
+            _fillingRole = true;
+            try
+            {
+                cat.Text = string.IsNullOrEmpty(guess.Category) ? "" : guess.Category;
+                PopulateParamCombo(par, cat.Text, keepText: false);
+                par.Text = guess.Name ?? "";
+            }
+            finally { _fillingRole = false; }
+            if (!string.IsNullOrWhiteSpace(par.Text)) { _lastRolesFilled++; _roleAuto[par] = par.Text; }
+            else _roleAuto.Remove(par);
+            UpdateRoleTag(par);
         }
 
         private PropertyRoles BuildRoles() => new PropertyRoles
@@ -776,6 +984,9 @@ namespace BIMCamel.UI
                 string n = s.DisplayName ?? "(set)";
                 _batchItems.Add(new CheckItem(n, ticked.Contains(n)));
             }
+            UpdateBatchNames();
+            if (_scopeHints.Count == 5) _scopeHints[3].Text = _sets.Count == 1 ? "1 set" : $"{_sets.Count:N0} sets";
+            UpdateBatchCount();
 
             // Mapping dropdown catalog — synced IN PLACE, never Clear()ed. The
             // grid's set column is a TwoWay SelectedItem binding; emptying the
@@ -848,8 +1059,8 @@ namespace BIMCamel.UI
                     GroupEntity = CmbGroups.SelectedIndex switch { 1 => "IFCGROUP", 2 => "IFCSYSTEM", 3 => "IFCZONE", _ => "" }
                 };
                 var setRules = BuildSetRules();
-                double weldTolMetres = CmbQuality.SelectedIndex switch { 1 => 1e-3, 2 => 1e-6, _ => 1e-4 };
-                int coordDecimals = CmbQuality.SelectedIndex switch { 1 => 3, 2 => 6, _ => 4 };
+                double weldTolMetres = Quality switch { 1 => 1e-3, 2 => 1e-6, _ => 1e-4 };
+                int coordDecimals = Quality switch { 1 => 3, 2 => 6, _ => 4 };
 
                 if (batch) { RunBatchExport(doc, schema, schemaName, unitScale, unitName, coords, names, setRules, weldTolMetres, coordDecimals, splitLimit); return; }
 
@@ -930,9 +1141,15 @@ namespace BIMCamel.UI
                 if (_batchItems[i].Checked) chosen.Add(_sets[i]);
             if (chosen.Count == 0) { SetStatus("Tick at least one set to export (batch scope)."); return; }
 
-            using var fbd = new WF.FolderBrowserDialog { Description = "Choose an output folder — one IFC per set", SelectedPath = StartFolder() };
-            if (fbd.ShowDialog() != WF.DialogResult.OK) return;
-            string folder = fbd.SelectedPath;
+            // The Output folder field, when it names a folder that exists; otherwise ask.
+            string folder = (TxtBatchFolder.Text ?? "").Trim();
+            if (folder.Length == 0 || !System.IO.Directory.Exists(folder))
+            {
+                using var fbd = new WF.FolderBrowserDialog { Description = "Choose an output folder — one IFC per set", SelectedPath = folder.Length > 0 ? folder : StartFolder() };
+                if (fbd.ShowDialog() != WF.DialogResult.OK) return;
+                folder = fbd.SelectedPath;
+                TxtBatchFolder.Text = folder;
+            }
 
             var scanSw = Stopwatch.StartNew();
             ET.ResetScan();
@@ -1692,117 +1909,32 @@ namespace BIMCamel.UI
             _warnTabs.Clear();
             var doc = NavApp.ActiveDocument;
             bool schema2x3 = CmbSchema.SelectedIndex == 1;
+            string schemaName = schema2x3 ? "IFC2x3" : "IFC4";
             var f = _preflight;
             bool stale = f != null && f.Fingerprint != PreflightFingerprint();
 
             LblPreflightWhen.Text = f == null
-                ? "Checks that need a scan fill in after Smart setup or Run full check."
-                : $"Scanned {f.When:HH:mm} · {f.ScopeLabel}" + (stale ? "  —  ⚠ settings changed since; re-run Smart setup or Run full check" : "");
+                ? "Live rows only"
+                : $"Scanned {f.When:HH:mm} · {f.ScopeLabel}" + (stale ? " · scope or source changed since" : "");
 
-            Brush ok = (Brush)FindResource("Ok"), warn = (Brush)FindResource("AmberTx"),
-                  info = (Brush)FindResource("Muted"), dim = (Brush)FindResource("Faint");
-            string tail = stale ? "  (before the change)" : "";
-
-            // ── scan-dependent rows ─────────────────────────────────────────
+            // Re-derive the IFC2x3 degradation against the schema selected NOW: the preview-time
+            // value describes a different export the moment the schema changes.
             int degradedLive = 0;
-            if (f == null)
-            {
-                PreflightRow(dim, "Mapping · storeys · roles · geometry — pending a scan");
-            }
-            else
-            {
-                // A green tick that can be stale is worse than no panel: stale
-                // scan rows drop to neutral so only CURRENT facts show green.
-                Brush okNow = stale ? info : ok;
+            if (f != null && schema2x3 && f.ByClass != null)
+                foreach (var kv in f.ByClass)
+                    if (TypeMapping.Catalog.TryGetValue(kv.Key, out var c) && c.Ifc2x3.Length == 0) degradedLive += kv.Value;
 
-                string hidden = f.HiddenExcluded > 0 ? $" · {f.HiddenExcluded:N0} hidden subtree(s) excluded" : "";
-                PreflightRow(okNow, $"Scope — {f.Items:N0} elements collected{hidden}{tail}");
-
-                // Re-derive the IFC2x3 degradation against the schema selected
-                // NOW — the preview-time value describes a different export the
-                // moment the schema combo changes.
-                if (schema2x3 && f.ByClass != null)
-                    foreach (var kv in f.ByClass)
-                        if (TypeMapping.Catalog.TryGetValue(kv.Key, out var c) && c.Ifc2x3.Length == 0) degradedLive += kv.Value;
-                int proxyLive = f.Unmapped + degradedLive;
-                double unmappedPct = f.Items > 0 ? 100.0 * f.Unmapped / f.Items : 0;
-
-                if (f.Rules == 0)
-                    // Zero rules is a deliberate geometry-only hand-off, not a
-                    // defect — neutral, never amber.
-                    PreflightRow(info, "Mapping — no rules: every element exports as IfcBuildingElementProxy (fine for a geometry hand-off)", "→ Mapping");
-                else if (unmappedPct > 20)
-                    PreflightRow(warn, $"Mapping — {f.Mapped:N0} matched a rule · {f.Unmapped:N0} did not ({unmappedPct:0.#}%) and export as proxy{tail}", "→ Mapping");
-                else
-                    PreflightRow(okNow, $"Mapping — {f.Mapped:N0} matched a rule · {proxyLive:N0} will export as proxy{tail}");
-
-                if (f.RolesConfigured && f.RoleSample > 0)
-                {
-                    string samp = f.SamplePartial ? $"sample {f.RoleSample} of {f.Items:N0}" : $"all {f.RoleSample}";
-                    string storeys = f.SamplePartial ? $"≥ {f.DistinctLevels}" : f.DistinctLevels.ToString();
-                    if (f.LevelPct < 60 || f.DistinctLevels <= 1)
-                        PreflightRow(warn, $"Storeys — ≈{f.LevelPct}% of elements have a level · {storeys} distinct store{(f.DistinctLevels == 1 ? "y — check the Level role" : "ys")} ({samp}){tail}", "→ Data (Level role)");
-                    else if (f.LevelPct < 90)
-                        PreflightRow(info, $"Storeys — ≈{f.LevelPct}% have a level · {storeys} distinct storeys ({samp}){tail}");
-                    else
-                        PreflightRow(okNow, $"Storeys — ≈{f.LevelPct}% have a level · {storeys} distinct storeys ({samp}){tail}");
-                    PreflightRow(info, $"Roles — Type ≈{f.TypePct}% · Material ≈{f.MatPct}% · Classification ≈{f.ClsPct}% ({samp}){tail}");
-                }
-                else
-                {
-                    PreflightRow(info, "Storeys & roles — no roles set: single fallback storey, no types/materials from properties", "→ Data");
-                }
-
-                if (schema2x3 && degradedLive > 0)
-                    PreflightRow(warn, $"Schema — IFC2x3: {degradedLive:N0} rule-matched element(s) use classes IFC2x3 cannot represent → they fall to proxy. Export IFC4 to keep them.");
-
-                PreflightRow(info, $"Geometry — {(f.GeomSampled ? "≈" : "")}{f.Prims:N0} primitives · instancing {(ChkInstancing.IsChecked == true ? "on" : "off")}{tail}");
-                // v6 Z6. IFC2x3 has no compact tessellation entity, so IfcFaceBasedSurfaceModel
-                // needs an IfcPolyLoop + IfcFaceOuterBound + IfcFace PER TRIANGLE plus a point per
-                // vertex, against IFC4's single indexed point list. That is not fixable in code —
-                // it is the schema — but it should be said before the export, not discovered from
-                // the file size afterwards.
-                if (schema2x3)
-                    PreflightRow(info, "Schema — IFC2x3 stores each triangle as separate face entities, so the file "
-                                     + "is typically several times larger than the same model in IFC4. Choose it for "
-                                     + "compatibility, not for size.", "→ Export (Schema)");
-            }
-
-            // ── instant rows (always live, no scan needed) ──────────────────
-            // Severity rule: unset is NORMAL (grey) — a local-grid project has
-            // no CRS and that is not a defect. Amber is reserved for
-            // CONTRADICTIONS: data that will silently not be written.
-            var coords = BuildCoords();
-            if (ChkGeoref.IsChecked != true && coords.HasGeorefData)
-                PreflightRow(warn, "Georeferencing — CRS/survey point filled in, but writing is OFF: nothing will be written", "→ Project");
-            else if (ChkGeoref.IsChecked != true)
-                PreflightRow(info, "Georeferencing — off (placement still carries the world position)");
-            else if (schema2x3 && coords.HasGeorefData)
-                PreflightRow(warn, "Georeferencing — configured, but IfcMapConversion does not exist in IFC2x3: it will not be written. Export IFC4 to keep it.", "→ Project");
-            else if (!coords.HasGeorefData)
-                PreflightRow(info, "Georeferencing — on, but no CRS or survey point set: nothing to write (fine on a local grid)", "→ Project");
-            else
-                PreflightRow(ok, $"Georeferencing — IfcMapConversion · {(string.IsNullOrWhiteSpace(coords.CrsName) ? "local CRS" : coords.CrsName)}");
-
-            // Cheap contradictions a coordinator would want caught before, not
-            // after, a 40-minute export:
-            if (ChkProps.IsChecked == true && _cats.Count > 0 && _cats.All(c => !c.Checked))
-                PreflightRow(warn, "Properties — export is ON but every property set is unticked: no properties will be written", "→ Data");
-            if (ScopeIndex() == 4)
-            {
-                var ticked = new List<string>();
-                for (int i = 0; i < _batchItems.Count && i < _sets.Count; i++)
-                    if (_batchItems[i].Checked) ticked.Add(Sanitize(_batchItems[i].Name));
-                if (ticked.Count == 0)
-                    PreflightRow(warn, "Batch — no sets ticked: nothing would export");
-                else if (ticked.Distinct(StringComparer.OrdinalIgnoreCase).Count() < ticked.Count)
-                    PreflightRow(warn, "Batch — two ticked sets sanitise to the same file name: one IFC would overwrite the other. Rename a set in Navisworks.");
-            }
-            var dupNames = new HashSet<string>(
-                _sets.GroupBy(x => x.DisplayName ?? "").Where(g => g.Key.Length > 0 && g.Count() > 1).Select(g => g.Key),
-                StringComparer.Ordinal);
-            if (dupNames.Count > 0 && _mapRows.Any(r => r.Set != null && dupNames.Contains(r.Set)))
-                PreflightRow(warn, "Mapping — a rule references a set NAME that exists more than once in this document; rules bind to the first. Rename the duplicate in Navisworks.", "→ Mapping");
+            // ── live rows: settings and model facts, no scan needed ─────────────
+            // Severity rule: unset is NORMAL (grey); a local-grid project has no CRS and that is
+            // not a defect. Amber is reserved for CONTRADICTIONS: data that will silently not be
+            // written. Nothing here blocks Export.
+            string units = CmbUnits.SelectedIndex > 0 ? "units " + ((string)CmbUnits.SelectedItem).ToLowerInvariant() : "units read from the model";
+            PreflightRow(Tone.Ok, $"{schemaName} · {units}", schema2x3
+                ? "IFC2x3 has no entity for IfcMapConversion or a handful of newer classes. It also stores each triangle as separate face entities, so the file is typically several times larger than in IFC4."
+                : "Schema and units are set.", schema2x3 ? "Export (Schema)" : null);
+            if (degradedLive > 0)
+                PreflightRow(Tone.Amber, $"IFC2x3 drops {degradedLive:N0} mapped element(s) to proxy",
+                    "Their classes do not exist in IFC2x3, so they export as IfcBuildingElementProxy. Export IFC4 to keep them.", "Export (Schema)");
 
             if (doc != null && doc.Models.Count > 0)
             {
@@ -1810,71 +1942,149 @@ namespace BIMCamel.UI
                 {
                     (double _, string unitName) = ResolveUnits(doc);
                     var models = ModelSurvey.Survey(doc);
-                    bool sameOrigin = true, sameUnits = true;
+                    bool sameOrigin = true;
                     for (int i = 1; i < models.Count; i++)
-                    {
-                        if (Math.Abs(models[i].Ox - models[0].Ox) > 1e-6 ||
-                            Math.Abs(models[i].Oy - models[0].Oy) > 1e-6 ||
+                        if (Math.Abs(models[i].Ox - models[0].Ox) > 1e-6 || Math.Abs(models[i].Oy - models[0].Oy) > 1e-6 ||
                             Math.Abs(models[i].Oz - models[0].Oz) > 1e-6) sameOrigin = false;
-                        if (!string.Equals(models[i].Units, models[0].Units, StringComparison.Ordinal)) sameUnits = false;
+                    var byUnits = models.GroupBy(m => m.Units ?? "").OrderByDescending(g => g.Count()).ToList();
+                    if (models.Count > 1 && byUnits.Count > 1)
+                    {
+                        // One unit scale is applied to EVERY model at export (ResolveUnits), so mixed
+                        // declared units means at least one discipline exports at the wrong size.
+                        string rest = byUnits.Count == 2 ? "the rest " + Plain(byUnits[1].Key) : "the rest other units";
+                        PreflightRow(Tone.Amber, "Federated units differ",
+                            $"{byUnits[0].Count()} of {models.Count} models declare {Plain(byUnits[0].Key)}, {rest}. One scale applies to the whole export, so one discipline would ship at the wrong size.",
+                            "Project (origins report)");
                     }
-                    if (models.Count > 1 && !sameUnits)
-                        // One unitScale is applied to EVERY model at export
-                        // (ResolveUnits) — mixed declared units means at least
-                        // one discipline exports at the wrong size.
-                        PreflightRow(warn, $"Federation — {models.Count} models with MIXED declared units; one scale ({unitName}) is applied to all", "→ Project (origins report)");
                     else if (models.Count > 1 && !sameOrigin)
-                        // Different origins are how correct federation positions
-                        // disciplines — informational, not a warning.
-                        PreflightRow(info, $"Federation — {models.Count} models, differing origins (normal) · units {unitName}", "→ Project (origins report)");
-                    else
-                        PreflightRow(ok, models.Count > 1
-                            ? $"Federation — {models.Count} models agree on origin and units · {unitName}"
-                            : $"Units — {unitName}");
+                        // Different origins are how federation positions disciplines: informational.
+                        PreflightRow(Tone.Grey, $"{models.Count} models, differing origins", $"Normal for a federated model. Units {unitName}.", "Project (origins report)");
+                    else if (models.Count > 1)
+                        PreflightRow(Tone.Ok, $"{models.Count} models agree on origin and units", $"Units {unitName}.");
                 }
-                catch { PreflightRow(info, "Federation — could not read model metadata"); }
+                catch { PreflightRow(Tone.Grey, "Could not read model metadata", "Origins and units of the loaded models could not be compared."); }
+            }
+            else PreflightRow(Tone.Grey, "No model open", "Open a model to check it.");
+
+            var coords = BuildCoords();
+            string crs = string.IsNullOrWhiteSpace(coords.CrsName) ? "a local CRS" : coords.CrsName;
+            if (ChkGeoref.IsChecked == true && coords.HasGeorefData && schema2x3)
+                PreflightRow(Tone.Amber, "Georeferencing is dropped in IFC2x3", "IFC2x3 has no map conversion. The placement still carries the world offset.", "Project");
+            else if (ChkGeoref.IsChecked != true && coords.HasGeorefData)
+                PreflightRow(Tone.Amber, "CRS is filled in but georeferencing is off", $"{crs} will not be written.", "Project");
+            else if (ChkGeoref.IsChecked != true || !coords.HasGeorefData)
+                PreflightRow(Tone.Grey, "No georeferencing set", "A local grid is written. Normal for a local project.");
+            else
+                PreflightRow(Tone.Ok, $"Georeferenced to {crs}", "IfcMapConversion is written.");
+
+            if (ChkProps.IsChecked == true && _cats.Count > 0 && _cats.All(c => !c.Checked))
+                PreflightRow(Tone.Amber, "Properties on, every property set unticked", "No properties will be written.", "Data");
+            if (ScopeIndex() == 4)
+            {
+                var ticked = new List<string>();
+                for (int i = 0; i < _batchItems.Count && i < _sets.Count; i++)
+                    if (_batchItems[i].Checked) ticked.Add(Sanitize(_batchItems[i].Name));
+                if (ticked.Count == 0)
+                    PreflightRow(Tone.Grey, "No sets ticked for batch", "Tick at least one set above.");
+                else if (ticked.Distinct(StringComparer.OrdinalIgnoreCase).Count() < ticked.Count)
+                    PreflightRow(Tone.Amber, "Two batch sets would write the same file", "Their sanitised names are identical, so one would overwrite the other. Rename a set in Navisworks.");
+            }
+            var dupNames = new HashSet<string>(
+                _sets.GroupBy(x => x.DisplayName ?? "").Where(g => g.Key.Length > 0 && g.Count() > 1).Select(g => g.Key),
+                StringComparer.Ordinal);
+            if (dupNames.Count > 0 && _mapRows.Any(r => r.Set != null && dupNames.Contains(r.Set)))
+                PreflightRow(Tone.Amber, "A rule's set name exists twice", "Rules bind to the first set with that name. Rename the duplicate in Navisworks.", "Mapping");
+
+            // ── scanned rows: only after Smart setup or Run full check ─────────
+            if (f == null)
+            {
+                PreflightRow(Tone.Grey, "Not measured yet", "Elements, rule match, storeys and role coverage fill after Smart setup or Run full check.");
             }
             else
             {
-                PreflightRow(dim, "No model open");
-            }
+                // A green tick that can be stale is worse than no row: stale scan rows drop to
+                // grey, so only CURRENT facts show green.
+                string tail = stale ? " · stale" : "";
+                Tone okNow = stale ? Tone.Grey : Tone.Ok;
 
-            // Exactly one Schema row: the degraded warning above replaces it
-            // only when it actually fired — judged by the LIVE derivation, the
-            // same one the warning itself uses.
-            if (!(schema2x3 && degradedLive > 0))
-                PreflightRow(info, schema2x3
-                    ? "Schema — IFC2x3 (no georeferencing entity; some classes unavailable — IFC4 recommended unless the receiver requires 2x3)"
-                    : "Schema — IFC4");
+                PreflightRow(okNow, $"{f.Items:N0} elements collected{tail}", f.HiddenExcluded > 0
+                    ? $"{f.HiddenExcluded:N0} hidden subtree(s) excluded (hidden in Navisworks)."
+                    : "Nothing hidden in Navisworks was skipped.");
+
+                double pct = f.Items > 0 ? 100.0 * f.Mapped / f.Items : 0;
+                if (f.Rules == 0)
+                    // Zero rules is a deliberate geometry-only hand-off, not a defect.
+                    PreflightRow(Tone.Grey, $"No mapping rules{tail}", "Every element exports as IfcBuildingElementProxy unless auto-classified. Fine for a geometry hand-off.", "Mapping");
+                else if (pct >= 90)
+                    PreflightRow(okNow, $"Rule match {pct:0.#}%{tail}", "Counts only your rules. Auto-classified elements still show as proxies here.");
+                else
+                    PreflightRow(stale ? Tone.Grey : Tone.Amber, $"Rule match {pct:0.#}% · {f.Mapped:N0} of {f.Items:N0}{tail}",
+                        "The rest export as IfcBuildingElementProxy unless auto-classified.", "Mapping");
+
+                string samp = f.SamplePartial ? $"sample of {f.RoleSample:N0}" : $"all {f.RoleSample:N0}";
+                string storeys = f.SamplePartial ? $"≥ {f.DistinctLevels}" : f.DistinctLevels.ToString();
+                if (string.IsNullOrWhiteSpace(_parLevel.Text))
+                    PreflightRow(stale ? Tone.Grey : Tone.Amber, $"No Level role{tail}", "Every element lands on the fallback storey.", "Data (Level role)");
+                else if (f.RoleSample == 0 || f.LevelPct < 60 || f.DistinctLevels <= 1)
+                    PreflightRow(stale ? Tone.Grey : Tone.Amber, $"{storeys} distinct store{(f.DistinctLevels == 1 ? "y" : "ys")} · ≈{f.LevelPct}% have a level{tail}",
+                        $"Level role reads {_parLevel.Text} ({samp}). Elements without it land on the fallback storey.", "Data (Level role)");
+                else
+                    PreflightRow(okNow, $"{storeys} distinct storeys{tail}", $"Level role reads {_parLevel.Text} on ≈{f.LevelPct}% of elements ({samp}).");
+                if (f.RolesConfigured && f.RoleSample > 0)
+                    PreflightRow(Tone.Grey, $"Role coverage{tail}", $"Type ≈{f.TypePct}% · Material ≈{f.MatPct}% · Classification ≈{f.ClsPct}% ({samp}).");
+
+                PreflightRow(Tone.Grey, $"{(f.GeomSampled ? "≈" : "")}{f.Prims:N0} primitives{tail}",
+                    $"Geometry is counted, never read, by the check. Instancing {(ChkInstancing.IsChecked == true ? "on" : "off")}.");
+            }
             UpdateTabDots();
         }
 
-        /// <summary>One ✓/⚠ row: coloured dot, wrapping text, optional go-fix-it pointer.</summary>
-        private void PreflightRow(Brush tone, string text, string? jump = null)
+        private static string Plain(string units) => string.IsNullOrEmpty(units) ? "no units" : units.ToLowerInvariant();
+
+        private enum Tone { Ok, Amber, Grey }
+
+        /// <summary>
+        /// One pre-flight row: a tinted card with a 3 px edge in its tone, a bold head, the
+        /// explanation under it, and a link to the tab that fixes it. Amber rows always explain
+        /// themselves; the rest only with Show details on.
+        /// </summary>
+        private void PreflightRow(Tone tone, string head, string body, string? jump = null)
         {
-            var grid = new Grid { Margin = new Thickness(0, 2, 0, 2) };
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            grid.ColumnDefinitions.Add(new ColumnDefinition());
-            var dot = new TextBlock { Text = "●", FontSize = 9, Foreground = tone, Margin = new Thickness(0, 3, 7, 0), VerticalAlignment = VerticalAlignment.Top };
-            var body = new TextBlock { FontSize = 11.5, TextWrapping = TextWrapping.Wrap, Foreground = (Brush)FindResource("Text"), LineHeight = 15 };
-            body.Inlines.Add(text);
+            string edge = tone == Tone.Ok ? "Ok" : tone == Tone.Amber ? "AmberTx" : "Faint";
+            string bg = tone == Tone.Ok ? "OkBg" : tone == Tone.Amber ? "AmberBg" : "Card2";
+            string bd = tone == Tone.Ok ? "OkBd" : tone == Tone.Amber ? "AmberBd" : "Bd";
+            var outer = new Border { CornerRadius = new CornerRadius(7), Padding = new Thickness(3, 0, 0, 0), Margin = new Thickness(0, 0, 0, 6) };
+            outer.SetResourceReference(Border.BackgroundProperty, edge);
+            var inner = new Border { CornerRadius = new CornerRadius(0, 7, 7, 0), BorderThickness = new Thickness(0, 1, 1, 1), Padding = new Thickness(10, 7, 10, 8) };
+            inner.SetResourceReference(Border.BackgroundProperty, bg);
+            inner.SetResourceReference(Border.BorderBrushProperty, bd);
+            outer.Child = inner;
+
+            var dock = new DockPanel();
             if (jump != null)
             {
-                body.Inlines.Add("  ");
-                // A real link: it used to be blue text that looked clickable and was not, so the
-                // user had to find the tab and the field by themselves.
-                var link = new System.Windows.Documents.Hyperlink(new System.Windows.Documents.Run(jump))
-                {
-                    Foreground = (Brush)FindResource("Accent"), TextDecorations = null, Cursor = Cursors.Hand
-                };
+                // The link names the tab; the jump lands on the field where the row names one.
+                string label = jump.Split(' ')[0];
+                var link = new Button { Style = (Style)FindResource("LinkBtn"), Content = label, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(10, 0, 0, 0) };
                 link.Click += (_, _) => JumpTo(jump);
-                body.Inlines.Add(link);
+                DockPanel.SetDock(link, Dock.Right);
+                dock.Children.Add(link);
                 var tab = JumpTab(jump);
-                if (tab != null && ReferenceEquals(tone, FindResource("AmberTx"))) _warnTabs.Add(tab);
+                if (tab != null && tone == Tone.Amber) _warnTabs.Add(tab);
             }
-            Grid.SetColumn(dot, 0); Grid.SetColumn(body, 1);
-            grid.Children.Add(dot); grid.Children.Add(body);
-            PreflightHost.Children.Add(grid);
+            var text = new StackPanel();
+            var h = new TextBlock { Text = head, FontSize = 12.5, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
+            h.SetResourceReference(TextBlock.ForegroundProperty, "Text");
+            text.Children.Add(h);
+            if (tone == Tone.Amber || TglCheckDetails.IsChecked == true)
+            {
+                var b = new TextBlock { Text = body, FontSize = 12, TextWrapping = TextWrapping.Wrap, LineHeight = 17, Margin = new Thickness(0, 2, 0, 0) };
+                b.SetResourceReference(TextBlock.ForegroundProperty, "Muted");
+                text.Children.Add(b);
+            }
+            dock.Children.Add(text);
+            inner.Child = dock;
+            PreflightHost.Children.Add(outer);
         }
 
         /// <summary>Tabs that hold the fix for a current pre-flight warning; each gets a dot.</summary>
@@ -1901,6 +2111,7 @@ namespace BIMCamel.UI
                 else if (jump.Contains("origins report")) OnFederationReport(this, new RoutedEventArgs());
                 else if (jump.Contains("Schema")) { CmbSchema.BringIntoView(); CmbSchema.Focus(); }
                 else if (ReferenceEquals(tab, TabCoords)) ChkGeoref.BringIntoView();
+                else if (ReferenceEquals(tab, TabData) && jump == "Data") LstCategories.BringIntoView();
             }), DispatcherPriority.Loaded);
         }
 
@@ -1938,7 +2149,7 @@ namespace BIMCamel.UI
         private void PreviewBasePoint()
         {
             var doc = NavApp.ActiveDocument;
-            if (doc == null || doc.Models.Count == 0) { LblPreview.Text = "Base point preview: open a model"; return; }
+            if (doc == null || doc.Models.Count == 0) { LblPreview.Text = "open a model"; return; }
             (double scale, _) = ResolveUnits(doc);
             double x, y, z;
             switch (CmbBasePoint.SelectedIndex)
@@ -1947,7 +2158,7 @@ namespace BIMCamel.UI
                 case 2: x = ParseD(TxtE.Text); y = ParseD(TxtN.Text); z = ParseD(TxtElev.Text); break;
                 default: var bb = ModelMinCorner(doc); x = bb.Item1 * scale; y = bb.Item2 * scale; z = bb.Item3 * scale; break;
             }
-            LblPreview.Text = $"Base point preview: [{x:N3}, {y:N3}, {z:N3}] m";
+            LblPreview.Text = $"{x:N3}, {y:N3}, {z:N3} m";
         }
         private static (double, double, double) ModelMinCorner(Document doc)
         {
@@ -2190,7 +2401,7 @@ namespace BIMCamel.UI
         private ExportProfile Capture() => new ExportProfile
         {
             Schema = CmbSchema.SelectedIndex, Units = CmbUnits.SelectedIndex, Scope = ScopeIndex(),
-            Quality = CmbQuality.SelectedIndex, BasePoint = CmbBasePoint.SelectedIndex,
+            Quality = Quality, BasePoint = CmbBasePoint.SelectedIndex,
             CustomE = ParseD(TxtE.Text), CustomN = ParseD(TxtN.Text), CustomElev = ParseD(TxtElev.Text), Rotation = ParseD(TxtRot.Text),
             Georef = ChkGeoref.IsChecked == true, Props = ChkProps.IsChecked == true, Materials = ChkMaterials.IsChecked == true, Instancing = ChkInstancing.IsChecked == true,
             FastInstancing = ChkFastInstancing.IsChecked == true, MergeParts = ChkMergeParts.IsChecked == true,
@@ -2217,7 +2428,7 @@ namespace BIMCamel.UI
             CmbSchema.SelectedIndex = Clamp(p.Schema, CmbSchema.Items.Count);
             CmbUnits.SelectedIndex = Clamp(p.Units, CmbUnits.Items.Count);
             int sc = Clamp(p.Scope, _scopeRadios.Count); _scopeRadios[sc].IsChecked = true;
-            CmbQuality.SelectedIndex = Clamp(p.Quality, CmbQuality.Items.Count);
+            Quality = p.Quality;
             CmbBasePoint.SelectedIndex = Clamp(p.BasePoint, CmbBasePoint.Items.Count);
             TxtE.Text = Inv(p.CustomE); TxtN.Text = Inv(p.CustomN); TxtElev.Text = Inv(p.CustomElev); TxtRot.Text = Inv(p.Rotation);
             ChkGeoref.IsChecked = p.Georef; ChkProps.IsChecked = p.Props; ChkMaterials.IsChecked = p.Materials;
@@ -2385,7 +2596,11 @@ namespace BIMCamel.UI
             4 => (0.3048, "ft (forced)"), 5 => (0.0254, "in (forced)"), _ => UnitsToMetre(doc.Units)
         };
         private void SetStatus(string text) => LblStatus.Text = text;
-        private void SetReport(string text) => TxtReport.Text = text.Replace("\n", Environment.NewLine);
+        private void SetReport(string text)
+        {
+            TxtReport.Text = text.Replace("\n", Environment.NewLine);
+            BtnSaveReport.IsEnabled = text.Length > 0;
+        }
         private static double ParseD(string s) => double.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : 0.0;
         private static string Inv(double v) => v.ToString(CultureInfo.InvariantCulture);
         private static int Clamp(int v, int count) => v < 0 ? 0 : (v >= count ? count - 1 : v);

@@ -43,11 +43,12 @@ namespace BIMCamel.UI
             ShowReport();
         }
 
-        /// <summary>Bring the report into view: after an export it is the thing to read, and it
-        /// sits at the bottom of a long tab.</summary>
+        /// <summary>After an export the report is the thing to read: open its tab, and mark the
+        /// tab so the report can be found again after moving away.</summary>
         private void ShowReport()
         {
-            Tabs.SelectedItem = TabExport;
+            LblReportTab.Text = "Report •";
+            Tabs.SelectedItem = TabReport;
             Dispatcher.BeginInvoke(new Action(() => LblReportHead.BringIntoView()), System.Windows.Threading.DispatcherPriority.Loaded);
         }
 
