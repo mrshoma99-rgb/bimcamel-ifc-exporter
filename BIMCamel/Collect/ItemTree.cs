@@ -52,6 +52,9 @@ namespace BIMCamel.Collect
             return p;
         }
 
+        /// <summary>Nodes remembered.</summary>
+        public static int Count => _parents.Count;
+
         /// <summary>Forget everything: a different document has different nodes.</summary>
         public static void Clear() => _parents.Clear();
     }

@@ -58,6 +58,10 @@ namespace BIMCamel.Collect
             DropMaps();
         }
 
+        /// <summary>Let go of the ModelItems the key memo holds. The resolved set maps are keyed
+        /// by string and stay. See <c>ReleaseModelItems</c> in the pane for why.</summary>
+        public void ReleaseItems() => _keys = new ItemCollector.ItemKeyCache();
+
         /// <summary>Forget the resolved set maps. Called wherever the pane already assumes the
         /// world may have moved — set refresh, scope change, mapping edit.</summary>
         public void DropMaps() { _maps = null; _mapsSig = ""; }
