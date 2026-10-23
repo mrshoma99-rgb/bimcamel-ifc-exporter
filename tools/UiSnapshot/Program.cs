@@ -200,9 +200,9 @@ namespace UiSnapshot
                 ("Time", "The export time, as 1430.", true),
                 ("User", "Your Windows user name.", true),
             };
-            var menu = new ContextMenu();
-            menu.Resources.MergedDictionaries.Add(view.Resources);
-            menu.Style = (Style)view.Resources["PaneMenu"];
+            // A ContextMenu cannot be parented, so draw the same card the PaneMenu template draws
+            // and fill it with MenuItems in the PaneMenuItem style.
+            var list = new StackPanel();
             foreach (var (label, tip, live) in tokens)
             {
                 var head = new StackPanel { Width = 250 };
@@ -213,8 +213,15 @@ namespace UiSnapshot
                     FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 1, 0, 0),
                     Foreground = (Brush)view.Resources["Muted"],
                 });
-                menu.Items.Add(new MenuItem { Header = head, Opacity = live ? 1 : 0.55 });
+                list.Children.Add(new MenuItem { Header = head, Opacity = live ? 1 : 0.55, Style = (Style)view.Resources["PaneMenuItem"] });
             }
+            var menu = new Border
+            {
+                Background = (Brush)view.Resources["Card"], BorderBrush = (Brush)view.Resources["BdStrong"],
+                BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(9), Padding = new Thickness(4),
+                Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 12, ShadowDepth = 2, Opacity = 0.16 },
+                Child = list,
+            };
             var host = new Border { Background = (Brush)view.Resources["Pane"], Padding = new Thickness(12), Child = menu };
             host.Resources.MergedDictionaries.Add(view.Resources);
             host.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
