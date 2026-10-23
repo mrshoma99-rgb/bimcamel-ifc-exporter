@@ -108,15 +108,18 @@ namespace BIMCamel.Geometry
                     try
                     {
                         // Not in the bulk map → convert this one on its own, exactly as before.
-                        var mine = paths.TryGetValue(item, out var lst)
-                            ? (IEnumerable<InwOaPath3>)lst
-                            : ComScope.PathsFor(item);
+                        long tl = Probe.Now;
+                        bool mapped = paths.TryGetValue(item, out var lst);
+                        Probe.Add(Probe.K.SelMap, tl);
+                        var mine = mapped ? lst! : ComScope.PathsFor(item);
                         el = BuildElement(item, mine, unitScale, o, cache, simplified, groups, hasClass, hasCode, hasGroup, hasRoles);
                     }
                     catch (Exception ex) { ExportIssues.Fail(MeshExtractor.SafeName(item), ex); el = null; }
 
                     done++;
+                    long tp = Probe.Now;
                     onProgress?.Invoke(done);
+                    Probe.Add(Probe.K.Progress, tp);
                     if (el != null) yield return el;
                 }
             }
@@ -127,14 +130,16 @@ namespace BIMCamel.Geometry
                                                      ExtractOptions o, GeometryCache? cache, SimplifiedTable? simplified, InstanceGroups groups,
                                                      bool hasClass, bool hasCode, bool hasGroup, bool hasRoles)
         {
+            long t = Probe.Now;
             string key = hasClass || hasCode || hasGroup ? Collect.ItemCollector.ItemKey(item, o.KeyCache) : "";
-            var el = new InstancedElement
-            {
-                Name = item.DisplayName ?? "",
-                InstanceGuid = item.InstanceGuid,
-                ClassKey = hasClass && o.ClassMap!.TryGetValue(key, out var ck) ? ck : null
-            };
+            t = Probe.Lap(Probe.K.ItemKey, t);
+            var el = new InstancedElement { Name = item.DisplayName ?? "" };
+            t = Probe.Lap(Probe.K.ItemName, t);
+            el.InstanceGuid = item.InstanceGuid;
+            t = Probe.Lap(Probe.K.ItemGuid, t);
+            el.ClassKey = hasClass && o.ClassMap!.TryGetValue(key, out var ck) ? ck : null;
             var itemMat = o.Materials ? Data.PropertyHarvester.GetMaterial(item) : null; // per-item colour
+            Probe.Add(Probe.K.Colour, t);
 
             // The fragments, gathered once. Enumerating them costs nothing near a triangle read,
             // and the count is part of the shape identity below (v5 E1).
@@ -192,11 +197,18 @@ namespace BIMCamel.Geometry
             // Some parts of this element were welded away but others survived, so no element
             // was lost — counted separately so the report cannot imply phantom data loss.
             ExportIssues.CollapsedFragments += collapsedFrags;
-            if (el.InstanceGuid == Guid.Empty) el.SourceKey = Collect.ItemCollector.ItemKey(item, o.KeyCache);
+            if (el.InstanceGuid == Guid.Empty)
+            {
+                t = Probe.Now;
+                el.SourceKey = Collect.ItemCollector.ItemKey(item, o.KeyCache);
+                Probe.Add(Probe.K.ItemKey, t);
+            }
 
             // Ground truth: the placed instances must fit in the box Navisworks gives this item
             // (BoundsCheck). Also guards a cached shape that Fast instancing replayed wrongly.
+            t = Probe.Now;
             CheckBounds(item, el, unitScale, 10 * o.WeldTol);
+            Probe.Add(Probe.K.Hash, t);
 
             // Harvest only now that we know the item is actually exported — skips property reads
             // for the (often ~half) of HasGeometry leaves that produce no triangles (v4).
@@ -218,6 +230,7 @@ namespace BIMCamel.Geometry
                 long tr = ExportTiming.Now;
                 Data.PropertyRules.Apply(item, o.PropRules, ref pk, ref pc);
                 ExportTiming.PropRuleTicks += ExportTiming.Now - tr;
+                Probe.Add(Probe.K.PropRules, tr);
                 el.ClassKey = pk; if (!string.IsNullOrEmpty(pc)) el.ClassCode = pc!;
             }
             if (hasGroup && o.GroupMap!.TryGetValue(key, out var gn)) el.GroupName = gn;
@@ -230,8 +243,10 @@ namespace BIMCamel.Geometry
                 ExportTiming.ClassifyTicks += ExportTiming.Now - tk;
                 if (guess is { } guessed)
                 {
+                    long ta = Probe.Now;
                     el.ClassKey = guessed.ClassKey;
                     el.Properties = Data.RuleClassifier.Apply(guessed, el.Properties, o.Props);
+                    Probe.Add(Probe.K.ClassifyRules, ta);
                 }
             }
             ExportTiming.HarvestTicks += ExportTiming.Now - th;
@@ -299,7 +314,9 @@ namespace BIMCamel.Geometry
                 if (outcome == InstanceGroups.Outcome.Collapsed) { shape.CollapsedFrags++; continue; }
 
                 var lm = new LocalMesh { Vertices = lv!, Indices = li!, Material = itemMat };
+                long th = Probe.Now;
                 var dk = Key(lm);
+                Probe.Add(Probe.K.Hash, th);
                 if (simplified != null) simplified.Apply(ref lm, ref dk);
                 shape.FragIndex.Add(fi);
                 shape.Meshes.Add(lm);
@@ -324,6 +341,7 @@ namespace BIMCamel.Geometry
             // Navisworks generate and marshal a per-vertex field we then discarded.
             frag.GenerateSimplePrimitives(nwEVertexProperty.eNONE, sink);
             ExportTiming.ReadTicks += ExportTiming.Now - tr; ExportTiming.Fragments++;
+            Probe.Add(Probe.K.Triangles, tr);
             if (sink.TriangleCount == 0) return InstanceGroups.Outcome.NoTriangles;
 
             // v6 Z7: drop screen-only detail — washers, fasteners, tiny fittings. The sink
@@ -336,7 +354,7 @@ namespace BIMCamel.Geometry
 
             lv = sink.Vertices;
             li = sink.Indices;
-            if (weldTol > 0) { long tw = ExportTiming.Now; MeshWelder.Weld(ref lv, ref li, weldTol); ExportTiming.WeldTicks += ExportTiming.Now - tw; }
+            if (weldTol > 0) { long tw = ExportTiming.Now; MeshWelder.Weld(ref lv, ref li, weldTol); ExportTiming.WeldTicks += ExportTiming.Now - tw; Probe.Add(Probe.K.Weld, tw); }
             return li.Count == 0 ? InstanceGroups.Outcome.Collapsed : InstanceGroups.Outcome.Mesh;
         }
 
@@ -390,6 +408,7 @@ namespace BIMCamel.Geometry
                 if (MeshDecimator.Simplify(ref v, ref i, _tol) && i.Count > 0)
                     lm = new LocalMesh { Vertices = v, Indices = i, Material = lm.Material, SourceTriangles = before };
                 ExportTiming.SimplifyCount(before, lm.Indices.Count / 3, ExportTiming.Now - t);
+                Probe.Add(Probe.K.Simplify, t);
 
                 long size = GeometryCache.SizeOf(lm);
                 if (_bytes + size <= BudgetBytes) { _done[src] = lm; _bytes += size; }
@@ -400,7 +419,9 @@ namespace BIMCamel.Geometry
         private static MeshInstance Place(InwOaFragment3 frag, LocalMesh lm, DedupKey dk, double unitScale)
         {
             // local→world matrix (model units, column-major 4x4)
+            long t = Probe.Now;
             var m = MeshExtractor.ReadMatrix(frag);
+            Probe.Add(Probe.K.Matrix, t);
             var inst = new MeshInstance();
             if (m == null)
             {
@@ -420,8 +441,10 @@ namespace BIMCamel.Geometry
             // placed by translation alone.
             if (!IsSimilarity(inst.Rotation))
             {
+                t = Probe.Now;
                 lm = Bake(lm, inst.Rotation);
                 dk = Key(lm);
+                Probe.Add(Probe.K.Hash, t);
                 inst.Rotation = new double[] { 1, 0, 0, 0, 1, 0, 0, 0, 1 };
                 ExportIssues.BakedTransforms++;
             }

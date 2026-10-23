@@ -134,15 +134,18 @@ namespace BIMCamel.Geometry
                     try
                     {
                         // Not in the bulk map → convert this one on its own, exactly as before.
-                        var mine = paths.TryGetValue(item, out var lst)
-                            ? (IEnumerable<InwOaPath3>)lst
-                            : ComScope.PathsFor(item);
+                        long tl = Probe.Now;
+                        bool mapped = paths.TryGetValue(item, out var lst);
+                        Probe.Add(Probe.K.SelMap, tl);
+                        var mine = mapped ? lst! : ComScope.PathsFor(item);
                         em = BuildElement(item, mine, o, groups, hasClass, hasCode, hasGroup, hasRoles);
                     }
                     catch (Exception ex) { ExportIssues.Fail(SafeName(item), ex); em = null; }
 
                     done++;
+                    long tp = Probe.Now;
                     onProgress?.Invoke(done);
+                    Probe.Add(Probe.K.Progress, tp);
                     if (em != null) yield return em;
                 }
             }
@@ -156,10 +159,13 @@ namespace BIMCamel.Geometry
             foreach (InwOaPath3 path in comPaths)
                 foreach (InwOaFragment3 frag in groups.Own(path, out _))   // not the other instances'
                 {
+                    long tm = Probe.Now;
                     sink.CurrentTransform = ReadMatrix(frag);
+                    tm = Probe.Lap(Probe.K.Matrix, tm);
                     // eNONE: PrimitiveSink reads only v.coord, so asking for normals made
                     // Navisworks generate and marshal a per-vertex field we then discarded.
                     frag.GenerateSimplePrimitives(nwEVertexProperty.eNONE, sink);
+                    Probe.Add(Probe.K.Triangles, tm);
                     ExportTiming.Fragments++;
                 }
             ExportTiming.ReadTicks += ExportTiming.Now - ts;
@@ -168,7 +174,9 @@ namespace BIMCamel.Geometry
 
             // Ground truth: what we read must fit in the box Navisworks gives this item. The sink
             // tracked the world extents while reading, so only the item's box costs a call.
+            long tb = Probe.Now;
             BoundsCheck.Check(item, 1.0, 10 * o.WeldTol, sink.MinX, sink.MinY, sink.MinZ, sink.MaxX, sink.MaxY, sink.MaxZ);
+            Probe.Add(Probe.K.Hash, tb);
 
             // v6 Z7. PrimitiveSink accumulated the extents as it read, so this costs nothing.
             if (o.MinFragmentSize > 0 && sink.TriangleCount > 0)
@@ -189,6 +197,7 @@ namespace BIMCamel.Geometry
                 MeshWelder.Weld(ref verts, ref idx, o.WeldTol, o.QtyScale, out measured);
                 measuredOk = o.QtyScale > 0;
                 ExportTiming.WeldTicks += ExportTiming.Now - ts;
+                Probe.Add(Probe.K.Weld, ts);
             }
             else if (o.QtyScale > 0)
             {
@@ -214,21 +223,27 @@ namespace BIMCamel.Geometry
                     if (measuredOk) measured = MeshQuantities.Compute(verts, idx, o.QtyScale);
                 }
                 ExportTiming.SimplifyCount(before, idx.Count / 3, ExportTiming.Now - ts);
+                Probe.Add(Probe.K.Simplify, ts);
             }
 
+            long tk0 = Probe.Now;
             string key = hasClass || hasCode || hasGroup ? ItemCollector.ItemKey(item, o.KeyCache) : "";
+            tk0 = Probe.Lap(Probe.K.ItemKey, tk0);
             var em = new ElementMesh
             {
-                Name = item.DisplayName ?? "",
-                InstanceGuid = item.InstanceGuid,
                 Vertices = verts,
                 Indices = idx,
                 SourceTriangles = sourceTris,
-                Material = o.Materials ? PropertyHarvester.GetMaterial(item) : null,
                 ClassKey = hasClass && o.ClassMap!.TryGetValue(key, out var ck) ? ck : null,
                 Quantities = measuredOk ? measured : (MeshQty?)null
             };
-            if (em.InstanceGuid == Guid.Empty) em.SourceKey = ItemCollector.ItemKey(item, o.KeyCache);
+            em.Name = item.DisplayName ?? "";
+            tk0 = Probe.Lap(Probe.K.ItemName, tk0);
+            em.InstanceGuid = item.InstanceGuid;
+            tk0 = Probe.Lap(Probe.K.ItemGuid, tk0);
+            em.Material = o.Materials ? PropertyHarvester.GetMaterial(item) : null;
+            tk0 = Probe.Lap(Probe.K.Colour, tk0);
+            if (em.InstanceGuid == Guid.Empty) { em.SourceKey = ItemCollector.ItemKey(item, o.KeyCache); Probe.Add(Probe.K.ItemKey, tk0); }
             ts = ExportTiming.Now;
             // ONE pass over this item's properties for both the psets and the roles (v5 E2).
             em.Properties = PropertyHarvester.HarvestAndRoles(item, o.Props, o.PsetFilter, hasRoles ? o.Roles : null, out var rv);
@@ -247,6 +262,7 @@ namespace BIMCamel.Geometry
                 long tr = ExportTiming.Now;
                 PropertyRules.Apply(item, o.PropRules, ref pk, ref pc);
                 ExportTiming.PropRuleTicks += ExportTiming.Now - tr;
+                Probe.Add(Probe.K.PropRules, tr);
                 em.ClassKey = pk; if (!string.IsNullOrEmpty(pc)) em.ClassCode = pc!;
             }
             if (hasGroup && o.GroupMap!.TryGetValue(key, out var gn)) em.GroupName = gn;
@@ -259,8 +275,10 @@ namespace BIMCamel.Geometry
                 ExportTiming.ClassifyTicks += ExportTiming.Now - tk;
                 if (guess is { } guessed)
                 {
+                    long ta = Probe.Now;
                     em.ClassKey = guessed.ClassKey;
                     em.Properties = RuleClassifier.Apply(guessed, em.Properties, o.Props);
+                    Probe.Add(Probe.K.ClassifyRules, ta);
                 }
             }
             ExportTiming.HarvestTicks += ExportTiming.Now - ts;

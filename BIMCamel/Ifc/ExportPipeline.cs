@@ -83,7 +83,9 @@ namespace BIMCamel.Ifc
                     foreach (var item in source)
                     {
                         if (fault.Error != null) break;   // the writer is gone; stop reading
+                        long t = Geometry.Probe.Now;
                         queue.Add(item);
+                        Geometry.Probe.Add(Geometry.Probe.K.QueueWait, t);
                     }
                 }
                 finally

@@ -89,6 +89,7 @@ namespace BIMCamel.Geometry
             GeomWriteTicks = PropWriteTicks = QtyWriteTicks = 0;
             ComMapTicks = BoxTicks = BoxReads = PropRuleTicks = ClassifyTicks = 0;
             ItemBox.Reset();
+            Probe.ResetExport();
             ValidateTicks = 0;
         }
 
@@ -99,6 +100,7 @@ namespace BIMCamel.Geometry
             CollectTicks = SetResolveTicks = MinCornerTicks = PropScanTicks = 0;
             NodesVisited = SetsResolved = SampledItems = 0;
             SetSearchTicks = SetMembers = OverlapsSkipped = 0;
+            Probe.ResetScan();
         }
 
         public static long Now => Stopwatch.GetTimestamp();

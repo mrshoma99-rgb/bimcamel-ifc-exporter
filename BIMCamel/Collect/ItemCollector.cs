@@ -4,6 +4,7 @@ using System.Linq;
 using Autodesk.Navisworks.Api;
 using Autodesk.Navisworks.Api.ComApi;
 using Autodesk.Navisworks.Api.Interop.ComApi;
+using P = BIMCamel.Geometry.Probe;
 
 namespace BIMCamel.Collect
 {
@@ -227,6 +228,7 @@ namespace BIMCamel.Collect
                     set.HasExplicitModelItems ? set.ExplicitModelItems :
                     set.Search != null ? set.Search.FindAll(doc, false) : null;
                 Geometry.ExportTiming.SetSearchTicks += Geometry.ExportTiming.Now - ts;
+                P.Add(P.K.ScanFindAll, ts);
                 if (mic != null)
                 {
                     var w = new Walk(result, true, onProgress, wantMinCorner, dedup: true);
@@ -268,16 +270,29 @@ namespace BIMCamel.Collect
         public static string ItemKey(ModelItem item, Dictionary<ModelItem, string>? cache)
         {
             if (cache == null) return ItemKey(item);
-            if (cache.TryGetValue(item, out var k)) return k;
-            return cache[item] = ItemKeyCore(item, (cache as ItemKeyCache)?.Paths);
+            long t = P.Now;
+            bool hit = cache.TryGetValue(item, out var k);
+            P.Add(P.K.ScanKeyMemo, t);
+            if (hit) return k;
+            k = ItemKeyCore(item, (cache as ItemKeyCache)?.Paths);
+            t = P.Now;
+            cache[item] = k;
+            P.Add(P.K.ScanKeyMemo, t);
+            return k;
         }
 
         private static string ItemKeyCore(ModelItem item, Dictionary<ModelItem, string>? paths)
         {
             try
             {
-                if (item.InstanceGuid != Guid.Empty) return "G:" + item.InstanceGuid.ToString();
-                return "P:" + PathOf(item, paths);
+                long t = P.Now;
+                var g = item.InstanceGuid;
+                P.Add(P.K.ScanKeyGuid, t);
+                if (g != Guid.Empty) return "G:" + g.ToString();
+                t = P.Now;
+                var path = "P:" + PathOf(item, paths);
+                P.Add(P.K.ScanKeyPath, t);
+                return path;
             }
             catch { return "P:" + SafeDisplayName(item); }
         }
@@ -379,10 +394,12 @@ namespace BIMCamel.Collect
                 foreach (var leaf in leaves)
                 {
                     var k = ItemKey(leaf, keyCache);
+                    long tm = P.Now;
                     if (wantsClass && !maps.Class.ContainsKey(k)) maps.Class[k] = rule.ClassKey;
                     if (wantsCode && !maps.Classification.ContainsKey(k)) maps.Classification[k] = rule.Classification;
                     if (setName.Length > 0 && !maps.Group.ContainsKey(k)) maps.Group[k] = setName;
-                    if ((++visited & 511) == 0) onProgress?.Invoke(visited);
+                    P.Add(P.K.ScanMaps, tm);
+                    if ((++visited & 511) == 0) { long tp = P.Now; onProgress?.Invoke(visited); P.Add(P.K.ScanPump, tp); }
                 }
             }
             return maps;
@@ -402,7 +419,9 @@ namespace BIMCamel.Collect
             {
                 try
                 {
+                    long tb = P.Now;
                     var bb = item.BoundingBox();
+                    P.Add(P.K.ScanBox, tb);
                     if (bb != null)
                     {
                         if (bb.Min.X < mnX) mnX = bb.Min.X;
@@ -444,28 +463,55 @@ namespace BIMCamel.Collect
         private static bool CollectFrom(ModelItem item, Walk w)
         {
             if (w.Done == null) return CollectFromCore(item, w);
-            if (w.Done.TryGetValue(item, out bool prior)) { Geometry.ExportTiming.OverlapsSkipped++; return prior; }
+            long t = P.Now;
+            bool seen = w.Done.TryGetValue(item, out bool prior);
+            P.Add(P.K.ScanDedup, t);
+            if (seen) { Geometry.ExportTiming.OverlapsSkipped++; return prior; }
             bool any = CollectFromCore(item, w);
+            t = P.Now;
             w.Done[item] = any;
+            P.Add(P.K.ScanDedup, t);
             return any;
         }
 
         private static bool CollectFromCore(ModelItem item, Walk w)
         {
             w.Visited++;
-            if ((w.Visited & 0x3FF) == 0) w.OnProgress?.Invoke(w.Visited);
+            if ((w.Visited & 0x3FF) == 0) { long tp = P.Now; w.OnProgress?.Invoke(w.Visited); P.Add(P.K.ScanPump, tp); }
 
-            if (!w.IncludeHidden && item.IsHidden) { HiddenSkipped++; return false; }
-
-            bool any = false, hadChildren = false;
-            foreach (var child in item.Children)
+            if (!w.IncludeHidden)
             {
-                hadChildren = true;
-                if (CollectFrom(child, w)) any = true;
+                long th = P.Now;
+                bool hidden = item.IsHidden;
+                P.Add(P.K.ScanHidden, th);
+                if (hidden) { HiddenSkipped++; return false; }
             }
 
+            bool any = false, hadChildren = false;
+            // Stepped by hand so the probe times Navisworks producing each child, not the
+            // recursion into it.
+            long t = P.Now;
+            var e = item.Children.GetEnumerator();
+            try
+            {
+                while (true)
+                {
+                    bool more = e.MoveNext();
+                    P.AddTime(P.K.ScanChildren, t);
+                    if (!more) break;
+                    hadChildren = true;
+                    if (CollectFrom(e.Current, w)) any = true;
+                    t = P.Now;
+                }
+            }
+            finally { (e as IDisposable)?.Dispose(); }
+            P.Calls(P.K.ScanChildren, 1);
+
             if (any) return true;              // descendants covered this subtree's geometry
-            if (!item.HasGeometry) return false;
+            long tg = P.Now;
+            bool geo = item.HasGeometry;
+            P.Add(P.K.ScanHasGeometry, tg);
+            if (!geo) return false;
 
             Take(item, w);
             if (hadChildren) Geometry.ExportIssues.BranchGeometryRecovered++;

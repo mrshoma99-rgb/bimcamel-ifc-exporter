@@ -66,20 +66,30 @@ namespace BIMCamel.Geometry
                 foreach (var item in chunk) coll.Add(item);
                 InwOpSelection sel = ComApiBridge.ToInwOpSelection(coll);
                 ExportTiming.ComConverts++;
+                long tp = Probe.Lap(Probe.K.SelConvert, t);
 
                 // Timed on its own: one bridge call per path, so on a big chunk this — not the
-                // conversion above — may be the bulk of the line.
+                // conversion above — may be the bulk of the line. Stepped by hand so the probes
+                // split producing each path from mapping it back.
                 long tm = ExportTiming.Now;
                 try
                 {
-                    foreach (InwOaPath3 path in sel.Paths())
+                    var e = sel.Paths().GetEnumerator();
+                    tp = Probe.Lap(Probe.K.SelPaths, tp);
+                    while (true)
                     {
+                        bool more = e.MoveNext();
+                        tp = Probe.Lap(Probe.K.SelPaths, tp);
+                        if (!more) break;
+                        var path = (InwOaPath3)e.Current;
                         ModelItem? owner;
                         try { owner = ComApiBridge.ToModelItem(path); }
-                        catch { continue; }
+                        catch { tp = Probe.Lap(Probe.K.SelToItem, tp); continue; }
+                        tp = Probe.Lap(Probe.K.SelToItem, tp);
                         if (owner == null) continue;
                         if (!map.TryGetValue(owner, out var lst)) { lst = new List<InwOaPath3>(); map[owner] = lst; }
                         lst.Add(path);
+                        tp = Probe.Lap(Probe.K.SelMap, tp);
                     }
                 }
                 finally { ExportTiming.ComMapTicks += ExportTiming.Now - tm; }
@@ -95,19 +105,20 @@ namespace BIMCamel.Geometry
         }
 
         /// <summary>The original per-item conversion, for items the chunk map did not cover.</summary>
-        public static IEnumerable<InwOaPath3> PathsFor(ModelItem item)
+        public static List<InwOaPath3> PathsFor(ModelItem item)
         {
             long t = ExportTiming.Now;
-            InwOpSelection sel;
+            var paths = new List<InwOaPath3>(1);
             try
             {
                 var coll = new ModelItemCollection { item };
-                sel = ComApiBridge.ToInwOpSelection(coll);
+                var sel = ComApiBridge.ToInwOpSelection(coll);
                 ExportTiming.ComConverts++;
+                // Gathered here rather than yielded, so the probe covers the whole conversion.
+                foreach (InwOaPath3 path in sel.Paths()) paths.Add(path);
             }
-            finally { ExportTiming.ComConvertTicks += ExportTiming.Now - t; }
-
-            foreach (InwOaPath3 path in sel.Paths()) yield return path;
+            finally { ExportTiming.ComConvertTicks += ExportTiming.Now - t; Probe.Add(Probe.K.SelSingle, t); }
+            return paths;
         }
 
         /// <summary>

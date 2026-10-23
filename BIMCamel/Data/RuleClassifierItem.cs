@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Autodesk.Navisworks.Api;
+using Probe = BIMCamel.Geometry.Probe;
 
 namespace BIMCamel.Data
 {
@@ -32,7 +33,9 @@ namespace BIMCamel.Data
                 {
                     // The item itself is read fresh; its ancestors are shared by every sibling
                     // under them and come from the per-export memo.
-                    var n = depth == 0 ? Read(node) : Ancestor(node);
+                    NodeInfo n;
+                    if (depth == 0) { long t = Probe.Now; n = Read(node); Probe.Add(Probe.K.ClassifyNode, t); }
+                    else n = Ancestor(node);
                     // A layer is a level or a drawing layer ("Level 2 - Floor", "A-WALL"): its name
                     // describes many elements, not this one, and above it is only the file.
                     if (n.Stop) break;
@@ -40,10 +43,14 @@ namespace BIMCamel.Data
                     ifcTypes.Add(n.ClassDisplayName);
                     if (category == null)
                     {
-                        if (categoryCache == null || !categoryCache.TryGetValue(node, out category))
+                        long t = Probe.Now;
+                        bool known = categoryCache != null && categoryCache.TryGetValue(node, out category);
+                        t = Probe.Lap(Probe.K.ClassifyMemo, t);
+                        if (!known)
                         {
                             category = RevitCategory(node);
-                            if (categoryCache != null) categoryCache[node] = category;
+                            t = Probe.Lap(Probe.K.ClassifyCategory, t);
+                            if (categoryCache != null) { categoryCache[node] = category; Probe.Add(Probe.K.ClassifyMemo, t); }
                         }
                     }
                     // Family/type names first (Revit's item type is the family name), then the
@@ -59,7 +66,10 @@ namespace BIMCamel.Data
                 if (bb != null && !bb.IsEmpty)
                     size = ((bb.Max.X - bb.Min.X) * unitScale, (bb.Max.Y - bb.Min.Y) * unitScale, (bb.Max.Z - bb.Min.Z) * unitScale);
 
-                return Classify(ifcTypes, category, names, size);
+                long tc = Probe.Now;
+                var guess = Classify(ifcTypes, category, names, size);
+                Probe.Add(Probe.K.ClassifyRules, tc);
+                return guess;
             }
             catch
             {
@@ -99,9 +109,16 @@ namespace BIMCamel.Data
 
         private static NodeInfo Ancestor(ModelItem node)
         {
-            if (_ancestors.TryGetValue(node, out var n)) return n;
+            long t = Probe.Now;
+            bool hit = _ancestors.TryGetValue(node, out var n);
+            t = Probe.Lap(Probe.K.ClassifyMemo, t);
+            if (hit) return n!;
+            n = Read(node);
+            t = Probe.Lap(Probe.K.ClassifyNode, t);
             if (_ancestors.Count >= AncestorCap) _ancestors.Clear();
-            return _ancestors[node] = Read(node);
+            _ancestors[node] = n;
+            Probe.Add(Probe.K.ClassifyMemo, t);
+            return n;
         }
 
         /// <summary>IFC spatial containers ("IfcBuildingStorey" named "First Floor"): same reason

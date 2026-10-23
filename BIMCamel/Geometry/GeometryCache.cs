@@ -86,9 +86,12 @@ namespace BIMCamel.Geometry
                 var bb = ItemBox.Of(item);
                 if (bb == null) return null;
 
+                long t = Probe.Now;
+                string parent = item.Parent?.DisplayName ?? "", cls = item.ClassDisplayName ?? item.ClassName ?? "";
+                Probe.Add(Probe.K.ShapeNames, t);
                 _key.Length = 0;
-                _key.Append(item.Parent?.DisplayName ?? "").Append('\u0001')
-                    .Append(item.ClassDisplayName ?? item.ClassName ?? "").Append('\u0001')
+                _key.Append(parent).Append('\u0001')
+                    .Append(cls).Append('\u0001')
                     .Append(Q(bb.Max.X - bb.Min.X)).Append('\u0001')
                     .Append(Q(bb.Max.Y - bb.Min.Y)).Append('\u0001')
                     .Append(Q(bb.Max.Z - bb.Min.Z)).Append('\u0001')
