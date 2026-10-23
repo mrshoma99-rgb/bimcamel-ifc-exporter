@@ -899,7 +899,7 @@ namespace BIMCamel.UI
                 var summary = new ExportSummary();
                 RunOneExport(outPath, schema, items, unitScale, coords, names, opts, weldTolMetres, coordDecimals, geomMin, splitLimit, summary, "Exporting");
 
-                sw.Stop(); heapTimer.Dispose();
+                sw.Stop(); heapTimer.Dispose(); Probe.EndExport(_scan.Keys.Count);
                 FinishReport(summary, schemaName, ScopeLabel(), unitName, items.Count, scanSw.ElapsedMilliseconds, sw.ElapsedMilliseconds, setRules.Count, baseHeap);
             }
             catch (OperationCanceledException)
@@ -964,7 +964,7 @@ namespace BIMCamel.UI
                                   + (ChkZip.IsChecked == true ? BIMCamel.Ifc.IfcSource.ZipExtension : ".ifc");
                 RunOneExport(System.IO.Path.Combine(folder, baseName), schema, items, unitScale, coords, names, opts, weldTolMetres, coordDecimals, geomMin, splitLimit, summary, $"Set {setNum}/{chosen.Count}");
             }
-            sw.Stop(); heapTimer.Dispose();
+            sw.Stop(); heapTimer.Dispose(); Probe.EndExport(_scan.Keys.Count);
             string scopeLabel = $"Batch — {chosen.Count} set(s)" + (skipped > 0 ? $", {skipped} empty skipped" : "");
             FinishReport(summary, schemaName, scopeLabel, unitName, totalItems, scanSw.ElapsedMilliseconds, sw.ElapsedMilliseconds, setRules.Count, baseHeap);
         }
@@ -2086,11 +2086,12 @@ namespace BIMCamel.UI
                 sb.AppendLine();
                 sb.AppendLine("──────────────────────────────");
                 sb.AppendLine($"⚠  SLOW PROPERTY HARVEST: {harvestPerEl:0.0} ms/element (normal < 1 ms).");
-                sb.AppendLine("   This almost always means an ACTIVE DataTools / external-database link:");
-                sb.AppendLine("   every object triggers a database query, which is slow — and if the link");
-                sb.AppendLine("   is broken the console fills with 'DATATOOLS_SQL_EXEC ... Sheet1$' errors.");
-                sb.AppendLine("   Fix: the console error names the missing object; open Home → DataTools,");
-                sb.AppendLine("   then deactivate/delete that link and re-export.");
+                sb.AppendLine("   One known cause is an ACTIVE DataTools / external-database link: every");
+                sb.AppendLine("   object triggers a database query, and if the link is broken the console");
+                sb.AppendLine("   fills with 'DATATOOLS_SQL_EXEC ... Sheet1$' errors. Fix: open Home →");
+                sb.AppendLine("   DataTools, then deactivate/delete that link and re-export.");
+                sb.AppendLine("   No such errors? Then Navisworks itself was slow on this run: compare the");
+                sb.AppendLine("   per-call table and the machine lines with an earlier report.");
             }
 
             if (!string.IsNullOrEmpty(profile)) { sb.AppendLine("──────────────────────────────"); sb.Append(profile); }

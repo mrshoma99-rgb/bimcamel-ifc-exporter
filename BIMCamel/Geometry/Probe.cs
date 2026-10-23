@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace BIMCamel.Geometry
@@ -139,6 +140,8 @@ namespace BIMCamel.Geometry
         {
             for (int i = 0; i <= ScanLast; i++) { _ticks[i] = 0; _calls[i] = 0; }
             _scanning = true;
+            _scanStart = Env.Take();
+            _scanEnd = _exportEnd = default;
         }
 
         /// <summary>Exports started since Navisworks loaded the plugin. The first one in a session
@@ -151,6 +154,85 @@ namespace BIMCamel.Geometry
             SessionRun++;
             for (int i = ScanLast + 1; i < Count; i++) { _ticks[i] = 0; _calls[i] = 0; }
             _scanning = false;
+            _scanEnd = Env.Take();
+            _exportEnd = default;
+        }
+
+        /// <summary>Call when the export's read and write have finished, before validation.
+        /// <paramref name="keyMemo"/> is the session's item-key memo size: it outlives exports, so
+        /// a later run looks keys up in a bigger table than the first.</summary>
+        public static void EndExport(int keyMemo = -1) { _exportEnd = Env.Take(); _keyMemo = keyMemo; }
+        private static int _keyMemo = -1;
+
+        // ── what the machine was doing (the same calls can cost several times more from one run
+        // to the next; these say whether the process was short of CPU, memory or garbage
+        // collection while it ran) ──────────────────────────────────────────────────────────
+        private static Env _scanStart, _scanEnd, _exportEnd;
+
+        private struct Env
+        {
+            public bool Valid;
+            public long Stamp;
+            public int Gc0, Gc1, Gc2;
+            public TimeSpan Cpu;
+            public long WorkingSet, Private, Managed, AvailPhys, TotalPhys;
+            public uint PageFaults;
+
+            public static Env Take()
+            {
+                var e = new Env { Valid = true, Stamp = Stopwatch.GetTimestamp() };
+                e.Gc0 = GC.CollectionCount(0); e.Gc1 = GC.CollectionCount(1); e.Gc2 = GC.CollectionCount(2);
+                e.Managed = GC.GetTotalMemory(false);
+                try
+                {
+                    using var p = Process.GetCurrentProcess();
+                    e.Cpu = p.TotalProcessorTime; e.WorkingSet = p.WorkingSet64; e.Private = p.PrivateMemorySize64;
+                    var c = new ProcessMemoryCounters { cb = (uint)Marshal.SizeOf(typeof(ProcessMemoryCounters)) };
+                    if (K32GetProcessMemoryInfo(p.Handle, ref c, c.cb)) e.PageFaults = c.PageFaultCount;
+                }
+                catch { /* counters are a diagnostic: never fail the export for them */ }
+                try
+                {
+                    var m = new MemoryStatusEx { dwLength = (uint)Marshal.SizeOf(typeof(MemoryStatusEx)) };
+                    if (GlobalMemoryStatusEx(ref m)) { e.AvailPhys = (long)m.ullAvailPhys; e.TotalPhys = (long)m.ullTotalPhys; }
+                }
+                catch { }
+                return e;
+            }
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct ProcessMemoryCounters
+        {
+            public uint cb, PageFaultCount;
+            public UIntPtr PeakWorkingSetSize, WorkingSetSize, QuotaPeakPagedPoolUsage, QuotaPagedPoolUsage,
+                           QuotaPeakNonPagedPoolUsage, QuotaNonPagedPoolUsage, PagefileUsage, PeakPagefileUsage;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MemoryStatusEx
+        {
+            public uint dwLength, dwMemoryLoad;
+            public ulong ullTotalPhys, ullAvailPhys, ullTotalPageFile, ullAvailPageFile, ullTotalVirtual, ullAvailVirtual, ullAvailExtendedVirtual;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool K32GetProcessMemoryInfo(IntPtr process, ref ProcessMemoryCounters counters, uint size);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GlobalMemoryStatusEx(ref MemoryStatusEx status);
+
+        /// <summary>One line on what the process and the machine did during a phase.</summary>
+        private static void EnvLine(StringBuilder sb, Env a, Env b)
+        {
+            if (!a.Valid || !b.Valid) return;
+            double wall = ExportTiming.Ms(b.Stamp - a.Stamp) / 1000.0;
+            double cpu = (b.Cpu - a.Cpu).TotalSeconds;
+            const double MB = 1048576.0;
+            sb.AppendLine($"  machine     : CPU {cpu:N0} s of {wall:N0} s wall · GC {b.Gc0 - a.Gc0:N0}/{b.Gc1 - a.Gc1:N0}/{b.Gc2 - a.Gc2:N0} (gen 0/1/2) · "
+                          + $"page faults {(long)b.PageFaults - a.PageFaults:N0}");
+            sb.AppendLine($"  memory      : working set {a.WorkingSet / MB:N0} → {b.WorkingSet / MB:N0} MB · private {a.Private / MB:N0} → {b.Private / MB:N0} MB · "
+                          + $"managed {a.Managed / MB:N0} → {b.Managed / MB:N0} MB · free RAM {a.AvailPhys / MB:N0} → {b.AvailPhys / MB:N0} of {b.TotalPhys / MB:N0} MB");
         }
 
         private static readonly Dictionary<K, string> Labels = new Dictionary<K, string>
@@ -189,6 +271,8 @@ namespace BIMCamel.Geometry
             rows.Sort((a, b) => _ticks[b].CompareTo(_ticks[a]));
 
             sb.AppendLine(scan ? "  ── scan, per call ──" : "  ── export read thread, per call ──");
+            if (scan) EnvLine(sb, _scanStart, _scanEnd); else EnvLine(sb, _scanEnd, _exportEnd);
+            if (scan && _keyMemo >= 0) sb.AppendLine($"  key memo    : {_keyMemo:N0} item(s) remembered this session");
             sb.AppendLine($"  {"call",-18}{"ms",10}{"calls",13}{"µs/call",10}{"share",7}");
             foreach (int i in rows)
             {
