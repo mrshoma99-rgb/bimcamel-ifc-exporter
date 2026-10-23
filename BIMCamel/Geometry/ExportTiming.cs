@@ -37,6 +37,11 @@ namespace BIMCamel.Geometry
         // E1 (fast instancing): how well the pre-read identity guess held up.
         public static long GeomReadsSkipped;  // fragment reads avoided by a candidate-key hit
         public static long GeomVerifications; // sampled full reads done to check a cached candidate
+        public static long ComMapTicks;       // inside ComConvertTicks: Paths() + ToModelItem per path
+        public static long BoxTicks;          // item BoundingBox() reads (one per element since v7)
+        public static long BoxReads;          // ... and how many were made
+        public static long PropRuleTicks;     // inside HarvestTicks: property-value class rules
+        public static long ClassifyTicks;     // inside HarvestTicks: auto-classify of unmapped items
         public static long GeomMismatches;    // verifications that DISAGREED — the guess was wrong
         public static long GeomEvictions;     // candidates dropped for the memory budget
 
@@ -56,6 +61,9 @@ namespace BIMCamel.Geometry
         public static long NodesVisited;      // tree nodes touched by the walk
         public static long SetsResolved;      // distinct sets actually resolved
         public static long SampledItems;      // items the property scan actually read
+        public static long SetSearchTicks;    // inside SetResolveTicks: Search.FindAll alone
+        public static long SetMembers;        // leaves the mapping sets resolved to
+        public static long OverlapsSkipped;   // list entries already covered by an earlier entry's walk
 
         // ── after the file is closed ───────────────────────────────────────────────────────
         public static long ValidateTicks;     // structural validation of the written file(s)
@@ -69,6 +77,8 @@ namespace BIMCamel.Geometry
             GroupLookups = GroupReadsShared = GroupVerifications = GroupMismatches = 0;
             GeomReadsSkipped = GeomVerifications = GeomMismatches = GeomEvictions = 0;
             GeomWriteTicks = PropWriteTicks = QtyWriteTicks = 0;
+            ComMapTicks = BoxTicks = BoxReads = PropRuleTicks = ClassifyTicks = 0;
+            ItemBox.Reset();
             ValidateTicks = 0;
         }
 
@@ -78,6 +88,7 @@ namespace BIMCamel.Geometry
         {
             CollectTicks = SetResolveTicks = MinCornerTicks = PropScanTicks = 0;
             NodesVisited = SetsResolved = SampledItems = 0;
+            SetSearchTicks = SetMembers = OverlapsSkipped = 0;
         }
 
         public static long Now => Stopwatch.GetTimestamp();
