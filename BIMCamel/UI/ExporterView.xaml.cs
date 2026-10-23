@@ -71,6 +71,7 @@ namespace BIMCamel.UI
             BuildRoleRows();
             InitControls();
             InitGridsAndLists();
+            InitNameEditor();
             InitSession();
             Loaded += (_, _) => { AttachDocumentEvents(); UpdateScopeHint(); PreviewBasePoint(); RefreshModelStatus(); RefreshSets(); RenderPreflight(); };
             Unloaded += (_, _) => DetachDocumentEvents();
@@ -93,14 +94,14 @@ namespace BIMCamel.UI
         // to the assembly (the bundle ships Resources\camel_32.png alongside the DLL).
         private void SetLogo()
         {
-            try { LogoImg.Source = new BitmapImage(new Uri("pack://application:,,,/BIMCamel;component/Resources/camel_32.png")); return; }
+            try { LogoImg.Source = new BitmapImage(new Uri("pack://application:,,,/BIMCamel;component/Resources/camel_mark.png")); return; }
             catch { }
             try
             {
                 var dir = System.IO.Path.GetDirectoryName(typeof(ExporterView).Assembly.Location);
                 if (dir != null)
                 {
-                    var p = System.IO.Path.Combine(dir, "Resources", "camel_32.png");
+                    var p = System.IO.Path.Combine(dir, "Resources", "camel_mark.png");
                     if (System.IO.File.Exists(p)) LogoImg.Source = new BitmapImage(new Uri(p));
                 }
             }
@@ -364,6 +365,7 @@ namespace BIMCamel.UI
                 case 4: LblScopeHint.Text = "→ tick sets below; each becomes its own IFC (choose an output folder)"; RefreshSets(); break;
                 default: LblScopeHint.Text = ""; break;
             }
+            RefreshNameEditor();
         }
 
         private void RefreshModelStatus()

@@ -119,7 +119,7 @@
     <Style x:Key="CellBox" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
       <Setter Property="MinHeight" Value="0"/>
       <Setter Property="Height" Value="28"/>
-      <Setter Property="Padding" Value="7,0"/>
+      <Setter Property="Padding" Value="5,0"/>
       <Setter Property="FontSize" Value="12"/>
     </Style>
     <!-- A number inside a sentence ("Skip geometry smaller than [5] mm"): no taller than the
@@ -131,6 +131,34 @@
       <Setter Property="TextAlignment" Value="Right"/>
       <Setter Property="Margin" Value="8,0,6,0"/>
       <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+    <!-- File name editor: a token chip and the plain text between chips. -->
+    <Style x:Key="NameChip" TargetType="Border">
+      <Setter Property="Background" Value="{DynamicResource BadgeAutoBg}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource BadgeAutoTx}"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="CornerRadius" Value="6"/>
+      <Setter Property="Padding" Value="7,2,2,2"/>
+      <Setter Property="Margin" Value="1,2"/>
+      <Setter Property="Cursor" Value="SizeAll"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style x:Key="NameText" TargetType="TextBox">
+      <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+      <Setter Property="CaretBrush" Value="{DynamicResource Text}"/>
+      <Setter Property="FontSize" Value="12.5"/>
+      <Setter Property="MinWidth" Value="6"/>
+      <Setter Property="Height" Value="24"/>
+      <Setter Property="Margin" Value="1,2"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="TextBox">
+            <Border Background="Transparent"><ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center"/></Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
 
     <!-- ════ Secondary button ════ -->
@@ -439,7 +467,7 @@
     <!-- ════ Title-bar icon button ════ -->
     <Style x:Key="IconBtn" TargetType="Button">
       <Setter Property="Foreground" Value="White"/>
-      <Setter Property="Width" Value="30"/><Setter Property="Height" Value="30"/>
+      <Setter Property="Width" Value="28"/><Setter Property="Height" Value="28"/>
       <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Template">
         <Setter.Value>
@@ -519,23 +547,23 @@
         <RowDefinition Height="Auto"/>
       </Grid.RowDefinitions>
 
-      <!-- Title bar -->
-      <Border Grid.Row="0" Height="46">
+      <!-- Title bar: a slim strip, so the settings get the height. The white mark and the
+           wordmark read as one logo, with the tool's name beside it. -->
+      <Border Grid.Row="0" Height="38">
         <Border.Background>
           <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
             <GradientStop Color="#0070C0" Offset="0"/><GradientStop Color="#0D83DA" Offset="1"/>
           </LinearGradientBrush>
         </Border.Background>
-        <Grid Margin="12,0">
+        <Grid Margin="10,0,8,0">
           <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-          <Border Grid.Column="0" Width="30" Height="30" CornerRadius="8" Background="#000000" VerticalAlignment="Center">
-            <Image x:Name="LogoImg" Width="26" Height="26" Stretch="Uniform"/>
-          </Border>
-          <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0,0,0">
-            <TextBlock Text="BIMCamel" Foreground="White" FontWeight="SemiBold" FontSize="14.5"/>
-            <TextBlock x:Name="LblSubtitle" Text="IFC Exporter" Foreground="#DDFFFFFF" FontSize="10.5" TextTrimming="CharacterEllipsis"
-                       ToolTip="The profile these settings came from. A dot means they were changed after it was loaded."/>
+          <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+            <Image x:Name="LogoImg" Width="22" Height="22" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
+            <TextBlock Text="BIMCamel" Foreground="White" FontWeight="Bold" FontSize="14.5" Margin="6,0,0,0" VerticalAlignment="Center"/>
           </StackPanel>
+          <TextBlock Grid.Column="1" x:Name="LblSubtitle" Text="IFC Exporter" Foreground="#E6FFFFFF" FontSize="12.5" Margin="8,1,8,0"
+                     VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                     ToolTip="The profile these settings came from. A dot means they were changed after it was loaded."/>
           <StackPanel Grid.Column="2" Orientation="Horizontal">
             <!-- Profiles live in the title bar: they capture the WHOLE pane, so
                  parking them inside one tab's card suggested a narrower reach
@@ -661,8 +689,20 @@
                   </Grid>
                   <CheckBox x:Name="ChkZip" Margin="0,11,0,0" Content="Write compressed .ifczip (recommended)" ToolTip="Write IFC's standard zipped form: an ordinary ZIP holding one .ifc, read directly by Revit, Solibri, ArchiCAD, Navisworks, xBim and IfcOpenShell with no unpacking step.&#x0a;&#x0a;STEP text compresses very well, so this is typically 6-12x smaller on disk. It also writes LESS data: the export streams straight into the archive, so the uncompressed file is never created at all.&#x0a;&#x0a;Turn it off if a downstream script expects a literal .ifc."/>
                   <TextBlock Style="{StaticResource Lbl}" Text="File name" Margin="0,9,0,5"/>
-                  <TextBox x:Name="TxtFileName" Text="{}{model}_{schema}"
-                           ToolTip="Name for the exported file, without extension. Tokens: {model} the Navisworks file, {schema} IFC4 or IFC2x3, {set} the set name in a batch, {date} today (yyyy-MM-dd). A batch always includes {set}, so files never overwrite each other. Blank = {model}_{schema}."/>
+                  <!-- The template string itself, which profiles store. The editor below is built
+                       from it and writes back to it; nobody types tokens by hand any more. -->
+                  <TextBox x:Name="TxtFileName" Text="{}{model}_{schema}" Visibility="Collapsed"/>
+                  <Border x:Name="NameEditor" Background="{DynamicResource Field}" BorderBrush="{DynamicResource FieldBd}" BorderThickness="1"
+                          CornerRadius="8" Padding="4,3,3,3" MinHeight="34" AllowDrop="True"
+                          ToolTip="The exported file's name. Blue chips are filled in at export; type plain text between them. Drag a chip to move it, × or right-click to remove it.">
+                    <Grid>
+                      <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                      <WrapPanel x:Name="NameChips" VerticalAlignment="Center" Background="Transparent"/>
+                      <Button x:Name="BtnAddToken" Grid.Column="1" Style="{StaticResource Btn}" Margin="4,0,0,0" Padding="8,3" VerticalAlignment="Center"
+                              Content="+ Token" Click="OnAddToken" ToolTip="Insert a value that is filled in at export: model, set, selected element, date…"/>
+                    </Grid>
+                  </Border>
+                  <TextBlock x:Name="LblNamePreview" Style="{StaticResource Hint}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
                 </StackPanel>
               </Border>
 
@@ -1046,7 +1086,7 @@
                     <DataTemplate>
                       <Grid>
                         <Grid.ColumnDefinitions>
-                          <ColumnDefinition Width="30"/><ColumnDefinition Width="*"/><ColumnDefinition Width="4"/>
+                          <ColumnDefinition Width="36"/><ColumnDefinition Width="*"/><ColumnDefinition Width="4"/>
                           <ColumnDefinition Width="*"/><ColumnDefinition Width="4"/><ColumnDefinition Width="0.8*"/>
                         </Grid.ColumnDefinitions>
                         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="6"/><RowDefinition Height="Auto"/><RowDefinition Height="6"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>

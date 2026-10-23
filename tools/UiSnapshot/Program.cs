@@ -80,6 +80,32 @@ namespace UiSnapshot
 
         private static void Fill(UserControl v)
         {
+            var mark = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "camel_mark.png");
+            if (F<Image>(v, "LogoImg") is Image logo && File.Exists(mark)) logo.Source = new BitmapImage(new Uri(mark));
+
+            // File name editor, as ExporterView.FileName.cs builds it: Model file _ Schema _ Date.
+            var chips = F<WrapPanel>(v, "NameChips");
+            if (chips != null)
+            {
+                void Chip(string label)
+                {
+                    var b = new Border { Style = (Style)v.FindResource("NameChip") };
+                    var sp = new StackPanel { Orientation = Orientation.Horizontal };
+                    var t = new TextBlock { Text = label, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+                    t.SetResourceReference(TextBlock.ForegroundProperty, "BadgeAutoTx");
+                    var x = new TextBlock { Text = "×", Margin = new Thickness(6, 0, 3, 0), VerticalAlignment = VerticalAlignment.Center };
+                    x.SetResourceReference(TextBlock.ForegroundProperty, "BadgeAutoTx");
+                    sp.Children.Add(t); sp.Children.Add(x); b.Child = sp; chips.Children.Add(b);
+                }
+                void Text(string s, double min = 0)
+                {
+                    var tb = new TextBox { Style = (Style)v.FindResource("NameText"), Text = s };
+                    if (min > 0) tb.MinWidth = min;
+                    chips.Children.Add(tb);
+                }
+                Chip("Model file"); Text("_"); Chip("Schema"); Text("_rev-A_"); Chip("Date"); Text("", 40);
+                F<TextBlock>(v, "LblNamePreview").Text = "→ PTS_Protos_CC_IFC4_rev-A_2026-10-23.ifczip";
+            }
             var scope = F<StackPanel>(v, "ScopeOptions");
             string[] labels = { "Whole model (visible)", "Current selection", "Active section box", "Saved set / search set", "Multiple sets → one IFC each (batch)" };
             for (int i = 0; i < labels.Length; i++)
@@ -171,6 +197,11 @@ namespace UiSnapshot
                     content.Measure(new Size(content.ActualWidth, double.PositiveInfinity));
                     var top = content.TranslatePoint(new Point(0, 0), view).Y;
                     outH = (int)Math.Min(h, Math.Ceiling(top + content.DesiredSize.Height + 16));
+                    // Measuring at another size upsets star-sized grid columns; lay out again.
+                    view.InvalidateMeasure();
+                    view.Measure(new Size(width, h));
+                    view.Arrange(new Rect(0, 0, width, h));
+                    view.UpdateLayout();
                 }
             }
 

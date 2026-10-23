@@ -57,7 +57,7 @@ namespace BIMCamel.UI
         private void ScheduleSave()
         {
             if (_applying || _defaults == null) return;
-            UpdateExportLabel();
+            UpdateExportLabel(); UpdateNamePreview();
             _saveTimer.Stop(); _saveTimer.Start();
         }
 
