@@ -1,0 +1,41 @@
+name: ui-snapshot
+
+# Renders every tab of the exporter pane to PNG (no Navisworks needed) so a layout change can
+# be looked at before it ships. Download the "ui-snapshots" artifact from the run.
+
+on:
+  push:
+    paths: ['BIMCamel/UI/**', 'tools/UiSnapshot/**', '.github/workflows/ui-snapshot.yml']
+  pull_request:
+    paths: ['BIMCamel/UI/**', 'tools/UiSnapshot/**', '.github/workflows/ui-snapshot.yml']
+  workflow_dispatch:
+
+jobs:
+  snapshot:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Render the pane
+        shell: pwsh
+        run: |
+          dotnet build tools/UiSnapshot/UiSnapshot.csproj -c Release -o out
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          ./out/UiSnapshot.exe ./out/ExporterView.xaml ./snapshots
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-snapshots
+          path: snapshots/*.png
+      # The images also go into the log as base64, for reviewers without artifact access.
+      - name: Print snapshots
+        shell: pwsh
+        run: |
+          Get-ChildItem snapshots -Filter *.png | ForEach-Object {
+            Write-Output "=====BEGIN $($_.Name)"
+            $b = [Convert]::ToBase64String([IO.File]::ReadAllBytes($_.FullName))
+            for ($i = 0; $i -lt $b.Length; $i += 8000) { Write-Output $b.Substring($i, [Math]::Min(8000, $b.Length - $i)) }
+            Write-Output "=====END $($_.Name)"
+          }
