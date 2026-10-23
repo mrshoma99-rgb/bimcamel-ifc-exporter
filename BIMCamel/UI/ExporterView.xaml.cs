@@ -872,8 +872,8 @@ namespace BIMCamel.UI
                 var scanSw = Stopwatch.StartNew();
                 ET.ResetScan();
                 BeginBusyMarquee("Collecting elements…");
-                // The walk no longer reads a bounding box per leaf for the base point: on a 188k-leaf
-                // E3D selection that was most of a 181 s Collect. ScopeMin below samples instead.
+                // The walk no longer reads a bounding box per leaf for the base point: on a large
+                // selection that was most of the Collect time. ScopeMin below samples instead.
                 long tc = ET.Now;
                 var items = ResolveScope(doc, CollectTick);
                 ET.CollectTicks += ET.Now - tc;
@@ -1183,7 +1183,7 @@ namespace BIMCamel.UI
         /// It only has to be NEAR the geometry: the placement chain puts every element back at its
         /// world position whatever the origin is, so the corner decides how many digits the stored
         /// coordinates carry and nothing else. Reading every leaf's <c>BoundingBox()</c> for an
-        /// exact minimum cost a COM call per element (most of a 181 s Collect on a 188k-leaf E3D
+        /// exact minimum cost a COM call per element (most of the Collect time on a large
         /// selection), so:
         ///  1. Not the geometry origin (model origin, custom point) — not needed at all.
         ///  2. Whole model — the model roots' boxes, a handful of calls; the base-point preview has
@@ -1256,8 +1256,8 @@ namespace BIMCamel.UI
             // is the difference between "Stop" and "Stop, eventually".
             ThrowIfCancelled();
             // 400 ms, not 120: each pump lets Navisworks repaint, and with a large selection
-            // highlighted a repaint is not free. In the export, pumps cost ~18 ms each on the PTS
-            // E3D model; at 120 ms that would be ~15% of a three-minute walk. Stop still lands
+            // highlighted a repaint is not free. On a large model a pump can cost
+            // tens of milliseconds; at 120 ms that is a noticeable share of a long walk. Stop still lands
             // within half a second.
             long ms = _tickClock.ElapsedMilliseconds;
             if (ms - _lastTickMs < 400) return;
