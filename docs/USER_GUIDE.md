@@ -120,8 +120,14 @@ write ("Export 1,204 selected → IFC4"). Every setting is remembered between
 sessions; the profile menu in the title bar (see section 11) adds presets
 and a full reset.
 
-The **file name** box takes a template: `{model}`, `{schema}`, `{set}`
-(batch) and `{date}`. Save dialogs open in the folder of the last export.
+The **file name** is built from token chips and your own text. **+ Token**
+lists what can go in: model file, project name, schema, saved set name
+(Saved set and batch scopes), selected element name (Current selection
+scope), scope, date, time and user. Type text between chips, drag a chip to
+move it, or right-click it to move or remove it; a chip that does not apply
+to the current scope is greyed out and left out of the name. The line under
+the box shows the resulting name. Save dialogs open in the folder of the
+last export.
 After an export the Report card offers **Open file**, **Open folder** and
 **Save report…**; a failed export shows the plain reason first and the
 technical details below it.
@@ -169,10 +175,10 @@ from the defaults (e.g. "2 changed"), and **↺ Reset** puts them all back.
   property, target pset, target name; `,` or `;` separated).
 
 ### Mapping — which IFC class each thing becomes
-One grid, one toolbar. Each rule: **Navisworks set → IFC class**, optional
+One list of rule cards, one toolbar. Each card: **Navisworks set → IFC class**, optional
 **PredefinedType**, optional **classification code**. Unmapped elements
 stay `IfcBuildingElementProxy`. **↑ / ↓** set the order (the higher rule
-wins when an element is in two sets), and the Predefined column offers the
+wins when an element is in two sets), and the Predefined box offers the
 values IFC4 defines for the chosen class. **Check these rules** resolves
 the rules against your scope *before export*: the one-line result appears
 under the button and the full breakdown under Pre-flight on the Export
@@ -322,7 +328,7 @@ set a class, a classification code, or both — so a broad rule
 (`IfcWall.PredefinedType = SHEAR`, doors/windows/stairs/ramps/piles…).
 Unknown values fall back safely at export and validation flags them.
 
-**Classification codes** from the grid column override the Classification
+**Classification codes** from a rule card override the Classification
 *role* (Data tab) for elements in that set. The system name field becomes
 `IfcClassification.Name` ("Uniclass 2015", "OmniClass"); codes become
 `IfcClassificationReference` with proper associations, in both IFC4 and
