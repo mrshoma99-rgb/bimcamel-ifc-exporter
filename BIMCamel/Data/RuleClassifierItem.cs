@@ -93,7 +93,7 @@ namespace BIMCamel.Data
             n.ClassDisplayName = node.ClassDisplayName;
             n.DisplayName = node.DisplayName;
             n.HasModel = node.HasModel;
-            if (!n.HasModel) n.Parent = node.Parent;
+            if (!n.HasModel) n.Parent = Collect.ItemTree.Parent(node);
             return n;
         }
 
@@ -105,6 +105,9 @@ namespace BIMCamel.Data
         /// <see cref="Reset"/> at the start of each export.
         /// </summary>
         private static readonly Dictionary<ModelItem, NodeInfo> _ancestors = new Dictionary<ModelItem, NodeInfo>();
+
+        /// <summary>Let go of the remembered nodes but keep the rule counts for the report.</summary>
+        public static void ReleaseItems() => _ancestors.Clear();
         private const int AncestorCap = 200_000;
 
         private static NodeInfo Ancestor(ModelItem node)

@@ -36,6 +36,7 @@ namespace BIMCamel.Geometry
             ScanKeyMemo,       // item-key memo: ModelItem hashing and equality
             ScanMaps,          // filling the class / classification / group maps
             ScanBox,           // BoundingBox() for the base point
+            ScanRelease,       // dropping the cached ModelItems of earlier runs, then a full GC
             ScanPump,          // progress and UI pumps
             // ── export ──────────────────────────────────────────────────────────────
             SelConvert,        // ComApiBridge.ToInwOpSelection over a chunk
@@ -43,6 +44,7 @@ namespace BIMCamel.Geometry
             SelToItem,         // ComApiBridge.ToModelItem, one per path
             SelMap,            // path map: ModelItem hashing and equality
             SelSingle,         // per-item conversion for items the chunk map missed
+            SelDirect,         // ComApiBridge.ToInwOaPath, one item straight to its path
             PathId,            // path.ArrayData read and turned into an id
             Fragments,         // path.Fragments(): getting and stepping through the list
             FragPathId,        // each fragment's path.ArrayData, when an instance group is indexed
@@ -140,6 +142,7 @@ namespace BIMCamel.Geometry
         {
             for (int i = 0; i <= ScanLast; i++) { _ticks[i] = 0; _calls[i] = 0; }
             _scanning = true;
+            Collect.ItemTree.ResetCounts();
             _scanStart = Env.Take();
             _scanEnd = _exportEnd = default;
         }
@@ -161,6 +164,17 @@ namespace BIMCamel.Geometry
         /// <summary>Call when the export's read and write have finished, before validation.
         /// <paramref name="keyMemo"/> is the session's item-key memo size: it outlives exports, so
         /// a later run looks keys up in a bigger table than the first.</summary>
+        /// <summary>The export dropped <paramref name="held"/> cached ModelItems and forced a full
+        /// GC, which began at <paramref name="start"/> with <paramref name="managedBefore"/> bytes
+        /// on the managed heap.</summary>
+        public static void Released(int held, long managedBefore, long start)
+        {
+            Add(K.ScanRelease, start);
+            _released = held; _releasedFrom = managedBefore; _releasedTo = GC.GetTotalMemory(false);
+        }
+        private static int _released = -1;
+        private static long _releasedFrom, _releasedTo;
+
         public static void EndExport(int keyMemo = -1) { _exportEnd = Env.Take(); _keyMemo = keyMemo; }
         private static int _keyMemo = -1;
 
@@ -240,9 +254,9 @@ namespace BIMCamel.Geometry
             [K.ScanChildren] = "Children", [K.ScanHidden] = "IsHidden", [K.ScanHasGeometry] = "HasGeometry",
             [K.ScanDedup] = "overlap memo", [K.ScanFindAll] = "set FindAll", [K.ScanKeyGuid] = "key: InstanceGuid",
             [K.ScanKeyPath] = "key: tree path", [K.ScanKeyMemo] = "key memo", [K.ScanMaps] = "rule maps",
-            [K.ScanBox] = "BoundingBox", [K.ScanPump] = "UI pump",
+            [K.ScanBox] = "BoundingBox", [K.ScanRelease] = "release + full GC", [K.ScanPump] = "UI pump",
             [K.SelConvert] = "ToInwOpSelection", [K.SelPaths] = "Paths()", [K.SelToItem] = "ToModelItem",
-            [K.SelMap] = "path map", [K.SelSingle] = "per-item convert", [K.PathId] = "path id",
+            [K.SelMap] = "path map", [K.SelSingle] = "per-item convert", [K.SelDirect] = "ToInwOaPath", [K.PathId] = "path id",
             [K.Fragments] = "Fragments()", [K.FragPathId] = "fragment path id", [K.ItemName] = "DisplayName",
             [K.ItemGuid] = "InstanceGuid", [K.ItemKey] = "item key", [K.Colour] = "colour",
             [K.Box] = "BoundingBox", [K.ShapeNames] = "shape key names", [K.Triangles] = "triangles",
@@ -272,7 +286,9 @@ namespace BIMCamel.Geometry
 
             sb.AppendLine(scan ? "  ── scan, per call ──" : "  ── export read thread, per call ──");
             if (scan) EnvLine(sb, _scanStart, _scanEnd); else EnvLine(sb, _scanEnd, _exportEnd);
+            if (scan && _released >= 0) sb.AppendLine($"  released    : {_released:N0} cached item(s) from earlier runs · managed {_releasedFrom / 1048576:N0} → {_releasedTo / 1048576:N0} MB after a full GC");
             if (scan && _keyMemo >= 0) sb.AppendLine($"  key memo    : {_keyMemo:N0} item(s) remembered this session");
+            if (!scan) sb.AppendLine($"  parents     : {Collect.ItemTree.Hits:N0} looked up, {Collect.ItemTree.Reads:N0} read from Navisworks (scan and export)");
             sb.AppendLine($"  {"call",-18}{"ms",10}{"calls",13}{"µs/call",10}{"share",7}");
             foreach (int i in rows)
             {

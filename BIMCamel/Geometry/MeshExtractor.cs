@@ -121,23 +121,21 @@ namespace BIMCamel.Geometry
             // Indexes each shared node's fragments once, instead of k² calls per node (InstanceGroups).
             var groups = new InstanceGroups();
 
-            // One COM conversion per CHUNK of items rather than one per item (v5 E3).
+            // Each item straight to its path when that is cheap, else one per chunk (ComScope.ChunkPaths).
+            ComScope.ResetMode();
             foreach (var chunk in ComScope.Chunks(items, ComScope.ChunkSize))
             {
-                var paths = ComScope.Convert(chunk);
-                foreach (var item in chunk)
+                var paths = new ComScope.ChunkPaths(chunk);
+                for (int ci = 0; ci < chunk.Count; ci++)
                 {
+                    var item = chunk[ci];
                     ElementMesh? em;
                     // One unreadable item must not abort the whole export: before this, a COM failure
                     // or OutOfMemory on a single heavy mesh threw out of the iterator, leaving a
                     // truncated IFC on disk (the writer's footer/flush never ran).
                     try
                     {
-                        // Not in the bulk map → convert this one on its own, exactly as before.
-                        long tl = Probe.Now;
-                        bool mapped = paths.TryGetValue(item, out var lst);
-                        Probe.Add(Probe.K.SelMap, tl);
-                        var mine = mapped ? lst! : ComScope.PathsFor(item);
+                        var mine = paths.For(ci);
                         em = BuildElement(item, mine, o, groups, hasClass, hasCode, hasGroup, hasRoles);
                     }
                     catch (Exception ex) { ExportIssues.Fail(SafeName(item), ex); em = null; }

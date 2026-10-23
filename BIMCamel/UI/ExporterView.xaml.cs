@@ -871,6 +871,7 @@ namespace BIMCamel.UI
 
                 var scanSw = Stopwatch.StartNew();
                 ET.ResetScan();
+                ReleaseModelItems();
                 BeginBusyMarquee("Collecting elements…");
                 // The walk no longer reads a bounding box per leaf for the base point: on a large
                 // selection that was most of the Collect time. ScopeMin below samples instead.
@@ -933,12 +934,13 @@ namespace BIMCamel.UI
             if (fbd.ShowDialog() != WF.DialogResult.OK) return;
             string folder = fbd.SelectedPath;
 
+            var scanSw = Stopwatch.StartNew();
+            ET.ResetScan();
+            ReleaseModelItems();
             var maps = ResolveMaps(doc, setRules);
             var opts = BuildExtractOptions(maps);
             opts.KeyCache = _scan.Keys;
 
-            var scanSw = Stopwatch.StartNew();
-            ET.ResetScan();
             BeginBusyMarquee("Preparing batch…");
             var mc = ModelMinCorner(doc);
             var geomMin = (mc.Item1 * unitScale, mc.Item2 * unitScale, mc.Item3 * unitScale);
@@ -1009,6 +1011,31 @@ namespace BIMCamel.UI
                 });
             }
             return rules.Count > 0 ? rules : null;
+        }
+
+        /// <summary>
+        /// Drop every ModelItem the session caches hold, then force a full GC, so the export starts
+        /// with no wrappers left over from earlier runs. A second export in the same session read
+        /// the tree several times slower (Children about 16×, Parent about 2×) while COM, property
+        /// and triangle calls kept their speed, and it started with five times the managed heap.
+        /// Live or unfinalized wrappers slowing tree navigation is the suspect; the report's
+        /// "release + full GC" and "released" lines show what this cost and freed. The string-keyed
+        /// set maps survive, so unchanged set rules still skip FindAll.
+        /// </summary>
+        private void ReleaseModelItems()
+        {
+            long t = Probe.Now;
+            long before = GC.GetTotalMemory(false);
+            int held = _scan.Keys.Count + ItemTree.Count;
+            _scan.ReleaseItems();
+            ItemTree.Clear();
+            RuleClassifier.ReleaseItems();
+            PropertyHarvester.ResetCache();
+            ItemBox.Reset();
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            Probe.Released(held, before, t);
         }
 
         private void RunOneExport(string basePath, IfcSchema schema, List<ModelItem> items, double unitScale, CoordOptions coords, SpatialNames names,

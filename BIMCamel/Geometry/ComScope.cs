@@ -104,6 +104,79 @@ namespace BIMCamel.Geometry
             return map;
         }
 
+        /// <summary>
+        /// One chunk's paths, item by item, the cheapest way that works on this model.
+        ///
+        /// The chunk conversion above is cheap one way and dear the other. Turning 2,048 items
+        /// into a COM selection costs under a millisecond, but mapping each path back to its item
+        /// (<c>ToModelItem</c>) cost about 500 µs a path on a large plant model: 97 s of a 520 s
+        /// export. So each item is now converted straight to its own path
+        /// (<c>ToInwOaPath</c>, the cheap direction), with no map back at all.
+        ///
+        /// The direct call is trusted only after it has proved itself: the first
+        /// <see cref="TrialCalls"/> calls of an export are timed, and if they fail or average more
+        /// than <see cref="MaxDirectMicros"/>, the rest of the export goes back to chunk
+        /// conversion. An item the direct call cannot convert takes the chunk route too, so no
+        /// element can lose its geometry to this.
+        /// </summary>
+        internal sealed class ChunkPaths
+        {
+            private readonly List<ModelItem> _chunk;
+            private Dictionary<ModelItem, List<InwOaPath3>>? _map;
+            private int _mapFrom = int.MaxValue;
+            public ChunkPaths(List<ModelItem> chunk) { _chunk = chunk; }
+
+            /// <summary>The paths of the chunk's <paramref name="i"/>-th item.</summary>
+            public List<InwOaPath3> For(int i)
+            {
+                var item = _chunk[i];
+                if (Direct && _map == null)
+                {
+                    var p = DirectPath(item);
+                    if (p != null) return new List<InwOaPath3>(1) { p };
+                }
+                // The chunk route, for the rest of this chunk only.
+                if (_map == null || i < _mapFrom)
+                {
+                    _mapFrom = i;
+                    _map = Convert(i == 0 ? _chunk : _chunk.GetRange(i, _chunk.Count - i));
+                }
+                long tl = Probe.Now;
+                bool mapped = _map.TryGetValue(item, out var lst);
+                Probe.Add(Probe.K.SelMap, tl);
+                return mapped ? lst! : PathsFor(item);
+            }
+        }
+
+        public const int TrialCalls = 256;
+        public const double MaxDirectMicros = 150;
+
+        /// <summary>Whether this export converts items one by one (see <see cref="ChunkPaths"/>).</summary>
+        public static bool Direct = true;
+        private static long _trialTicks;
+        private static int _trialCalls;
+
+        /// <summary>Start of an export: give the direct call its trial again.</summary>
+        public static void ResetMode() { Direct = true; _trialTicks = 0; _trialCalls = 0; }
+
+        private static InwOaPath3? DirectPath(ModelItem item)
+        {
+            long t = Probe.Now;
+            InwOaPath3? p;
+            try { p = ComApiBridge.ToInwOaPath(item) as InwOaPath3; }
+            catch { p = null; }
+            long dt = Probe.Now - t;
+            Probe.Add(Probe.K.SelDirect, t);
+            ExportTiming.ComConvertTicks += dt;
+            if (_trialCalls < TrialCalls)
+            {
+                _trialCalls++; _trialTicks += dt;
+                if (p == null || (_trialCalls == TrialCalls && ExportTiming.Ms(_trialTicks) * 1000.0 / TrialCalls > MaxDirectMicros))
+                    Direct = false;
+            }
+            return p;
+        }
+
         /// <summary>The original per-item conversion, for items the chunk map did not cover.</summary>
         public static List<InwOaPath3> PathsFor(ModelItem item)
         {
