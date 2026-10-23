@@ -203,11 +203,14 @@ namespace UiSnapshot
             };
             foreach (var (label, c, p, tag, tone) in roleData)
             {
-                var border = new Border { BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(9), Padding = new Thickness(10, 9, 10, 10), Margin = new Thickness(0, 0, 0, 8),
-                                          BorderBrush = (Brush)v.FindResource("Bd"), Background = (Brush)v.FindResource("Card2") };
+                var border = new Border { BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(9), Padding = new Thickness(10, 9, 10, 10), Margin = new Thickness(0, 0, 0, 8) };
+                // References, as AddRoleRow sets them, so the dark render shows the dark rows.
+                border.SetResourceReference(Border.BorderBrushProperty, "Bd");
+                border.SetResourceReference(Border.BackgroundProperty, "Card2");
                 var sp = new StackPanel();
                 var head = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
-                var tg = new TextBlock { Text = tag, FontSize = 12, Margin = new Thickness(10, 0, 0, 0), Foreground = (Brush)v.FindResource(tone) };
+                var tg = new TextBlock { Text = tag, FontSize = 12, Margin = new Thickness(10, 0, 0, 0), };
+                tg.SetResourceReference(TextBlock.ForegroundProperty, tone);
                 DockPanel.SetDock(tg, Dock.Right); head.Children.Add(tg);
                 head.Children.Add(new TextBlock { Text = label, FontSize = 12, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
                 sp.Children.Add(head);

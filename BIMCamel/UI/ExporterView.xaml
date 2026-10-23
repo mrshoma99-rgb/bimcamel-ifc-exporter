@@ -800,7 +800,7 @@
         <Setter.Value>
           <ControlTemplate TargetType="ComboBox">
             <Grid>
-              <ToggleButton x:Name="tb" Focusable="False" ClickMode="Press"
+              <ToggleButton x:Name="tb" Focusable="False" ClickMode="Press" Foreground="{TemplateBinding Foreground}"
                             IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
                 <ToggleButton.Template>
                   <ControlTemplate TargetType="ToggleButton">
