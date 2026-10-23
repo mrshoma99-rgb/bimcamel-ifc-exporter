@@ -88,8 +88,8 @@ namespace BIMCamel.Data
         }
 
         /// <summary>
-        /// Ancestors seen this export. Auto-classify runs on every unmapped element — 128k of them
-        /// on a large E3D plant model — and walked up to three ancestors for each, re-reading the same
+        /// Ancestors seen this export. Auto-classify runs on every unmapped element — most of a
+        /// large plant model — and walked up to three ancestors for each, re-reading the same
         /// branch and pipe nodes for every primitive under them. Bounded: cleared when full, which
         /// costs only re-reads. Matched by value (ModelItem equality), cleared by
         /// <see cref="Reset"/> at the start of each export.
@@ -119,7 +119,7 @@ namespace BIMCamel.Data
         private static string? RevitCategory(ModelItem node)
         {
             // Native lookups, not an enumeration of every category: on a model that is not from
-            // Revit (E3D, IFC, DWG) there is no Element tab at all, and walking each unmapped
+            // Revit there is no Element tab at all, and walking each unmapped
             // item's whole PropertyCategories collection to learn that was most of this call.
             var cats = node.PropertyCategories;
             var cat = cats.FindCategoryByName("LcRevitData_Element") ?? cats.FindCategoryByDisplayName("Element");
