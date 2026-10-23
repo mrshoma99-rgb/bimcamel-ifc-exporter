@@ -218,10 +218,12 @@ namespace BIMCamel.Collect
 
         /// <summary>Geometry leaves resolved from a saved selection or search set.</summary>
         public static List<ModelItem> GetItemsFromSet(Document doc, SelectionSet set, Action<int>? onProgress = null, bool wantMinCorner = false)
-            => GetItemsFromSet(doc, set, onProgress, wantMinCorner, -1);
+            => GetItemsFromSet(doc, set, onProgress, wantMinCorner, -1, null);
 
         /// <param name="rule">The rule's number in the pane, for the per-set probe; -1 records nothing.</param>
-        private static List<ModelItem> GetItemsFromSet(Document doc, SelectionSet set, Action<int>? onProgress, bool wantMinCorner, int rule)
+        /// <param name="scope">When given, a search set is searched over these nodes only (see
+        /// <see cref="SearchScope"/>); its leaves outside the scope are then not returned.</param>
+        private static List<ModelItem> GetItemsFromSet(Document doc, SelectionSet set, Action<int>? onProgress, bool wantMinCorner, int rule, SearchScope? scope)
         {
             var result = new List<ModelItem>();
             BeginWalk();
@@ -229,9 +231,14 @@ namespace BIMCamel.Collect
             {
                 long ts = Geometry.ExportTiming.Now;
                 bool search = !set.HasExplicitModelItems && set.Search != null;
-                ModelItemCollection? mic =
-                    set.HasExplicitModelItems ? set.ExplicitModelItems :
-                    set.Search != null ? set.Search.FindAll(doc, false) : null;
+                bool scoped = false;
+                ModelItemCollection? mic = null;
+                if (set.HasExplicitModelItems) mic = set.ExplicitModelItems;
+                else if (set.Search != null)
+                {
+                    if (scope != null) { mic = scope.FindAll(doc, set.Search); scoped = mic != null; }
+                    if (mic == null) mic = set.Search.FindAll(doc, false);
+                }
                 long tf = Geometry.ExportTiming.Now;
                 Geometry.ExportTiming.SetSearchTicks += tf - ts;
                 P.Add(P.K.ScanFindAll, ts);
@@ -243,7 +250,7 @@ namespace BIMCamel.Collect
                     CollectLeaves(mic, w);
                     EndWalk(w);
                 }
-                if (rule >= 0) P.SetResolved(rule, search, tf - ts, Geometry.ExportTiming.Now - tf, found, result.Count);
+                if (rule >= 0) P.SetResolved(rule, search, scoped, tf - ts, Geometry.ExportTiming.Now - tf, found, result.Count);
             }
             // A Stop request travels out through onProgress, and this catch-all
             // would have turned it into "this set resolved to nothing" — silently
@@ -365,14 +372,126 @@ namespace BIMCamel.Collect
         }
 
         /// <summary>
+        /// The nodes whose search match can reach one of the scope's leaves: the leaves and all of
+        /// their ancestors.
+        ///
+        /// A set's maps are only ever looked up for the export's own leaves. A match contributes
+        /// the geometry leaves at or under it, so only a match on a scope leaf or on one of its
+        /// ancestors can reach the scope. A match below a scope leaf adds nothing, because the
+        /// leaf was taken only when nothing beneath it had geometry. So searching just these
+        /// nodes, each on its own, gives the scope's leaves exactly the classes, codes and groups
+        /// that a model-wide FindAll would. On a cold session most of a FindAll is Navisworks
+        /// loading property data for the nodes it looks at, so fewer nodes is less loading.
+        ///
+        /// The saved search's own "search in" items and locations still decide which nodes count,
+        /// so a search saved over one part of the model stays limited to that part. When the
+        /// search's items can't be read the caller falls back to the model-wide FindAll.
+        /// </summary>
+        internal sealed class SearchScope
+        {
+            private readonly List<ModelItem> _nodes = new List<ModelItem>();
+            private readonly Dictionary<ModelItem, ModelItem?> _parent = new Dictionary<ModelItem, ModelItem?>();
+
+            public SearchScope(List<ModelItem> leaves)
+            {
+                foreach (var leaf in leaves)
+                {
+                    var a = leaf;
+                    while (a != null && !_parent.ContainsKey(a))
+                    {
+                        var p = ItemTree.Parent(a);
+                        _parent[a] = p;
+                        _nodes.Add(a);
+                        a = p;
+                    }
+                }
+            }
+
+            /// <summary>The search's matches among the scope nodes, or null to search the whole model.</summary>
+            public ModelItemCollection? FindAll(Document doc, Search src)
+            {
+                try
+                {
+                    var loc = src.Locations;
+                    if (loc != SearchLocations.Self && loc != SearchLocations.Descendants && loc != SearchLocations.DescendantsAndSelf)
+                        return null;
+                    var roots = new HashSet<ModelItem>();
+                    foreach (var r in src.Selection.GetSelectedItems(doc)) roots.Add(r);
+                    if (roots.Count == 0) return null;
+
+                    var under = new Dictionary<ModelItem, bool>();
+                    var pick = new ModelItemCollection();
+                    foreach (var n in _nodes)
+                    {
+                        bool self = roots.Contains(n);
+                        bool keep = loc == SearchLocations.Self ? self
+                                  : loc == SearchLocations.Descendants ? Under(n, roots, under)
+                                  : self || Under(n, roots, under);
+                        if (keep) pick.Add(n);
+                    }
+                    if (pick.Count == 0) return new ModelItemCollection();
+
+                    var s = new Search();
+                    foreach (SearchCondition c in src.SearchConditions) s.SearchConditions.Add(c);
+                    s.Selection.CopyFrom(pick);
+                    s.Locations = SearchLocations.Self;
+                    return s.FindAll(doc, false);
+                }
+                catch (OperationCanceledException) { throw; }
+                catch { return null; }
+            }
+
+            /// <summary>Whether a proper ancestor of <paramref name="n"/> is one of the roots.</summary>
+            private bool Under(ModelItem n, HashSet<ModelItem> roots, Dictionary<ModelItem, bool> memo)
+            {
+                var chain = new List<ModelItem>();
+                bool result;
+                var cur = n;
+                while (true)
+                {
+                    if (memo.TryGetValue(cur, out result)) break;
+                    _parent.TryGetValue(cur, out var p);
+                    if (p == null) { result = false; break; }
+                    if (roots.Contains(p)) { result = true; break; }
+                    chain.Add(cur);
+                    cur = p;
+                }
+                memo[cur] = result;
+                foreach (var c in chain) memo[c] = result;
+                return result;
+            }
+        }
+
+        /// <summary>
+        /// Identity of a scope across sessions: its leaf count and an order-free hash of their item
+        /// keys. Maps resolved for one scope (see <see cref="SearchScope"/>) are only reused for
+        /// the same leaves.
+        /// </summary>
+        public static string ScopeSignature(List<ModelItem> leaves, Dictionary<ModelItem, string>? keyCache)
+        {
+            ulong sum = 0, mix = 0;
+            foreach (var leaf in leaves)
+            {
+                ulong h = 14695981039346656037UL;
+                foreach (char ch in ItemKey(leaf, keyCache)) { h ^= ch; h *= 1099511628211UL; }
+                sum += h;
+                mix ^= h * 0x9E3779B97F4A7C15UL;
+            }
+            return $"{leaves.Count}:{sum:x16}{mix:x16}";
+        }
+
+        /// <summary>
         /// Resolve set→class and set→classification rules in ONE pass over the sets. Earlier rules
         /// win on overlap, per assignment kind — a row that only sets a classification does not
         /// consume the class slot, so a broad "all walls → IfcWall" rule and a narrow "external
         /// walls → Uniclass code" rule compose instead of competing.
         /// </summary>
         public static SetMaps BuildSetMaps(Document doc, IEnumerable<SetRule> rules, Action<int>? onProgress = null,
-            Dictionary<ModelItem, string>? keyCache = null)
+            Dictionary<ModelItem, string>? keyCache = null, List<ModelItem>? scope = null)
         {
+            // Only the scope's own leaves are looked up in the maps, so a search need not look at
+            // the rest of the model (see SearchScope). Null scope: the whole model.
+            var searchScope = scope != null ? new SearchScope(scope) : null;
             // onProgress matters here: search-set rules each run a model-wide
             // FindAll, so a long rule list is a long stretch of work — without
             // ticks the UI cannot pump and Navisworks appears frozen.
@@ -399,7 +518,7 @@ namespace BIMCamel.Collect
                     // the slow half, and passing no callback here left the UI
                     // unpumped — and unstoppable — for all of it.
                 {
-                    resolved[rule.Set] = leaves = GetItemsFromSet(doc, rule.Set, onProgress, false, ruleNo);
+                    resolved[rule.Set] = leaves = GetItemsFromSet(doc, rule.Set, onProgress, false, ruleNo, searchScope);
                     Geometry.ExportTiming.SetMembers += leaves.Count;
                 }
                 foreach (var leaf in leaves)

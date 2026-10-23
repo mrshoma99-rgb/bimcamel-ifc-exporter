@@ -883,7 +883,7 @@ namespace BIMCamel.UI
 
                 // One ItemKey memo shared between rule resolution and the per-element lookups in
                 // the extractor — and now across the whole session, not just this button (v5 S2).
-                var maps = ResolveMaps(doc, setRules);
+                var maps = ResolveMaps(doc, setRules, NarrowScope(items));
                 var opts = BuildExtractOptions(maps);
                 opts.KeyCache = _scan.Keys;
 
@@ -1187,22 +1187,46 @@ namespace BIMCamel.UI
         /// model-wide <c>Search.FindAll</c> behind each set runs once per rule list, not once per
         /// button press.
         /// </summary>
-        private ItemCollector.SetMaps ResolveMaps(Document doc, List<ItemCollector.SetRule> rules)
+        /// <param name="scope">The export's leaves, when the scope is narrower than the whole
+        /// model: the set searches then look only at these and their ancestors, and the maps
+        /// cover only these. Null: resolve over the whole model.</param>
+        private ItemCollector.SetMaps ResolveMaps(Document doc, List<ItemCollector.SetRule> rules, List<ModelItem>? scope = null)
         {
             _scan.Bind(doc);
+            ET.SetCacheNote = null;
             if (rules.Count == 0) return new ItemCollector.SetMaps();
 
-            var cached = _scan.Maps(rules);
-            if (cached != null) return cached;
-
-            SetStatus("Resolving mapping sets…"); PumpUi(Dispatcher);
             long t = ET.Now;
-            var maps = ItemCollector.BuildSetMaps(doc, rules, CollectTick, _scan.Keys);
+            string scopeSig = scope != null ? ItemCollector.ScopeSignature(scope, _scan.Keys) : "";
+            var cached = _scan.Maps(rules, scopeSig);
+            if (cached != null) { ET.SetResolveTicks += ET.Now - t; ET.SetCacheNote = "reused from this session"; return cached; }
+
+            string rulesSig = ScanCache.Signature(rules);
+            if (!_scan.SetsEdited)
+            {
+                var saved = SetMapStore.Load(doc, rulesSig, scopeSig);
+                if (saved != null)
+                {
+                    ET.SetResolveTicks += ET.Now - t;
+                    ET.SetCacheNote = $"read from the set cache saved {SetMapStore.LastSavedUtc.ToLocalTime():yyyy-MM-dd HH:mm}; model files and sets unchanged";
+                    _scan.StoreMaps(rules, saved, scopeSig);
+                    return saved;
+                }
+            }
+
+            ET.SetCacheSkipped = _scan.SetsEdited;
+            SetStatus("Resolving mapping sets…"); PumpUi(Dispatcher);
+            var maps = ItemCollector.BuildSetMaps(doc, rules, CollectTick, _scan.Keys, scope);
             ET.SetResolveTicks += ET.Now - t;
             ET.SetsResolved = rules.Count;
-            _scan.StoreMaps(rules, maps);
+            _scan.StoreMaps(rules, maps, scopeSig);
+            if (!_scan.SetsEdited) SetMapStore.Save(doc, rulesSig, scopeSig, maps);
             return maps;
         }
+
+        /// <summary>The scope's leaves when they are a narrower scope than the whole model, for
+        /// <see cref="ResolveMaps"/>; null for the whole model.</summary>
+        private List<ModelItem>? NarrowScope(List<ModelItem> items) => ScopeIndex() is 1 or 2 or 3 ? items : null;
 
         /// <summary>
         /// The scope's minimum corner in MODEL units, for the geometry-origin base point.
@@ -1425,7 +1449,7 @@ namespace BIMCamel.UI
                 if (items == null) { TxtPreview.Text = LblMapSummary.Text = "Pick a scope first."; return null; }
 
                 var rules = BuildSetRules();
-                var maps = ResolveMaps(doc, rules);
+                var maps = ResolveMaps(doc, rules, NarrowScope(items));
                 var keyCache = _scan.Keys;
 
                 int mapped = 0, unmapped = 0, degraded = 0, classified = 0, walked = 0;
@@ -2049,7 +2073,10 @@ namespace BIMCamel.UI
                 double sother = scanMs - ct - sr - mc - ps; if (sother < 0) sother = 0;
                 sb.AppendLine($"  Collect     : {ct,10:N0} ms   ({ET.NodesVisited:N0} nodes"
                               + (ET.OverlapsSkipped > 0 ? $", {ET.OverlapsSkipped:N0} overlapping entr(ies) walked once" : "") + ")");
-                sb.AppendLine($"  Set resolve : {sr,10:N0} ms   ({ET.SetsResolved:N0} rule(s), {ET.SetMembers:N0} member leaves)");
+                sb.AppendLine($"  Set resolve : {sr,10:N0} ms   " + (ET.SetCacheNote != null
+                    ? $"({ET.SetCacheNote})"
+                    : $"({ET.SetsResolved:N0} rule(s), {ET.SetMembers:N0} member leaves)"));
+                if (ET.SetCacheSkipped) sb.AppendLine("    set cache : not used — sets were added or edited in this session; save the model to use it again");
                 if (ET.SetSearchTicks > 0) sb.AppendLine($"    searches  : {ET.Ms(ET.SetSearchTicks),10:N0} ms   (Navisworks Search.FindAll)");
                 sb.AppendLine($"  Min corner  : {mc,10:N0} ms" + (ET.MinCornerTicks == 0 ? "   (not needed)" : ""));
                 if (ET.PropScanTicks > 0) sb.AppendLine($"  Prop scan   : {ps,10:N0} ms   ({ET.SampledItems:N0} sampled)");

@@ -176,16 +176,17 @@ namespace BIMCamel.Geometry
         private static int _released = -1;
         private static long _releasedFrom, _releasedTo;
 
-        /// <summary>One resolved set: its place in the rule list, whether it is a search, what
+        /// <summary>One resolved set: its place in the rule list, whether it is a search (and if
+        /// it was searched over the scope only), what
         /// FindAll (or reading the explicit items) and the walk of the results cost, and what
         /// came back. Cleared by <see cref="ResetScan"/>.</summary>
-        public static void SetResolved(int rule, bool search, long findTicks, long walkTicks, int found, int leaves)
+        public static void SetResolved(int rule, bool search, bool scoped, long findTicks, long walkTicks, int found, int leaves)
         {
             if (!_scanning) return;
-            _sets.Add((rule, search, findTicks, walkTicks, found, leaves));
+            _sets.Add((rule, search ? (scoped ? "scoped" : "search") : "explicit", findTicks, walkTicks, found, leaves));
         }
-        private static readonly List<(int rule, bool search, long find, long walk, int found, int leaves)> _sets =
-            new List<(int, bool, long, long, int, int)>();
+        private static readonly List<(int rule, string kind, long find, long walk, int found, int leaves)> _sets =
+            new List<(int, string, long, long, int, int)>();
 
         public static void EndExport(int keyMemo = -1) { _exportEnd = Env.Take(); _keyMemo = keyMemo; }
         private static int _keyMemo = -1;
@@ -265,12 +266,12 @@ namespace BIMCamel.Geometry
         /// the pane, so no set name goes into a report that may be shared.</summary>
         private static void SetsTable(StringBuilder sb)
         {
-            var rows = new List<(int rule, bool search, long find, long walk, int found, int leaves)>(_sets);
+            var rows = new List<(int rule, string kind, long find, long walk, int found, int leaves)>(_sets);
             rows.Sort((a, b) => (b.find + b.walk).CompareTo(a.find + a.walk));
             sb.AppendLine($"  ── sets, slowest first ──");
             sb.AppendLine($"  {"rule",-8}{"kind",-10}{"find ms",10}{"walk ms",10}{"found",10}{"leaves",10}");
             foreach (var r in rows)
-                sb.AppendLine($"  {"#" + r.rule,-8}{(r.search ? "search" : "explicit"),-10}{ExportTiming.Ms(r.find),10:N0}{ExportTiming.Ms(r.walk),10:N0}{r.found,10:N0}{r.leaves,10:N0}");
+                sb.AppendLine($"  {"#" + r.rule,-8}{r.kind,-10}{ExportTiming.Ms(r.find),10:N0}{ExportTiming.Ms(r.walk),10:N0}{r.found,10:N0}{r.leaves,10:N0}");
         }
 
         private static readonly Dictionary<K, string> Labels = new Dictionary<K, string>
