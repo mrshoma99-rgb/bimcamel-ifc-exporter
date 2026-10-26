@@ -72,6 +72,8 @@ namespace BIMCamel.Geometry
         public static long SampledItems;      // items the property scan actually read
         public static long SetSearchTicks;    // inside SetResolveTicks: Search.FindAll alone
         public static long SetMembers;        // leaves the mapping sets resolved to
+        public static string? SetCacheNote;   // set maps came from a cache instead of the searches
+        public static bool SetCacheSkipped;   // the disk cache was bypassed: sets edited this session
         public static long OverlapsSkipped;   // list entries already covered by an earlier entry's walk
 
         // ── after the file is closed ───────────────────────────────────────────────────────
@@ -100,6 +102,7 @@ namespace BIMCamel.Geometry
             CollectTicks = SetResolveTicks = MinCornerTicks = PropScanTicks = 0;
             NodesVisited = SetsResolved = SampledItems = 0;
             SetSearchTicks = SetMembers = OverlapsSkipped = 0;
+            SetCacheNote = null; SetCacheSkipped = false;
             Probe.ResetScan();
         }
 

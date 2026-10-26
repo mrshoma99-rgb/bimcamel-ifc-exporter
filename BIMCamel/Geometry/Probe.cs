@@ -142,6 +142,7 @@ namespace BIMCamel.Geometry
         {
             for (int i = 0; i <= ScanLast; i++) { _ticks[i] = 0; _calls[i] = 0; }
             _scanning = true;
+            _sets.Clear();
             Collect.ItemTree.ResetCounts();
             _scanStart = Env.Take();
             _scanEnd = _exportEnd = default;
@@ -174,6 +175,18 @@ namespace BIMCamel.Geometry
         }
         private static int _released = -1;
         private static long _releasedFrom, _releasedTo;
+
+        /// <summary>One resolved set: its place in the rule list, whether it is a search (and if
+        /// it was searched over the scope only), what
+        /// FindAll (or reading the explicit items) and the walk of the results cost, and what
+        /// came back. Cleared by <see cref="ResetScan"/>.</summary>
+        public static void SetResolved(int rule, bool search, bool scoped, long findTicks, long walkTicks, int found, int leaves)
+        {
+            if (!_scanning) return;
+            _sets.Add((rule, search ? (scoped ? "scoped" : "search") : "explicit", findTicks, walkTicks, found, leaves));
+        }
+        private static readonly List<(int rule, string kind, long find, long walk, int found, int leaves)> _sets =
+            new List<(int, string, long, long, int, int)>();
 
         public static void EndExport(int keyMemo = -1) { _exportEnd = Env.Take(); _keyMemo = keyMemo; }
         private static int _keyMemo = -1;
@@ -249,6 +262,18 @@ namespace BIMCamel.Geometry
                           + $"managed {a.Managed / MB:N0} → {b.Managed / MB:N0} MB · free RAM {a.AvailPhys / MB:N0} → {b.AvailPhys / MB:N0} of {b.TotalPhys / MB:N0} MB");
         }
 
+        /// <summary>Each set the rules resolved, slowest first. Rules are numbered as listed in
+        /// the pane, so no set name goes into a report that may be shared.</summary>
+        private static void SetsTable(StringBuilder sb)
+        {
+            var rows = new List<(int rule, string kind, long find, long walk, int found, int leaves)>(_sets);
+            rows.Sort((a, b) => (b.find + b.walk).CompareTo(a.find + a.walk));
+            sb.AppendLine($"  ── sets, slowest first ──");
+            sb.AppendLine($"  {"rule",-8}{"kind",-10}{"find ms",10}{"walk ms",10}{"found",10}{"leaves",10}");
+            foreach (var r in rows)
+                sb.AppendLine($"  {"#" + r.rule,-8}{r.kind,-10}{ExportTiming.Ms(r.find),10:N0}{ExportTiming.Ms(r.walk),10:N0}{r.found,10:N0}{r.leaves,10:N0}");
+        }
+
         private static readonly Dictionary<K, string> Labels = new Dictionary<K, string>
         {
             [K.ScanChildren] = "Children", [K.ScanHidden] = "IsHidden", [K.ScanHasGeometry] = "HasGeometry",
@@ -289,16 +314,17 @@ namespace BIMCamel.Geometry
             if (scan && _released >= 0) sb.AppendLine($"  released    : {_released:N0} cached item(s) from earlier runs · managed {_releasedFrom / 1048576:N0} → {_releasedTo / 1048576:N0} MB after a full GC");
             if (scan && _keyMemo >= 0) sb.AppendLine($"  key memo    : {_keyMemo:N0} item(s) remembered this session");
             if (!scan) sb.AppendLine($"  parents     : {Collect.ItemTree.Hits:N0} looked up, {Collect.ItemTree.Reads:N0} read from Navisworks (scan and export)");
-            sb.AppendLine($"  {"call",-18}{"ms",10}{"calls",13}{"µs/call",10}{"share",7}");
+            sb.AppendLine($"  {"call",-18}{"ms",10}{"calls",13}{"µs/call",13}{"share",7}");
             foreach (int i in rows)
             {
                 double ms = ExportTiming.Ms(_ticks[i]);
                 double us = _calls[i] > 0 ? ms * 1000.0 / _calls[i] : 0;
                 double share = phaseMs > 0 ? 100.0 * ms / phaseMs : 0;
-                sb.AppendLine($"  {Labels[(K)i],-18}{ms,10:N0}{_calls[i],13:N0}{us,10:N1}{share,6:N0}%");
+                sb.AppendLine($"  {Labels[(K)i],-18}{ms,10:N0}{_calls[i],13:N0}{us,13:N1}{share,6:N0}%");
             }
             double rest = phaseMs - sum;
-            sb.AppendLine($"  {"not probed",-18}{Math.Max(0, rest),10:N0}{"",13}{"",10}{(phaseMs > 0 ? 100.0 * Math.Max(0, rest) / phaseMs : 0),6:N0}%");
+            sb.AppendLine($"  {"not probed",-18}{Math.Max(0, rest),10:N0}{"",13}{"",13}{(phaseMs > 0 ? 100.0 * Math.Max(0, rest) / phaseMs : 0),6:N0}%");
+            if (scan && _sets.Count > 0) SetsTable(sb);
         }
     }
 }

@@ -38,7 +38,13 @@ namespace BIMCamel.Collect
         private ItemCollector.ItemKeyCache _keys = new ItemCollector.ItemKeyCache();
 
         private string _mapsSig = "";
+        private string _mapsScope = "";
         private ItemCollector.SetMaps? _maps;
+
+        /// <summary>A set was added, removed or edited since this document was bound. Saved set
+        /// maps on disk describe the sets as the file stores them, so from then on they are
+        /// neither read nor written (see <see cref="SetMapStore"/>).</summary>
+        public bool SetsEdited { get; set; }
 
         /// <summary>Item-key memo for the current document. Never null; handed straight to
         /// <see cref="ItemCollector.ItemKey(ModelItem, Dictionary{ModelItem, string})"/>.</summary>
@@ -55,6 +61,7 @@ namespace BIMCamel.Collect
             _docToken = token;
             _keys = new ItemCollector.ItemKeyCache();
             ItemTree.Clear();
+            SetsEdited = false;
             DropMaps();
         }
 
@@ -64,20 +71,25 @@ namespace BIMCamel.Collect
 
         /// <summary>Forget the resolved set maps. Called wherever the pane already assumes the
         /// world may have moved — set refresh, scope change, mapping edit.</summary>
-        public void DropMaps() { _maps = null; _mapsSig = ""; }
+        public void DropMaps() { _maps = null; _mapsSig = ""; _mapsScope = ""; }
 
-        /// <summary>The resolved maps for these rules, or null when they must be rebuilt.</summary>
-        public ItemCollector.SetMaps? Maps(IEnumerable<ItemCollector.SetRule> rules)
+        /// <summary>The resolved maps for these rules and this scope, or null when they must be
+        /// rebuilt. <paramref name="scope"/> is <see cref="ItemCollector.ScopeSignature"/>, or ""
+        /// for maps resolved over the whole model, which serve any scope. Maps resolved for one
+        /// scope only cover that scope's items.</summary>
+        public ItemCollector.SetMaps? Maps(IEnumerable<ItemCollector.SetRule> rules, string scope = "")
         {
             if (_maps == null) return null;
+            if (_mapsScope.Length > 0 && _mapsScope != scope) return null;
             return Signature(rules) == _mapsSig ? _maps : null;
         }
 
-        /// <summary>Remember maps against the rules that produced them.</summary>
-        public void StoreMaps(IEnumerable<ItemCollector.SetRule> rules, ItemCollector.SetMaps maps)
+        /// <summary>Remember maps against the rules and the scope that produced them.</summary>
+        public void StoreMaps(IEnumerable<ItemCollector.SetRule> rules, ItemCollector.SetMaps maps, string scope = "")
         {
             _maps = maps;
             _mapsSig = Signature(rules);
+            _mapsScope = scope;
         }
 
         /// <summary>
@@ -93,7 +105,7 @@ namespace BIMCamel.Collect
         }
 
         /// <summary>Exact content of the rule list: a changed set, class or code must miss.</summary>
-        private static string Signature(IEnumerable<ItemCollector.SetRule> rules)
+        internal static string Signature(IEnumerable<ItemCollector.SetRule> rules)
         {
             var sb = new StringBuilder();
             foreach (var r in rules)
